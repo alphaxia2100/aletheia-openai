@@ -102,16 +102,35 @@ def whisper_fallback(vid: str, outdir: str, timeout: float) -> str:
     return text
 
 
+def _ytdlp_argv() -> List[str]:
+    """Locate yt-dlp. Prefer the standalone binary (pipx/`--user` installs put it on
+    PATH but NOT as an importable module in this interpreter, so `python -m yt_dlp`
+    fails with No module named yt_dlp). Fall back to the module only if no binary."""
+    import shutil
+    extra = [os.path.expanduser(p) for p in ("~/.local/bin", "~/.npm-global/bin", "~/bin")]
+    path = os.pathsep.join([os.environ.get("PATH", "")] + extra)
+    exe = shutil.which("yt-dlp", path=path)
+    if not exe:
+        for cand in (os.path.expanduser("~/.local/bin/yt-dlp"), "/opt/homebrew/bin/yt-dlp"):
+            if os.path.exists(cand):
+                exe = cand
+                break
+    return [exe] if exe else [sys.executable, "-m", "yt_dlp"]
+
+
 def yt_search(query: str, n: int, timeout: float, latest: bool = False) -> List[str]:
     # ytsearchdate = newest-first (latest videos); ytsearch = relevance
     prefix = "ytsearchdate" if latest else "ytsearch"
+    env = dict(os.environ)
+    env["PATH"] = os.pathsep.join([env.get("PATH", "")] +
+                                  [os.path.expanduser(p) for p in ("~/.local/bin", "~/bin")])
     try:
         r = subprocess.run(
-            [sys.executable, "-m", "yt_dlp", "--dump-json", "--flat-playlist",
-             "%s%d:%s" % (prefix, n, query)],
-            capture_output=True, text=True, timeout=timeout)
+            _ytdlp_argv() + ["--dump-json", "--flat-playlist",
+                             "%s%d:%s" % (prefix, n, query)],
+            capture_output=True, text=True, timeout=timeout, env=env)
     except Exception as e:  # noqa: BLE001
-        sys.stderr.write("yt-dlp search failed: %s\n" % e)
+        sys.stderr.write("yt-dlp search failed to launch: %s\n" % e)
         return []
     ids = []
     for line in r.stdout.splitlines():
@@ -119,6 +138,8 @@ def yt_search(query: str, n: int, timeout: float, latest: bool = False) -> List[
             ids.append(json.loads(line)["id"])
         except Exception:  # noqa: BLE001
             pass
+    if not ids and r.returncode != 0:  # don't fail silently
+        sys.stderr.write("yt-dlp search rc=%d: %s\n" % (r.returncode, (r.stderr or "")[:200]))
     return ids
 
 
