@@ -1,0 +1,8 @@
+{
+  "_comment": "Sample input for rubric.py. This belief is mostly defensible but its falsifier search is weak.",
+  "claim": "For a breadth-first survey, parallel multi-agent retrieval beats a single agent.",
+  "falsifier": "If a single agent with the same token budget matched multi-agent coverage/quality, the claim fails.",
+  "falsifier_search": { "performed": true, "found": "Cognition argues single-threaded is better for interdependent work, but that is a different task type.", "notes": "Did not run a controlled same-budget comparison myself." },
+  "evidence": { "independent_sources": 3, "primary": true, "provenance_report": "Anthropic primary + MAST peer-reviewed + STORM academic; blog echoes collapsed." },
+  "steelman": { "opposing_view": "Cognition: multi-agent is fragile; writes must stay single-threaded.", "why_unconvinced": "Their case is interdependent/write-heavy coding; a survey is breadth-first/read-heavy, the regime where multi-agent is validated." }
+}

@@ -1,0 +1,8 @@
+{
+  "_comment": "Live test case from the conversation: a Spiky POV run through the rubric. It is deliberately NOT yet defensible - the falsifier hasn't been hunted and there's no steelman - so rubric.py should return 'not yet defensible' and name the gaps. That's the point: a spiky POV is earned by surviving disconfirmation, not by sounding right.",
+  "claim": "Children should learn cursive before print, and cursive improves spelling.",
+  "falsifier": "A controlled study showing print-first cohorts spell as well or better, and that cursive's spelling benefit fails to replicate, would sink it.",
+  "falsifier_search": { "performed": false, "found": "", "notes": "Have not yet searched the un-laundered layer (education practitioners, dissenting/retracted studies)." },
+  "evidence": { "independent_sources": 1, "primary": false, "provenance_report": "one popular article; not traced to independent primary studies" },
+  "steelman": { "opposing_view": "", "why_unconvinced": "" }
+}

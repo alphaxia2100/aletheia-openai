@@ -1,0 +1,9 @@
+# Optional dependencies that unlock DEPTH channels. Install per need, user-level:
+#   pip install --user -r requirements-optional.txt
+# The free CORE needs NONE of these: all other channel clients + read.py are pure
+# stdlib and reach no-key HTTP APIs (read.py uses Jina Reader over plain HTTP).
+
+youtube-transcript-api   # YouTube captions, no key (scripts/youtube.py)
+yt-dlp                   # YouTube search + audio download (scripts/youtube.py)
+faster-whisper           # local speech-to-text fallback when a video has no captions (youtube.py --whisper)
+tldextract               # optional: exact registrable-domain in provenance dedupe (else a curated heuristic is used)

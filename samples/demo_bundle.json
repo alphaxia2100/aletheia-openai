@@ -1,0 +1,16 @@
+{
+  "_comment": "Sample input for provenance_graph.py audit. Claim c1 looks well-supported (5 mentions) but 4 of them are blogs echoing one paper (s5) => should collapse to 1 independent. Claim c2 is two genuinely independent primary repos => 2 independent.",
+  "claims": [
+    { "id": "c1", "text": "Multi-agent research systems beat single-agent by ~90% on breadth-first tasks.", "support": ["s1", "s2", "s3", "s4", "s5"] },
+    { "id": "c2", "text": "Datacenter IPs are blocked by YouTube when pulling transcripts.", "support": ["s6", "s7"] }
+  ],
+  "sources": [
+    { "id": "s1", "url": "https://medium.com/@a/multiagent-90", "index_of_origin": "brave", "authors": [{"name": "Blogger A"}], "derives_from": ["s5"], "primary": false },
+    { "id": "s2", "url": "https://substack.com/p/multiagent-90", "index_of_origin": "brave", "authors": [{"name": "Blogger B"}], "derives_from": ["s5"], "primary": false },
+    { "id": "s3", "url": "https://dev.to/c/multiagent-90", "index_of_origin": "google_serper", "authors": [{"name": "Blogger C"}], "derives_from": ["s5"], "primary": false },
+    { "id": "s4", "url": "https://example-news.com/multiagent-90", "index_of_origin": "serpapi", "authors": [{"name": "Reporter D"}], "derives_from": ["s5"], "primary": false },
+    { "id": "s5", "url": "https://www.anthropic.com/engineering/multi-agent-research-system", "index_of_origin": "brave", "authors": [{"name": "Anthropic"}], "primary": true },
+    { "id": "s6", "url": "https://github.com/yt-dlp/yt-dlp/issues/11053", "index_of_origin": "github", "authors": [{"name": "yt-dlp"}], "primary": true },
+    { "id": "s7", "url": "https://github.com/jdepoix/youtube-transcript-api", "index_of_origin": "github", "authors": [{"name": "jdepoix"}], "primary": true }
+  ]
+}

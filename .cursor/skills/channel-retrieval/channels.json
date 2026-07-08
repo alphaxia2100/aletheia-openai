@@ -1,0 +1,80 @@
+{
+  "_comment": "Single source of truth for retrieval channels. 'index_group' is what independence is counted over (two channels sharing an index_group are NOT independent = fake diversity). 'class' is the default epistemic weight: evidence > lead_gen > color. Scripts (provenance_graph.py) and skills read this file.",
+  "core_default": ["brave", "marginalia", "youtube", "x", "openalex", "arxiv", "reddit", "hackernews"],
+  "enabled": ["brave", "marginalia", "youtube", "x", "openalex", "arxiv", "reddit", "hackernews", "github", "stackexchange"],
+  "utilities_always_on": ["read", "rerank", "provenance_graph", "dedupe", "deepen", "doctor", "entity_resolve"],
+  "enabled_note": "NO-KEY FIRST (this is a personal research project). The core runs with ZERO API keys: web = marginalia (independent) + duckduckgo, video = youtube (yt-dlp discovery + youtube-transcript-api), primary = arxiv + openalex (keyless low-volume), community = reddit (pullpush) + hackernews, X via agent-reach browser session. Free-key UPGRADES (not required): add 'brave' (better independent web) and put OPENALEX_API_KEY for volume. PAID upgrades (optional): exa (neural web), getxapi/twitterapi (X API). Enable any hidden channel: `python3 ~/.cursor/skills/channel-retrieval/scripts/channels.py enable <name>`.",
+  "classes": {
+    "evidence": "Citable directly. Structured/primary/near-primary.",
+    "lead_gen": "Use to FIND primary sources; cite the linked primary, not the aggregator.",
+    "color": "Signal of what people react to. Never cite as fact."
+  },
+  "indexes": {
+    "openalex":         { "class": "evidence", "index_group": "openalex",         "kind": "academic",           "auth": "free_key_since_2026", "citation_graph": true,  "primary_default": true },
+    "semantic_scholar": { "class": "evidence", "index_group": "semantic_scholar", "kind": "academic",           "auth": "optional_key",        "citation_graph": true,  "primary_default": true },
+    "arxiv":            { "class": "evidence", "index_group": "arxiv",            "kind": "academic_preprint",  "auth": "none",                "citation_graph": false, "primary_default": true },
+    "europepmc":        { "class": "evidence", "index_group": "europepmc",        "kind": "academic_biomed",    "auth": "none",                "citation_graph": true,  "primary_default": true },
+    "pubmed":           { "class": "evidence", "index_group": "pubmed",           "kind": "academic_biomed",    "auth": "optional_key",        "citation_graph": false, "primary_default": true },
+    "crossref":         { "class": "evidence", "index_group": "crossref",         "kind": "identity_doi",       "auth": "none",                "citation_graph": "partial", "primary_default": false },
+    "unpaywall":        { "class": "evidence", "index_group": "unpaywall",        "kind": "oa_resolver",        "auth": "email",               "citation_graph": false, "primary_default": false },
+    "scite":            { "class": "evidence", "index_group": "scite",            "kind": "citation_intent",    "auth": "paid",                "citation_graph": true,  "primary_default": false },
+
+    "hackernews":       { "class": "lead_gen", "index_group": "hackernews",       "kind": "community",          "auth": "none",                "primary_default": false },
+    "stackexchange":    { "class": "evidence", "index_group": "stackexchange",    "kind": "community_qa",       "auth": "optional_key",        "primary_default": false },
+    "discourse":        { "class": "evidence", "index_group": "per_forum",        "kind": "community_forum",    "auth": "per_instance",        "primary_default": true },
+    "reddit":           { "class": "lead_gen", "index_group": "reddit",           "kind": "community",          "auth": "oauth_free",          "primary_default": false },
+    "x":                { "class": "color",    "index_group": "x",                "kind": "social",             "auth": "paid",                "primary_default": false },
+    "linkedin":         { "class": "skip",     "index_group": "linkedin",         "kind": "social",             "auth": "none_compliant",      "primary_default": false },
+
+    "brave":            { "class": "evidence", "index_group": "brave",            "kind": "web_search",         "auth": "free_key",            "primary_default": false },
+    "exa":              { "class": "evidence", "index_group": "exa_neural",       "kind": "web_search_neural",  "auth": "paid",                "primary_default": false },
+    "perplexity":       { "class": "lead_gen", "index_group": "perplexity",       "kind": "web_answer",         "auth": "paid",                "primary_default": false },
+    "linkup":           { "class": "evidence", "index_group": "linkup",           "kind": "web_search_licensed","auth": "paid",                "primary_default": false },
+    "google_serper":    { "class": "lead_gen", "index_group": "google",           "kind": "web_search",         "auth": "free_tier_key",       "primary_default": false },
+    "serpapi":          { "class": "lead_gen", "index_group": "google",           "kind": "web_search",         "auth": "paid",                "primary_default": false },
+    "google_pse":       { "class": "lead_gen", "index_group": "google",           "kind": "web_search",         "auth": "free_tier_key",       "primary_default": false },
+    "bing":             { "class": "retired",  "index_group": "bing",             "kind": "web_search",         "auth": "retired_2025",        "primary_default": false },
+    "duckduckgo":       { "class": "lead_gen", "index_group": "bing",             "kind": "web_search",         "auth": "none",                "primary_default": false },
+    "marginalia":       { "class": "lead_gen", "index_group": "marginalia",       "kind": "web_search_independent","auth": "none",              "primary_default": false },
+
+    "google_books":     { "class": "evidence", "index_group": "google_books",     "kind": "books",              "auth": "free_key",            "primary_default": true },
+    "openlibrary":      { "class": "evidence", "index_group": "internet_archive", "kind": "books",              "auth": "none",                "primary_default": true },
+    "internet_archive": { "class": "evidence", "index_group": "internet_archive", "kind": "books",              "auth": "none",                "primary_default": true },
+    "gutenberg":        { "class": "evidence", "index_group": "gutenberg",        "kind": "books_public_domain","auth": "none",                "primary_default": true },
+    "standard_ebooks":  { "class": "evidence", "index_group": "standard_ebooks",  "kind": "books_public_domain","auth": "none",                "primary_default": true },
+
+    "youtube":          { "class": "color",    "index_group": "youtube",          "kind": "video_transcript",   "auth": "paid_or_selfhost",    "primary_default": false },
+    "podcast":          { "class": "color",    "index_group": "podcast",          "kind": "audio_transcript",   "auth": "mixed",               "primary_default": false },
+    "github":           { "class": "evidence", "index_group": "github",           "kind": "code_repo",          "auth": "optional_token",      "primary_default": true },
+    "wikipedia":        { "class": "lead_gen", "index_group": "wikipedia",        "kind": "encyclopedia",       "auth": "none",                "primary_default": false }
+  },
+  "fake_diversity_groups": {
+    "_comment": "Channels listed together resolve to ONE index. Counting two of them as independent corroboration is the fake-diversity trap. provenance_graph.py collapses them via index_group.",
+    "google": ["google_serper", "serpapi", "google_pse"],
+    "bing": ["duckduckgo", "bing"]
+  },
+  "retired": ["bing"],
+  "never_cite_as_evidence": ["x", "youtube", "podcast", "reddit"],
+  "skip": ["linkedin"],
+  "selection_guidance": {
+    "_comment": "More channels is NOT better. Fire channels by topic relevance. Irrelevant channels add noise, token cost, maintenance, and fake diversity. Pick a small, well-matched set; always cover the three roles in 'always'.",
+    "always": {
+      "independent_web": ["brave", "marginalia"],
+      "a_primary_source": ["openalex", "arxiv", "github", "google_books"],
+      "an_un_laundered_channel": ["reddit", "stackexchange", "hackernews", "youtube"]
+    },
+    "by_topic": {
+      "software_technical_howto": ["stackexchange", "github", "hackernews", "arxiv", "reddit", "brave"],
+      "science_medicine_quantitative": ["openalex", "semantic_scholar", "europepmc", "arxiv", "crossref"],
+      "humanities_history_theory": ["google_books", "gutenberg", "openlibrary", "wikipedia", "marginalia", "brave"],
+      "products_consumer_lived_experience": ["reddit", "youtube", "hackernews", "brave"],
+      "current_trends_people": ["brave", "marginalia", "hackernews", "reddit", "youtube"]
+    },
+    "anti_patterns": [
+      "firing all channels on every topic (noise + cost, not rigor)",
+      "stacking same-index_group channels (fake diversity)",
+      "using Stack Exchange for non-technical topics (near-zero signal there)",
+      "treating color channels (youtube/reddit/x) as evidence"
+    ]
+  }
+}
