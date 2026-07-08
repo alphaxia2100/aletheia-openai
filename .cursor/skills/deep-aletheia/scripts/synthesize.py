@@ -40,6 +40,12 @@ def _load_jsonl(p) -> List[Dict[str, Any]]:
     return [json.loads(l) for l in open(p, encoding="utf-8") if l.strip()]
 
 
+def _answered(child: str) -> bool:
+    """A child is 'resolved' once it has recorded at least one answer to a parent's question."""
+    ap = os.path.join(child, "answers.jsonl")
+    return os.path.exists(ap) and any(l.strip() for l in open(ap, encoding="utf-8"))
+
+
 def children(node: str) -> List[str]:
     cdir = os.path.join(node, "children")
     if not os.path.isdir(cdir):
@@ -75,14 +81,17 @@ def independence(records: List[Dict[str, Any]]) -> Dict[str, Any]:
 def synthesis_input(node: str) -> Dict[str, Any]:
     st = _read_json(os.path.join(node, "status.json"), {}) or {}
     kids = children(node)
-    child_blocks, thin = [], []
+    child_blocks, thin, unresolved = [], [], []
     for c in kids:
         cst = _read_json(os.path.join(c, "status.json"), {}) or {}
+        qid = cst.get("qid", os.path.basename(c))
         fpath = os.path.join(c, "findings.md")
         ftext = open(fpath, encoding="utf-8").read().strip() if os.path.exists(fpath) else ""
-        child_blocks.append((cst.get("qid", os.path.basename(c)), cst.get("question", ""), ftext))
+        child_blocks.append((qid, cst.get("question", ""), ftext))
         if len(ftext) < 120:
-            thin.append(cst.get("qid", os.path.basename(c)))
+            thin.append(qid)
+            if not _answered(c):                 # thin AND never asked/answered -> gate blocks
+                unresolved.append(qid)
     indep = independence(subtree_sources(node))
 
     lines = ["# Synthesis input — %s" % st.get("qid", "node"), "",
@@ -91,6 +100,12 @@ def synthesis_input(node: str) -> Dict[str, Any]:
     if indep["echo_ratio"] >= 0.4 or indep["top_domain_share"] >= 0.4:
         lines.append("> ⚠ high echo / concentration — treat convergence with suspicion; "
                      "trace to independent origins before calling it Agreement.")
+    if unresolved:
+        lines += ["", "## BLOCKED — ask before authoring (back-and-forth, not assumption)",
+                  "These children are thin AND unanswered. Do NOT write findings.md yet — ask each "
+                  "(`treestate ask --node <child> --from %s --q \"...\"`) and let it answer from its "
+                  "already-gathered sources (`treestate answer`):" % st.get("qid", "parent"),
+                  ", ".join(unresolved), ""]
     lines += ["", "## Children findings (bubble up)", ""]
     for qid, q, ftext in child_blocks:
         lines += ["### %s — %s" % (qid, q), ftext or "_(no findings yet)_", ""]
@@ -99,14 +114,22 @@ def synthesis_input(node: str) -> Dict[str, Any]:
                   ", ".join(thin), ""]
     with open(os.path.join(node, "synthesis_input.md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
-    return {"node": node, "children": len(kids), "thin": thin, "independence": indep}
+    return {"node": node, "children": len(kids), "thin": thin, "unresolved": unresolved,
+            "independence": indep}
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Deep Aletheia synthesis helper.")
     ap.add_argument("--node", required=True)
+    ap.add_argument("--gate", action="store_true",
+                    help="exit 3 if any child is thin AND unanswered (enforce ask-before-authoring)")
     args = ap.parse_args(argv)
-    print(json.dumps(synthesis_input(args.node), indent=2))
+    res = synthesis_input(args.node)
+    print(json.dumps(res, indent=2))
+    if args.gate and res.get("unresolved"):
+        sys.stderr.write("BLOCKED: thin+unanswered children: %s — ask them before authoring findings.\n"
+                         % ", ".join(res["unresolved"]))
+        return 3
     return 0
 
 

@@ -24,6 +24,10 @@ import dedupe  # noqa: E402
 import rubric  # noqa: E402
 import verify  # noqa: E402  (deep-aletheia citation gate)
 import score_run  # noqa: E402  (deep-aletheia run scorer)
+import treestate  # noqa: E402  (deep-aletheia blackboard)
+import investigate  # noqa: E402  (deep-aletheia leaf engine)
+import synthesize  # noqa: E402  (deep-aletheia synthesis + gate)
+import router  # noqa: E402  (deep-aletheia channel router)
 
 
 def audit_one(sources, support):
@@ -225,6 +229,100 @@ class TestScoreRunVerdicts(unittest.TestCase):
         self.assertIsNone(s["citation_accuracy"])          # not yet Fact-Checked
         self.assertEqual(s["verdicts"]["awaiting_llm_check"], 3)
         self.assertEqual(s["on_topic_rate"], 1.0)
+
+
+class TestInvestigateRounds(unittest.TestCase):
+    """v0.2 depth: investigate is ONE round that ACCUMULATES across calls (rounds counter, n_read),
+    and must NOT duplicate node sources across rounds (the add_sources node-dedup bug)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.run = treestate.init_run("intermittent fasting fat loss", budget=8, unit=4,
+                                      base=os.path.join(self.tmp, "runs"))
+        self.node = os.path.join(self.run, "tree", "root")
+        self._orig_retrieve, self._orig_read = investigate.retrieve, investigate.readmod.read_url
+        A = {"url": "https://arxiv.org/abs/1234.5678", "title": "Fasting RCT A",
+             "index_of_origin": "arxiv", "_class": "evidence"}
+        B = {"url": "https://pubmed.ncbi.nlm.nih.gov/111/", "title": "Fasting RCT B",
+             "index_of_origin": "openalex", "_class": "evidence"}
+        C = {"url": "https://pubmed.ncbi.nlm.nih.gov/222/", "title": "Fasting RCT C",
+             "index_of_origin": "openalex", "_class": "evidence"}
+        self._calls = {"n": 0}
+
+        def fake_retrieve(q, ch, lim, to):
+            self._calls["n"] += 1
+            recs = [dict(A), dict(B)] if self._calls["n"] == 1 else [dict(B), dict(C)]  # B repeats
+            return recs, {"stub": {"n": len(recs)}}
+
+        investigate.retrieve = fake_retrieve
+        investigate.readmod.read_url = lambda *a, **k: ("fasting caloric restriction weight " * 400, "stub")
+
+    def tearDown(self):
+        investigate.retrieve, investigate.readmod.read_url = self._orig_retrieve, self._orig_read
+
+    def _node_sources(self):
+        p = os.path.join(self.node, "sources.jsonl")
+        return [l for l in open(p, encoding="utf-8") if l.strip()] if os.path.exists(p) else []
+
+    def test_rounds_accumulate_and_no_source_duplication(self):
+        investigate.investigate(self.node, channels=["stub"], reads=2)          # round 1: read A,B
+        investigate.investigate(self.node, query="metabolic gap", channels=["stub"], reads=2)  # round 2: B dup, C new
+        st = treestate._read_json(os.path.join(self.node, "status.json"), {})
+        self.assertEqual(st["rounds"], 2)                       # accumulated, not overwritten
+        self.assertEqual(st["n_read"], 3)                      # A,B (r1) + C (r2); B not re-read
+        self.assertEqual(len(self._node_sources()), 3)         # A,B,C — B deduped, not duplicated
+        ev = open(os.path.join(self.node, "evidence.md"), encoding="utf-8").read()
+        self.assertIn("## Round 1", ev)
+        self.assertIn("## Round 2", ev)                        # evidence appended, not clobbered
+
+
+class TestRouterClassify(unittest.TestCase):
+    def test_nutrition_routes_to_science_not_products(self):
+        self.assertEqual(router.classify(
+            "Is intermittent fasting more effective than caloric restriction for fat loss?"),
+            "science_medicine_quantitative")
+
+    def test_camera_still_products(self):
+        self.assertEqual(router.classify("best budget mirrorless camera 2026"),
+                         "products_consumer_lived_experience")
+
+
+class TestSynthesizeGate(unittest.TestCase):
+    """v0.2 back-and-forth: the gate blocks authoring while a child is thin AND unanswered."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.run = treestate.init_run("t", budget=8, unit=4, base=os.path.join(self.tmp, "runs"))
+        self.root = os.path.join(self.run, "tree", "root")
+        treestate.split_node(self.root, [["a", "qa"], ["b", "qb"]])
+        self.ca = os.path.join(self.root, "children", "a")
+        self.cb = os.path.join(self.root, "children", "b")
+        treestate.write_findings(self.ca, "x" * 200)   # substantial
+        treestate.write_findings(self.cb, "y")         # thin (<120)
+
+    def test_thin_unanswered_child_blocks_then_clears(self):
+        res = synthesize.synthesis_input(self.root)
+        self.assertEqual(res["unresolved"], ["b"])     # b is thin and unanswered -> blocked
+        treestate.answer(self.cb, "q1", "specific answer drawn from the child's gathered sources")
+        res2 = synthesize.synthesis_input(self.root)
+        self.assertEqual(res2["unresolved"], [])       # answered -> gate clears
+
+
+class TestScoreRunDepth(unittest.TestCase):
+    def test_depth_metrics_reported(self):
+        run = tempfile.mkdtemp()
+        with open(os.path.join(run, "run.json"), "w", encoding="utf-8") as fh:
+            json.dump({"topic": "t", "version": "deep-aletheia 0.2.0"}, fh)
+        leaf = os.path.join(run, "tree", "root")
+        os.makedirs(leaf)
+        with open(os.path.join(leaf, "status.json"), "w", encoding="utf-8") as fh:
+            json.dump({"qid": "root", "depth": 0, "rounds": 3, "n_read": 9}, fh)
+        with open(os.path.join(leaf, "findings.md"), "w", encoding="utf-8") as fh:
+            fh.write("substantial findings " * 20)
+        d = score_run.score(run)["depth"]
+        self.assertEqual(d["rounds_per_leaf"]["max"], 3)       # multi-round leaf visible
+        self.assertEqual(d["reads_per_leaf"]["mean"], 9)
+        self.assertIn("reads_by_depth", d)
 
 
 if __name__ == "__main__":

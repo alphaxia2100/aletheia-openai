@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import statistics
 import sys
 from collections import Counter
 
@@ -45,31 +46,66 @@ def score(run: str) -> dict:
     quality = round(sum(1 for r in idx if (r.get("_class") or r.get("channel_class")) == "evidence"
                         and rankmod.authority(r.get("url", "")) >= 0.8) / len(idx), 3) if idx else 0
 
-    # tree walk
+    # tree walk (+ depth metrics: is 0.2 actually deeper than 0.1's single-pass leaves?)
     nodes = leaves = with_find = maxdepth = reads = 0
     adversary = adversary_find = False
     root_framings = []
+    leaf_rounds, leaf_reads, reads_by_depth = [], [], {}
+    ev_children = apriori_children = 0            # evidence-driven vs a-priori decompositions
+    q_asked = q_answered = thin_children = thin_unresolved = 0
     for d, _s, fs in os.walk(os.path.join(run, "tree")):
         if "status.json" not in fs:
             continue
         st = json.load(open(os.path.join(d, "status.json"), encoding="utf-8"))
+        depth = int(st.get("depth", 0))
         nodes += 1
-        maxdepth = max(maxdepth, int(st.get("depth", 0)))
+        maxdepth = max(maxdepth, depth)
         has_children = os.path.isdir(os.path.join(d, "children")) and any(
             os.path.isdir(os.path.join(d, "children", c)) for c in os.listdir(os.path.join(d, "children")))
         fpath = os.path.join(d, "findings.md")
-        has_find = os.path.exists(fpath) and os.path.getsize(fpath) > 0
-        reads += int(st.get("n_read", 0) or 0)
+        find_bytes = os.path.getsize(fpath) if os.path.exists(fpath) else 0
+        has_find = find_bytes > 0
+        n_read = int(st.get("n_read", 0) or 0)
+        reads += n_read
+        reads_by_depth[depth] = reads_by_depth.get(depth, 0) + n_read
+        q_asked += len(_jsonl(os.path.join(d, "questions.jsonl")))
+        n_ans = len(_jsonl(os.path.join(d, "answers.jsonl")))
+        q_answered += n_ans
         if not has_children:
             leaves += 1
+            leaf_rounds.append(int(st.get("rounds", 0) or 0))
+            leaf_reads.append(n_read)
             if has_find:
                 with_find += 1
-        if int(st.get("depth", 0)) == 1:
+        elif depth >= 1:  # internal, non-root: evidence-driven if it proposed after a scout look
+            ev_children += 1 if os.path.exists(os.path.join(d, "proposal.json")) else 0
+            apriori_children += 0 if os.path.exists(os.path.join(d, "proposal.json")) else 1
+        if depth >= 1 and find_bytes < 120:       # thin child; resolved iff it answered a question
+            thin_children += 1
+            thin_unresolved += 1 if n_ans == 0 else 0
+        if depth == 1:
             root_framings.append(st.get("qid", ""))
         qid = (st.get("qid") or "").lower()
         if any(k in qid for k in ("advers", "disconfirm", "skeptic")):  # the disconfirming framing
             adversary = True
             adversary_find = adversary_find or has_find
+
+    def _stats(xs):
+        return {"mean": round(statistics.mean(xs), 2), "median": statistics.median(xs),
+                "min": min(xs), "max": max(xs)} if xs else {}
+    _mean_reads = statistics.mean(leaf_reads) if leaf_reads else 0
+    depth_metrics = {
+        "rounds_per_leaf": _stats(leaf_rounds),               # 0.1 == 1.0 everywhere; 0.2 should be > 1
+        "reads_per_leaf": {**_stats(leaf_reads),
+                           # coefficient of variation: lower = more uniform scrutiny per leaf
+                           "cv": round(statistics.pstdev(leaf_reads) / _mean_reads, 3) if _mean_reads else None},
+        "reads_by_depth": {str(k): reads_by_depth[k] for k in sorted(reads_by_depth)},  # equal time/level
+        "evidence_driven_children": ev_children, "a_priori_children": apriori_children,
+        "clarification": {"asked": q_asked, "answered": q_answered,
+                          "thin_children": thin_children, "thin_unresolved": thin_unresolved,
+                          "coverage": round((thin_children - thin_unresolved) / thin_children, 3)
+                          if thin_children else None},
+    }
 
     ver = _jsonl(os.path.join(run, "verify.jsonl"))
     # lexical layer emits relevant/off_topic/broken; the LLM verifier upgrades each 'relevant'
@@ -98,6 +134,7 @@ def score(run: str) -> dict:
         "framing_coverage": {"root_framings": len(root_framings), "leaves": leaves,
                              "leaves_with_findings": with_find},
         "disconfirmation": {"adversary_branch": adversary, "produced_findings": adversary_find},
+        "depth": depth_metrics,
         "tree": {"nodes": nodes, "max_depth": maxdepth, "leaves": leaves, "reads": reads},
         "brief_sections": sections,
         "evidence_sources": ev, "high_authority_sources": hi,

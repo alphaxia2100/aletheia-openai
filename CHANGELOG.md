@@ -10,6 +10,36 @@ each notable change bumps the minor/patch and is tagged `deep-aletheia-vX.Y.Z`.
 
 ---
 
+## deep-aletheia 0.2.0 — unreleased
+
+Reframed from a **static** recursive tree into a **dynamic, question-driven surveyor** — the way
+expert survey-methodologists and SOTA deep-research systems actually work. Grounded in fresh,
+independent research read in full: **STORM** (Stanford OVAL — multi-perspective question-asking →
+outline), **WebWeaver** (SOTA 2025 — dynamic cycle interleaving evidence acquisition with outline
+optimization; the failure mode it names, *"static pipelines that decouple planning from evidence,"*
+was exactly 0.1), **AgentCPM-Report** (2026 — revise the outline *during* research), and Static-DRA
+(tree + depth/breadth knobs). See `docs/deep-aletheia-design.md` §9.
+
+- **The tree is now a living outline grown from evidence, not guessed up front.** A node investigates
+  a round, **reflects**, then **deepens** (drills the same question) or **decomposes** (proposes
+  sub-questions) based on what it found — removing 0.1's most error-prone step (a-priori
+  decomposition, the source of off-target branches). `treestate.py`: `propose`/`materialize` +
+  `frontier --depth` for level-by-level processing (equal time per level).
+- **Real depth at the leaf** (fixes "surface level"): `investigate.py` is now one *round* that
+  **accumulates** across calls (append per-round `evidence.md`, accumulate `n_read`, add a `rounds`
+  counter); the worker sequences rounds via the now-wired `deepen.py` (reflect → drill the gap).
+  Reads/round ≈ one scrutiny unit, so raising `--budget` buys leaf depth, not just branching. Also
+  fixes a real bug: node `sources.jsonl` was appended unconditionally every call (only the global
+  index deduped), which duplicated sources and corrupted independence math under multi-round.
+- **Back-and-forth is enforced** (parents ask thin children instead of assuming): `synthesize.py
+  --gate` exits nonzero and writes a BLOCKED block while any child is thin and unanswered.
+- **Router fix**: nutrition/clinical topics were misfiled as consumer-trends (firing off-domain
+  channels); `classify()` now routes ≥2 biomed signals to science/medicine.
+- **Depth metrics** in `scripts/eval/score_run.py` (rounds/leaf, evidence-driven vs a-priori
+  children, clarification coverage, reads-by-depth, per-leaf CV) to prove 0.2 is deeper than 0.1.
+- Kept the epistemic core unchanged: hypothesis portfolio (anti-anchoring), source-independence
+  judgment, adversary, two-layer verification, read-in-full, and the human-owned DOK 3–4 judgment.
+
 ## deep-aletheia 0.1.0 — unreleased
 
 First cut of the recursive architecture (see `docs/deep-aletheia-design.md`).

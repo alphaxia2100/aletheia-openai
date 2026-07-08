@@ -116,7 +116,7 @@ def init_run(topic: str, slug: str = "", budget: float = 32.0, unit: float = 4.0
     run = os.path.join(base, "%s-%s" % (ts, _slugify(slug or topic)))
     os.makedirs(os.path.join(run, "index"), exist_ok=True)
     _write_json(os.path.join(run, "run.json"), {
-        "topic": topic, "created": _now(), "version": "deep-aletheia 0.1.0",
+        "topic": topic, "created": _now(), "version": "deep-aletheia 0.2.0",
         "budget": budget, "unit": unit, "max_depth": max_depth,
         "max_children": max_children, "max_nodes": max_nodes, "state": "framing",
     })
@@ -192,6 +192,27 @@ def split_node(node: str, children: List[List[str]], actor: str = "orchestrator"
     return made
 
 
+def propose_split(node: str, children: List[List[str]], why: str = "") -> None:
+    """Worker proposes an EVIDENCE-DRIVEN decomposition AFTER a scout round (the dynamic-outline
+    model: look, then decide). The orchestrator reviews proposals across the level and materializes
+    approved ones — so caps and cross-level balance stay in one place."""
+    _write_json(os.path.join(node, "proposal.json"),
+                {"t": _now(), "children": children, "why": why})
+    set_status(node, state="proposes_split")
+    log_decision(node, "worker", "propose split into %d children" % len(children),
+                 why or "evidence-driven decomposition")
+
+
+def materialize_proposal(node: str, actor: str = "orchestrator") -> List[str]:
+    """Orchestrator turns an approved proposal.json into real child nodes (split_node enforces the
+    budget/cap floor via can_split)."""
+    prop = _read_json(os.path.join(node, "proposal.json"), {}) or {}
+    children = prop.get("children") or []
+    if not children:
+        raise SystemExit("no proposal.json (or empty) at %s" % node)
+    return split_node(node, children, actor)
+
+
 def add_sources(node: str, records: List[Dict[str, Any]]) -> int:
     """Append records to this node's sources.jsonl and to the run's global dedup index."""
     run = _find_run(node)
@@ -259,12 +280,14 @@ def answer(node: str, qid: str, text: str) -> None:
     set_status(node, state="answered")
 
 
-def frontier(run: str, state: str = "pending") -> List[str]:
+def frontier(run: str, state: str = "pending", depth: Optional[int] = None) -> List[str]:
+    """Nodes in a given state; with --depth D, only that level (for level-by-level processing =
+    'equal time per level')."""
     out = []
     for d, _s, fs in os.walk(os.path.join(run, "tree")):
         if "status.json" in fs:
             st = _read_json(os.path.join(d, "status.json"), {}) or {}
-            if st.get("state") == state:
+            if st.get("state") == state and (depth is None or int(st.get("depth", 0)) == depth):
                 out.append(d)
     out.sort(key=lambda p: (_read_json(os.path.join(p, "status.json"), {}).get("depth", 0), p))
     return out
@@ -310,6 +333,13 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("cansplit"); p.add_argument("--node", required=True)
 
+    p = sub.add_parser("propose"); p.add_argument("--node", required=True)
+    p.add_argument("--children", required=True, help='JSON: [["qid","question"],...]')
+    p.add_argument("--why", default="")
+
+    p = sub.add_parser("materialize"); p.add_argument("--node", required=True)
+    p.add_argument("--actor", default="orchestrator")
+
     p = sub.add_parser("decide"); p.add_argument("decision")
     p.add_argument("--node", required=True); p.add_argument("--actor", default="worker")
     p.add_argument("--why", default="")
@@ -327,7 +357,7 @@ def main(argv=None) -> int:
     p.add_argument("--text", default=""); p.add_argument("--file", default="")
 
     p = sub.add_parser("frontier"); p.add_argument("--run", required=True)
-    p.add_argument("--state", default="pending")
+    p.add_argument("--state", default="pending"); p.add_argument("--depth", type=int, default=None)
 
     p = sub.add_parser("tree"); p.add_argument("--run", required=True)
 
@@ -342,6 +372,11 @@ def main(argv=None) -> int:
     elif args.cmd == "split":
         for d in split_node(args.node, json.loads(args.children), args.actor):
             print(d)
+    elif args.cmd == "propose":
+        propose_split(args.node, json.loads(args.children), args.why)
+    elif args.cmd == "materialize":
+        for d in materialize_proposal(args.node, args.actor):
+            print(d)
     elif args.cmd == "decide":
         log_decision(args.node, args.actor, args.decision, args.why)
     elif args.cmd == "status":
@@ -355,7 +390,7 @@ def main(argv=None) -> int:
         txt = open(args.file, encoding="utf-8").read() if args.file else args.text
         write_findings(args.node, txt)
     elif args.cmd == "frontier":
-        for d in frontier(args.run, args.state):
+        for d in frontier(args.run, args.state, args.depth):
             print(d)
     elif args.cmd == "tree":
         print(tree_view(args.run))

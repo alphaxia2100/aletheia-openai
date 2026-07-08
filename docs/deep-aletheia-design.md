@@ -307,3 +307,62 @@ resumable/checkpointed, and fully auditable (decision logs + trajectories).
 ### 8.5 Versioning
 `aletheia` (v1) stays as the quick surveyor. `deep-aletheia` is versioned separately (`VERSION`,
 `CHANGELOG.md`, git tags `deep-aletheia-vX.Y.Z`) since it will iterate.
+
+---
+
+## 9. v0.2 addendum — from a static tree to a dynamic, question-driven surveyor
+
+**Status:** built. **Basis:** the first live 0.1 runs were *surface-level* and the machinery was
+complex; the developer asked for depth from **both** leaf-deepening and larger-scope decomposition,
+enforced back-and-forth, and — crucially — **simplicity that comes from a better research design, not
+from cutting scripts.** So the fix is to make deep-aletheia work the way rigorous researchers and the
+strongest systems actually do.
+
+### 9.1 What 0.1 got wrong (measured)
+Every leaf did **one** retrieval round (`n_read` 3–4; ~15 reads per survey) — v1's single pass,
+parallelized. The parent↔child ask/answer channel was **never used** (`Qs=0/As=0`). Decomposition was
+**guessed a-priori** before any evidence (off-target branches; the router even misfiled a nutrition
+topic as consumer-trends). Budget conservation made deeper trees *shallower* leaves — depth traded
+against scrutiny.
+
+### 9.2 The reframe (evidence, read in full — independent origins)
+- **STORM** (Stanford OVAL, NAACL 2024, arXiv 2402.14207): survey quality is set in *pre-writing* —
+  discover diverse **perspectives**, ask **multi-perspective questions** to retrieval-grounded
+  experts, curate an **outline**. Names failure modes: **source-bias transfer**, **over-association**.
+- **WebWeaver** (SOTA OEDR, 2025, arXiv 2509.13312): names 0.1's exact flaw — *"static research
+  pipelines that decouple planning from evidence acquisition."* Fix: a **dynamic cycle interleaving
+  evidence acquisition with outline optimization**, a filesystem **memory bank**, **section-by-section
+  grounded writing**. *"Emulates the human research process."*
+- **AgentCPM-Report** (2026, arXiv 2602.06540): *plan-then-write depends on an initial outline you
+  can't get right up front* → **revise the outline during research** (alternate draft ↔ deepen).
+- **Static-DRA** (arXiv 2512.03887): a tree DRA with tunable **Depth/Breadth**; higher → measurably
+  better — and flags "static" as the limitation.
+
+Convergent lesson: **never fix the decomposition before the evidence.** Interleave planning and
+evidence; the outline (tree) grows from what's found.
+
+### 9.3 The 0.2 model — the research method *is* the architecture
+One metaphor, processed **level by level** (equal time per level), each step mapping to an existing
+piece (reuse-first, nothing deleted):
+
+1. **FRAME** — perspectives → questions (STORM + the hypothesis portfolio). The competing framings are
+   the *only* a-priori decomposition; the human signs off (DOK-3/4 entry).
+2. **GROW THE OUTLINE FROM EVIDENCE** — a node investigates a round → **reflects** → **deepens**
+   (drill the same question, via the now-wired `deepen.py`) or **decomposes** (`treestate propose` →
+   orchestrator `materialize`). Depth = both axes. Replaces the a-priori split.
+3. **BACK-AND-FORTH** — `synthesize.py --gate` blocks authoring while a child is thin and unanswered,
+   forcing the parent to **ask** and the child to **answer from its already-gathered sources**.
+4. **JUDGE INDEPENDENCE + ADVERSARY** — unchanged from v1 (the differentiator).
+5. **WRITE GROUNDED + VERIFY** — section-by-section from the memory bank; two-layer citation gate
+   (lexical relevance → LLM entailment). The human makes the final DOK 3–4 judgment.
+
+**Why this is simpler:** it is one coherent human-research method, not a split-machine + a separate
+deepen-loop + a budget-currency subsystem. The hardest, most error-prone step — guessing a correct
+tree before any evidence — is *removed*. Depth and simplicity both come from the better method.
+
+### 9.4 What changed in code (small, additive)
+`investigate.py` accumulates across rounds (+ node-source dedup bug fix); `deepen.py` wired in as the
+per-node round controller; `treestate.py` gains `propose`/`materialize` + `frontier --depth`;
+`synthesize.py` gains `--gate`; `router.py` biomed fix; `score_run.py` depth metrics; `SKILL.md`
+rewritten around the five steps. The epistemic core (portfolio, independence, adversary, verify,
+read-in-full, DOK split) is unchanged.

@@ -140,18 +140,52 @@ def _save_read(node: str, url: str, text: str, method: str) -> str:
     return path
 
 
+def _note_exists(node: str, url: str) -> bool:
+    if not url:
+        return False
+    h = hashlib.sha1(url.encode()).hexdigest()[:10]
+    return os.path.exists(os.path.join(node, "notes", h + ".md"))
+
+
+def _existing_work_keys(node: str) -> set:
+    """Work keys already in this node's sources.jsonl (for cross-round node-level dedup)."""
+    keys = set()
+    p = os.path.join(node, "sources.jsonl")
+    if os.path.exists(p):
+        for line in open(p, encoding="utf-8"):
+            if line.strip():
+                try:
+                    keys.add(_work_key(json.loads(line)))
+                except ValueError:
+                    pass
+    return keys
+
+
+def _run_cfg(node: str) -> Dict[str, Any]:
+    run = treestate._find_run(node)
+    return (treestate._read_json(os.path.join(run, "run.json"), {}) or {}) if run else {}
+
+
 def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
                 channels: List[str] = None, timeout: float = 30.0) -> dict:
+    """ONE deepening round on a node. The worker calls this repeatedly (round 1 = the node
+    question; later rounds = the top gap from reflection), so evidence ACCUMULATES across rounds
+    (append to evidence.md, accumulate n_read, bump the rounds counter) — that is where depth
+    comes from. Reads/round default to ~one scrutiny unit; the worker sequences the rounds."""
     st = treestate._read_json(os.path.join(node, "status.json"), {}) or {}
+    cfg = _run_cfg(node)
+    unit = float(cfg.get("unit", 4))
     query = query or st.get("question", "")
-    query = _anchor(query, _run_topic(node))       # keep the leaf tied to the root subject
-    budget = float(st.get("budget", 4))
-    reads = reads or max(3, round(budget))
+    query = _anchor(query, cfg.get("topic", ""))   # keep the leaf tied to the root subject
+    round_no = int(st.get("rounds", 0)) + 1
+    prev_read = int(st.get("n_read", 0) or 0)
+    reads = reads or max(3, round(unit))           # ~one scrutiny unit per round, not the whole budget
     treestate.set_status(node, state="active")
 
-    chans = channels or router.route(query, enabled_only=True)["channels"]
-    treestate.log_decision(node, "investigate", "channels=%s" % ",".join(chans),
-                           "router category=%s" % router.classify(query))
+    # router is only a DEFAULT; the worker may override channels after seeing round-1 evidence
+    chans = channels or router.route(query, framing=st.get("question", ""), enabled_only=True)["channels"]
+    treestate.log_decision(node, "investigate", "round %d channels=%s" % (round_no, ",".join(chans)),
+                           "router category=%s (default; worker may override)" % router.classify(query))
 
     recs, per = retrieve(query, chans, limit, timeout)
     # dedupe at the WORK level (arXiv id / DOI / canonical url) so versions don't duplicate
@@ -161,9 +195,11 @@ def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
         if wk and wk not in seen:
             seen.add(wk); uniq.append(r)
     ranked = rankmod.rank(query, uniq)
-    sel = rankmod.select_reads(ranked, reads)
+    # don't spend read slots re-reading a source already read in a previous round
+    sel = [r for r in rankmod.select_reads(ranked, reads) if not _note_exists(node, r.get("url", ""))]
     treestate.log_decision(node, "investigate",
-                           "retrieved %d -> %d unique; reading %d" % (len(recs), len(uniq), len(sel)),
+                           "round %d: retrieved %d -> %d unique; reading %d new" % (
+                               round_no, len(recs), len(uniq), len(sel)),
                            "per-channel: %s" % {k: v["n"] for k, v in per.items()})
 
     # read selected in full
@@ -185,18 +221,32 @@ def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
             read_meta.append({"url": u, "chars": 0, "method": "FAIL", "ok": False,
                               "err": type(e).__name__})
 
-    treestate.add_sources(node, ranked)
-    _write_evidence(node, query, ranked, sel, per, read_meta)
-    treestate.set_status(node, state="investigated", n_sources=len(ranked),
-                         n_read=sum(1 for m in read_meta if m.get("ok")))
-    return {"node": node, "query": query, "channels": chans, "unique": len(uniq),
-            "reads_ok": sum(1 for m in read_meta if m.get("ok")), "per_channel": per}
+    # node-level dedup across rounds: add_sources only deduped the GLOBAL index, so repeated
+    # rounds duplicated this node's sources.jsonl and corrupted independence math. Add only
+    # work-keys this node hasn't seen yet.
+    existing = _existing_work_keys(node)
+    new_for_node = [r for r in ranked if _work_key(r) not in existing]
+    treestate.add_sources(node, new_for_node)
+    _write_evidence(node, query, ranked, sel, per, read_meta, round_no)
+    this_ok = sum(1 for m in read_meta if m.get("ok"))
+    treestate.set_status(node, state="investigated", n_sources=len(_existing_work_keys(node)),
+                         n_read=prev_read + this_ok, rounds=round_no)
+    return {"node": node, "round": round_no, "query": query, "channels": chans, "unique": len(uniq),
+            "reads_ok": this_ok, "reads_total": prev_read + this_ok, "per_channel": per}
 
 
-def _write_evidence(node, query, ranked, sel, per, read_meta):
-    lines = ["# Evidence pack", "", "**Question:** %s" % query, "",
-             "**Channels:** " + ", ".join("%s(%d)" % (k, v["n"]) for k, v in per.items()), "",
-             "## Read in full (%d)" % len(read_meta), ""]
+def _write_evidence(node, query, ranked, sel, per, read_meta, round_no=1):
+    """Append a `## Round N` section to evidence.md so the pack ACCUMULATES across deepening
+    rounds (it used to clobber, erasing prior rounds)."""
+    path = os.path.join(node, "evidence.md")
+    first = round_no <= 1 or not os.path.exists(path)
+    lines = []
+    if first:
+        st = treestate._read_json(os.path.join(node, "status.json"), {}) or {}
+        lines += ["# Evidence pack", "", "**Node question:** %s" % (st.get("question", "") or query), ""]
+    lines += ["## Round %d — query: %s" % (round_no, query), "",
+              "**Channels:** " + ", ".join("%s(%d)" % (k, v["n"]) for k, v in per.items()), "",
+              "### Read in full this round (%d)" % len(read_meta), ""]
     rf = {m["url"]: m for m in read_meta}
     for r in sel:
         m = rf.get(r.get("url", ""), {})
@@ -208,20 +258,20 @@ def _write_evidence(node, query, ranked, sel, per, read_meta):
                 excerpt = " ".join(body.split()[:80])
             except OSError:
                 pass
-        lines += ["### [%s] %s" % (r.get("_class", "?"), (r.get("title") or r.get("url"))[:90]),
+        lines += ["#### [%s] %s" % (r.get("_class", "?"), (r.get("title") or r.get("url"))[:90]),
                   "- url: %s" % r.get("url", ""),
                   "- score=%.3f rel=%.2f authority=%.1f  read=%s (%d ch)" % (
                       r.get("score", 0), r.get("_relnorm", 0), r.get("_authority", 0),
                       flag, m.get("chars", 0)),
                   "", "> " + (excerpt[:600] or "_(no excerpt)_"), ""]
-    lines += ["## Other ranked sources (not read)", ""]
+    lines += ["### Other ranked sources this round (not read)", ""]
     for r in ranked:
-        if r.get("_read_file"):
+        if r.get("_read_file") or _note_exists(node, r.get("url", "")):
             continue
         lines.append("- [%.3f][%s] %s — %s" % (r.get("score", 0), r.get("_class", "?"),
                                                (r.get("title") or "")[:70], r.get("url", "")))
-    with open(os.path.join(node, "evidence.md"), "w", encoding="utf-8") as fh:
-        fh.write("\n".join(lines) + "\n")
+    with open(path, "w" if first else "a", encoding="utf-8") as fh:
+        fh.write(("" if first else "\n") + "\n".join(lines) + "\n")
 
 
 def main(argv=None) -> int:

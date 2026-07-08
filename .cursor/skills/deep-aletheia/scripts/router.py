@@ -74,6 +74,10 @@ def _cfg() -> dict:
 
 def classify(topic: str, framing: str = "") -> str:
     text = (topic + " " + framing).lower()
+    # clinical/nutrition topics ("best diet for fat loss") hit product words (best/which/vs) and
+    # were misfiled as consumer-trends -> firing off-domain channels. BIOMED signal wins outright.
+    if sum(1 for kw in BIOMED if kw in text) >= 2:
+        return "science_medicine_quantitative"
     scores = {cat: sum(1 for kw in kws if kw in text) for cat, kws in KEYWORDS.items()}
     best = max(scores, key=lambda c: scores[c])
     return best if scores[best] > 0 else "current_trends_people"

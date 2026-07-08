@@ -1,139 +1,150 @@
 ---
 name: deep-aletheia
-description: Deep, high-scrutiny research surveyor. A RECURSIVE orchestrator-worker tree coordinated entirely through the filesystem — the lead frames a hypothesis portfolio, decomposes the question into a budget-balanced tree (equal scrutiny per leaf, equal effort per level), spawns parallel READ-ONLY worker subagents that investigate leaves and write artifacts, then synthesizes bottom-up with top-down clarification and a claim->source verification gate. Use for deep dives where surface-level answers are not enough and tokens/time are not a concern. For a quick single-pass survey, use `aletheia` instead.
+description: Deep, high-scrutiny research surveyor. A DYNAMIC, question-driven tree coordinated through the filesystem — the lead frames a portfolio of competing perspectives (anti-anchoring), then GROWS a living outline FROM the evidence: each node investigates, reflects, and either deepens (drills the same question) or decomposes (spawns sub-questions) based on what it found. Findings bubble up; parents ask thin children for specifics instead of assuming; every claim is tied to a primary through a verification gate. The human owns framing sign-off and final judgment (DOK 3-4); the AI does breadth and stress-testing (DOK 1-2). Use for deep dives where surface-level answers are not enough and tokens/time are not a concern. For a quick single-pass survey, use `aletheia`.
 ---
 
-# Deep Aletheia — recursive research tree (v0.1)
+# Deep Aletheia — a dynamic, question-driven surveyor (v0.2)
 
-Depth does NOT come from running one loop longer. It comes from: **many parallel, well-scoped,
-read-only explorations, each in its own clean context, coordinated through the filesystem, with
-aggressive compression and a verification gate.** (Evidence + rationale: `docs/deep-aletheia-design.md`.)
+Depth is NOT a longer loop, and NOT a bigger pre-planned tree. It is **how expert researchers and the
+strongest deep-research systems actually work**: ask from many perspectives, gather evidence to disk,
+**let the outline grow from what you find**, then write grounded — with the **human owning judgment**.
 
-Everything is files. Every agent is a directory. Nothing depends on one context window.
+Why this method (read in full; independent origins — the point of Aletheia):
+- **STORM** (Stanford OVAL, NAACL'24): survey quality is decided in the *pre-writing* stage —
+  discover diverse **perspectives**, ask **multi-perspective questions** to retrieval-grounded
+  experts, curate an **outline**. Guards *source-bias transfer* and *over-association*.
+- **WebWeaver** (SOTA 2025): the killer flaw is *"static pipelines that decouple planning from
+  evidence."* Fix = a **dynamic cycle interleaving evidence acquisition with outline optimization**,
+  a filesystem **memory bank**, and **section-by-section grounded writing**.
+- **AgentCPM-Report** (2026): plan-then-write hinges on an initial outline you *can't* get right up
+  front — so **revise the outline during research** (alternate drafting and deepening).
+
+**The rule:** never fix the decomposition before the evidence. **Look, then decide.** Everything is
+files (the memory bank). Every node is a directory. The tree is a **living outline**. The human signs
+off framings and makes the final call (DOK 3-4); the AI does breadth + stress-test (DOK 1-2).
 
 ## Toolkit
 ```bash
 AL=~/.cursor/skills                       # global install (scripts/install.sh)
 DA="$AL/deep-aletheia/scripts"
+DEEPEN="$AL/iterative-deepening/scripts/deepen.py"    # the per-node drilling controller (now wired in)
 python3 "$AL/channel-retrieval/scripts/doctor.py"    # confirm channels live first
 ```
-Scripts: `treestate.py` (blackboard/tree/budget), `router.py` (channel routing),
-`investigate.py` (leaf engine), `rank.py` (authority ranking), `verify.py` (citation gate),
-`synthesize.py` (bottom-up merge + independence).
+`treestate.py` (blackboard/tree/budget/ask-answer), `investigate.py` (one deepening round — call it
+repeatedly; evidence accumulates), `deepen.py` (reflection/dedup/stop controller), `rank.py`
+(authority ranking), `synthesize.py` (bottom-up merge + independence + `--gate`), `verify.py`
+(two-layer citation gate).
 
-## The loop (do every step; none is optional)
+## The loop — five steps, processed LEVEL BY LEVEL (so "time per level" is equal)
 
-### 1. Init + frame the portfolio (anti-anchoring — load-bearing)
+### 1. FRAME — perspectives → questions (anti-anchoring; STORM + portfolio)
 ```bash
 RUN=$(python3 "$DA/treestate.py" init "<topic>" --slug "<slug>" \
       --budget 32 --unit 4 --max-depth 3 --max-children 5 --max-nodes 40)
 ```
-Write **4–6 competing framings** into `$RUN/portfolio.md` BEFORE any search: the
-mainstream/consensus view, ≥1 heterodox ("the experts are wrong because…"), ≥1
-practitioner/field-report, ≥1 orthogonal reframe, and **name one framing as the current
-"leading" one so step 5 can attack it**. Commit to none.
-
-### 2. Decompose into a budget-balanced tree
-Split the root into the framings, then recurse: a node **splits** if its question is broad and
-budget allows; otherwise it's a **leaf** to investigate.
+In `$RUN/portfolio.md`, BEFORE any search, write **4–6 competing framings** — the mainstream view, ≥1
+heterodox ("the experts are wrong because…"), ≥1 practitioner/field-report, ≥1 orthogonal reframe —
+and **seed each with 1–3 concrete sub-questions** (STORM: the outline is made of questions, not
+labels). Name one framing the current **"leading"** one for the adversary. Then **seed the root's
+level-1 children** (the framings) and get the **human's sign-off** on scope (their DOK-3/4 entry):
 ```bash
-python3 "$DA/treestate.py" cansplit --node "$RUN/tree/root"          # budget/cap check
 python3 "$DA/treestate.py" split --node "$RUN/tree/root" \
-  --children '[["consensus","<q>"],["heterodox","<q>"],["practitioner","<q>"],["adversary","disconfirming evidence for the leading framing"]]'
+  --children '[["consensus","<q>"],["heterodox","<q>"],["practitioner","<q>"],["adversary","strongest disconfirming evidence for the leading framing"]]'
 ```
-- **Budget is conserved**: K children each get `budget/K`. Recurse while `cansplit` allows
-  (`budget/K ≥ unit`). This makes **every tree level cost ≈ the same** (your "equal time per
-  level") and **every leaf get ≈ one scrutiny unit** (equal depth of scrutiny).
-- Keep it **balanced**: give sibling sub-questions comparable scope. Don't over-split one branch.
-- **Always include an adversary child** whose job is disconfirming evidence.
-- Log why you split/stopped: `treestate.py decide --node <n> --actor orchestrator --why "…" "<decision>"`.
+Commit to none. (These top framings are the one *a-priori* decomposition; everything below grows from evidence.)
 
-### 3. Investigate leaves with parallel READ-ONLY worker subagents
-Process **level by level** (equal scrutiny). List the frontier and spawn one subagent per leaf,
-**in parallel** (multiple Task calls in one message):
+### 2. GROW THE OUTLINE FROM EVIDENCE (the core — dynamic, not guessed)
+Process the tree **one level at a time** (equal time per level). List the level's frontier and spawn
+**one READ-ONLY worker subagent per node, in parallel** (multiple Task calls in one message):
 ```bash
-python3 "$DA/treestate.py" frontier --run "$RUN" --state pending
+python3 "$DA/treestate.py" frontier --run "$RUN" --state pending --depth <d>
 ```
-Spawn each worker with the **Task tool** (`subagent_type: generalPurpose` — workers WRITE
-artifacts, so not read-only `explore`), giving it the **full shared context** (topic + this
-node's framing + why it exists — Cognition: share context, not one-liners).
-Worker prompt template:
-> You are a READ-ONLY Deep Aletheia worker for node `<NODE_DIR>`.
-> Topic: `<topic>`. Your framing/sub-question: `<question>`. Why you exist: `<role in the portfolio>`.
-> 1. Run: `python3 ~/.cursor/skills/deep-aletheia/scripts/investigate.py --node <NODE_DIR> --reads <round(budget)>`
-> 2. Read `<NODE_DIR>/evidence.md` and the full reads in `<NODE_DIR>/notes/`.
-> 3. Write `<NODE_DIR>/findings.md`: 3–8 **claims**, each with the **primary URL** it rests on and
->    a one-line quote/paraphrase; mark class (evidence/lead_gen/color); separate what's
->    corroborated vs single-origin; note disconfirming evidence you found. Cite primaries, not aggregators.
-> 4. Log key choices: `treestate.py decide --node <NODE_DIR> --actor worker --why "…" "<decision>"`.
+Spawn each worker with the **Task tool** (`subagent_type: generalPurpose` — workers WRITE artifacts),
+giving it the **full shared context** (topic + this node's question + why it exists — share context,
+not one-liners). Worker prompt template:
+
+> You are a READ-ONLY Deep Aletheia worker for node `<NODE_DIR>` (budget B, unit U from `run.json`).
+> Topic: `<topic>`. Your question: `<question>`. Why you exist: `<role in the portfolio>`.
+> Run the **node loop** — investigate a round, reflect, then deepen / decompose / stop:
+> 1. `python3 ~/.cursor/skills/deep-aletheia/scripts/investigate.py --node <NODE_DIR>` (round 1;
+>    reads ≈ one unit into `notes/`). Then READ `<NODE_DIR>/evidence.md` and the full `notes/`.
+> 2. On round 1 also: `python3 <DEEPEN> init <NODE_DIR>/deepen.json --query "<question>" --breadth 1 --depth <⌊B/U⌋−1, cap 3>`
+> 3. **REFLECT** (your own words): source-backed learnings; open gaps; and *"is this ONE atomic
+>    question, or several distinct sub-questions?"* Record it:
+>    `python3 <DEEPEN> record <NODE_DIR>/deepen.json --learning "…" --followup "<top gap>" --followup "<a disconfirming angle>"`
+> 4. **DECIDE** (strict priority; log each with `treestate.py decide --node <NODE_DIR> --actor worker --why "…"`):
+>    - **DECOMPOSE** — if the evidence shows *separable* sub-questions and budget allows: propose them
+>      and STOP: `python3 ~/.cursor/skills/deep-aletheia/scripts/treestate.py propose --node <NODE_DIR> --children '[["s1","q1"],["s2","q2"]]' --why "<what in the evidence>"`.
+>    - **DEEPEN** — else get the next gap and drill again: `NEXT=$(python3 <DEEPEN> next <NODE_DIR>/deepen.json)`; if it exits 0, `investigate.py --node <NODE_DIR> --query "$NEXT"` (accumulates), then back to step 3.
+>    - **STOP** — when `deepen.py next` exits 3 (converged / depth reached) or budget is spent, write
+>      `<NODE_DIR>/findings.md`: 3–8 **claims**, each with the **primary URL** it rests on + a one-line
+>      quote; mark class (evidence/lead_gen/color); separate corroborated vs single-origin; note
+>      disconfirming evidence. Cite primaries, not aggregators.
 > Do NOT make decisions that depend on sibling workers. Return a 5-line summary + the findings path.
 
-Workers are read-only and independent (Cognition-safe). They write artifacts; they don't pass
-big blobs back through you (Anthropic anti-"telephone").
-
-### 4. Synthesize bottom-up, with top-down clarification
-Deepest internal nodes first, up to the root. For each:
+Workers are read-only and independent (safe to parallelize). **Depth comes from both**: leaf rounds
+(deepen) AND evidence-driven decomposition (propose). Then **materialize** the approved proposals and
+process the next level:
 ```bash
-python3 "$DA/synthesize.py" --node "<NODE_DIR>"        # writes synthesis_input.md + independence
+for n in $(python3 "$DA/treestate.py" frontier --run "$RUN" --state proposes_split --depth <d>); do
+  python3 "$DA/treestate.py" materialize --node "$n"      # split_node enforces the budget/cap floor
+done
+# repeat step 2 for depth d+1 until no pending/proposes_split nodes remain
 ```
-Read `synthesis_input.md`. If a child's findings are **thin or ambiguous**, don't assume — ask it
-(back-and-forth, hierarchical, via the filesystem):
+Budget is **conserved** across a split (K children each get B/K) → every level costs ≈ the same
+(equal time per level) and every leaf bottoms out at ≈ one scrutiny **unit** (equal scrutiny). Keep
+siblings comparable in scope. Caps (`max-depth/children/nodes`, unit floor) bound fan-out.
+
+### 3. BACK-AND-FORTH — ask thin children, don't assume (enforced)
+Synthesize **bottom-up** (deepest internal nodes first). For each node:
 ```bash
-QID=$(python3 "$DA/treestate.py" ask --node "<CHILD_DIR>" --from "<PARENT_qid>" --q "specific question")
-# re-spawn a subagent on <CHILD_DIR> to answer from its ALREADY-gathered sources (no re-retrieval),
-# writing the answer: treestate.py answer --node <CHILD_DIR> --qid $QID --a "…"
+python3 "$DA/synthesize.py" --node "<NODE_DIR>" --gate     # writes synthesis_input.md; exit 3 = BLOCKED
 ```
-Then author `<NODE_DIR>/findings.md` yourself (single-threaded synthesis — one context sees all):
-Agreement / Disagreement / Unverified, honoring the independence report (high echo_ratio or
-top_domain_share ⇒ don't treat convergence as truth; trace to independent origins).
+If it exits **3**, a child is **thin AND unanswered** — do NOT author findings. Ask it, and let it
+answer **from its already-gathered sources** (no re-retrieval):
+```bash
+QID=$(python3 "$DA/treestate.py" ask --node "<CHILD_DIR>" --from "<parent qid>" --q "specific question")
+# re-spawn a read-only subagent on <CHILD_DIR> to answer from its notes/, then:
+python3 "$DA/treestate.py" answer --node "<CHILD_DIR>" --qid $QID --a "…"
+```
+Re-run with `--gate` until it passes, then author `<NODE_DIR>/findings.md` yourself (single-threaded —
+one context sees all): **Agreement / Disagreement / Unverified**, honoring the independence report
+(high `echo_ratio`/`top_domain_share` ⇒ don't treat convergence as truth).
 
-### 5. Attack the leading conclusion (adversary)
-Before believing the root's leading framing, take the adversary branch's findings and the
-un-laundered channels and try to break it. If it survives, keep it; else revise/downgrade. Log it.
+### 4. JUDGE INDEPENDENCE + ADVERSARY (the differentiator)
+`synthesize.py` computes independence over the subtree ("40 sources, or 1 origin echoed 40×?"). Before
+believing the root's leading framing, take the **adversary** branch + un-laundered channels and try to
+break it. If it survives, keep it; else revise/downgrade. Log it. (This guards STORM's named
+*source-bias transfer* and *over-association*.)
 
-### 6. Verify citations (two-layer gate)
-Extract the root draft's claims into `claims.jsonl` (`{"claim":"…","url":"…"}`), then run the
-**deterministic layer** — it only certifies *relevance*, never *support*:
+### 5. WRITE GROUNDED + VERIFY (section by section)
+Author `$RUN/brief.md` section by section, pulling only each section's evidence from the memory bank
+(WebWeaver): **Agreement** (independent sources converge) · **Disagreement** (name both sides; never
+smooth over) · **Unverified** (single-origin/unsupported). Then the **two-layer citation gate**:
 ```bash
 python3 "$DA/verify.py" --claims "$RUN/claims.jsonl" --node "$RUN/tree/root" --out "$RUN/verify.jsonl"
 ```
-It emits `broken` (unreadable source → fix/drop the citation), `off_topic` (source doesn't discuss
-the claim → find the real primary), or `relevant` (on-topic — but **support is still UNKNOWN**).
-Every result carries `needs_llm_check=True`.
-
-**Then the LLM verifier pass (this is the actual gate — do NOT skip it).** Lexical overlap cannot
-see polarity/negation or magnitude — "IF is superior" vs "IF is *not* superior" share nearly all
-words, and "doubles fat loss" looks identical to a small effect. So a verifier **subagent must
-Fact-Check EVERY `relevant` claim**, not just the weak-looking ones. Spawn read-only verifier
-subagents (parallel, one per claim; adversarial — tell them to hunt for a mismatch); each reads
-the cited source in full and returns a final verdict, written back into `verify.jsonl`:
-- **`supported`** — the source's own findings entail the claim *as stated* (direction + magnitude).
-- **`contradicted`** — the source states the opposite direction, or a magnitude it refutes → the
-  claim is wrong: cut it or flip it.
-- **`unsupported`** — on-topic but doesn't establish the claim as stated (overstated magnitude,
-  missing result, mixed/weaker evidence) → **downgrade to Unverified** or fix the citation.
-
-Target: only `supported` claims survive in **Agreement**. `score_run.py` reads `verify.jsonl` and
-reports `citation_accuracy = supported/total` (plus contradicted/unsupported counts).
-
-### 7. Answer, grounded
-Write `$RUN/brief.md`: **Agreement** (independent sources converge), **Disagreement** (name both
-sides; never smooth over), **Unverified** (single-origin/unsupported). Every claim links to the
-**primary you read**; dates on time-sensitive claims; reddit/youtube/x are **color**, never proof.
-Then accrete into the Atlas so runs compound:
-`python3 "$AL/consilient-atlas/scripts/atlas_add.py" …` (see the `consilient-atlas` skill).
+Layer 1 (lexical) only certifies **relevance** (`broken`/`off_topic`/`relevant`). Then a **verifier
+subagent must Fact-Check EVERY `relevant` claim** (it can't see polarity/magnitude) → final verdict
+`supported`/`contradicted`/`unsupported`, written back to `verify.jsonl`. Only `supported` claims
+survive in **Agreement**; `contradicted` → cut/flip; `unsupported` → downgrade to Unverified. Every
+claim links to the **primary you read**; reddit/youtube/x are **color**, never proof. Accrete into the
+Atlas so runs compound (`consilient-atlas`). **The human makes the final DOK 3-4 judgment.**
 
 ## Observability & resume
-`treestate.py tree --run "$RUN"` shows the whole tree with state/budget/findings. Every node has
-`decisions.jsonl` (why), `questions.jsonl`/`answers.jsonl` (parent↔child), `sources.jsonl`,
-`notes/`, `findings.md`. A run is fully resumable from disk — re-run `frontier` to find unfinished work.
+`treestate.py tree --run "$RUN"` shows the whole living outline (state/budget/findings). Every node
+has `decisions.jsonl` (why), `questions.jsonl`/`answers.jsonl` (parent↔child), `sources.jsonl`,
+`notes/`, `evidence.md` (per-round), `findings.md`, and `deepen.json`. Fully resumable — re-run
+`frontier` to find unfinished work; `score_run.py <RUN>` reports depth (rounds/leaf, evidence-driven
+vs a-priori children, clarification coverage, reads-by-depth).
 
 ## Caps (anti-explosion)
-`max-depth`, `max-children`, `max-nodes`, and the `unit` floor bound the tree (Anthropic saw
-agents spawn 50 subagents). Raise `--budget`/`--max-nodes` for deeper runs — scrutiny scales with
-budget, and budget is conserved down the tree, so cost stays predictable per level.
+`max-depth`, `max-children`, `max-nodes`, and the `unit` floor bound the tree. Raise `--budget` at a
+fixed `--unit` to buy **leaf depth** (more rounds), not just more branching — budget is conserved down
+the tree, so cost stays predictable per level.
 
 ## Rules kept from v1
 Channel **classes** (evidence citable · lead_gen → find+cite the primary · color never cited),
-independence-by-judgment, adversary, and "read in full." Deep Aletheia adds the tree, routing,
-authority ranking, verification, and memory — it does not replace the epistemics.
+independence-by-judgment, adversary, and "read in full." v0.2 makes the tree a **living outline grown
+from evidence** and wires in per-node iterative deepening + enforced back-and-forth — it does not
+replace the epistemics.
