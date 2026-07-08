@@ -245,3 +245,65 @@ Cursor/Claude gives real orchestration primitives, so this is buildable natively
 Deep Aletheia is "better" iff, on the eval set: higher citation-accuracy (verified claims),
 higher source-quality (primaries over farms), higher framing coverage + disconfirmation effort,
 lower echo, **with** transparent trajectories — even though it spends far more tokens.
+
+---
+
+## 8. v2 addendum — recursive tree, budgets, bidirectional flow, blackboard
+
+The single-level orchestrator→workers of §4 is too shallow ("surface-level"). v0.1 makes the
+architecture a **recursive agent tree coordinated entirely through the filesystem**.
+
+### 8.1 Recursive decomposition (depth, not one layer)
+A node whose question is too broad **splits into child sub-questions** instead of investigating
+directly; children may split again. A worker can spawn a fresh Aletheia sub-survey for its slice.
+Recursion stops when a node's budget hits the **scrutiny unit** (an atomic question gets the full
+route→read→verify treatment) or a hard cap trips.
+
+### 8.2 Budget model = "equal time per level" + "equal scrutiny per leaf"
+- A node holds a **budget** `B` (abstract effort units ≈ reads/tool-calls). Splitting into `K`
+  children gives each `B/K` — **budget is conserved across a split**.
+- Recurse while `B/K ≥ U` (the scrutiny unit); otherwise the node is a **leaf** and spends `B`
+  on investigation (deeper reading if it can't usefully split — budget is never wasted).
+- Consequence: for a balanced tree, **every level sums to ≈ `B_root`** (equal effort per level,
+  your constraint) and **every leaf gets ≈ `U`** (equal scrutiny). Decomposition is chosen to
+  keep the tree balanced.
+- **Hard caps** (anti-explosion, per Anthropic's 50-subagent failure): `MAX_DEPTH`,
+  `MAX_CHILDREN`, `MAX_NODES`, `MIN_LEAF_BUDGET = U`.
+
+### 8.3 Bidirectional flow (no more "assuming")
+Information flows **up** (children compress findings into `findings.md`) **and down**: a parent
+that needs specifics writes to a child's `questions.jsonl`; the child re-activates and answers
+from its **already-gathered sources** (cheap, no re-retrieval) into `answers.jsonl`. Flow is
+strictly **parent↔child** (hierarchical), never peer↔peer — that's the fragile case Cognition
+documented. The lead routes each higher agent's question to the target child.
+
+### 8.4 Filesystem as the blackboard (storage is free; use it)
+Every node is a directory; **all coordination is files**, so nothing depends on a single context
+window:
+
+```
+runs/deep/<ts>-<slug>/
+  run.json            topic, version, budgets, caps, status
+  portfolio.md        hypothesis framings (anti-anchoring)
+  tree/<node-path>/
+    spec.md           question, role, budget, depth, parent
+    status.json       state: pending|active|split|investigated|synthesized|answered
+    decisions.jsonl   {t, actor, decision, why}         ← per-agent reasoning log
+    questions.jsonl   parent → this (clarifications)
+    answers.jsonl     this → parent
+    sources.jsonl     retrieved/kept records (this node)
+    notes/            full reads (one file per source)
+    findings.md       compressed result that bubbles up
+    children/<q>/     recursive
+  index/
+    sources.jsonl     global dedup + independence across the whole tree
+  brief.md            final grounded answer
+  verify.jsonl        per-claim Link-Works/Relevant/Fact-Check
+```
+
+Benefits: context never overflows (state on disk), no telephone (artifacts not messages),
+resumable/checkpointed, and fully auditable (decision logs + trajectories).
+
+### 8.5 Versioning
+`aletheia` (v1) stays as the quick surveyor. `deep-aletheia` is versioned separately (`VERSION`,
+`CHANGELOG.md`, git tags `deep-aletheia-vX.Y.Z`) since it will iterate.
