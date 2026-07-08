@@ -54,8 +54,9 @@ Process **level by level** (equal scrutiny). List the frontier and spawn one sub
 ```bash
 python3 "$DA/treestate.py" frontier --run "$RUN" --state pending
 ```
-Spawn each worker with the **Task tool** (`subagent_type: explore`), giving it the **full shared
-context** (topic + this node's framing + why it exists — Cognition: share context, not one-liners).
+Spawn each worker with the **Task tool** (`subagent_type: generalPurpose` — workers WRITE
+artifacts, so not read-only `explore`), giving it the **full shared context** (topic + this
+node's framing + why it exists — Cognition: share context, not one-liners).
 Worker prompt template:
 > You are a READ-ONLY Deep Aletheia worker for node `<NODE_DIR>`.
 > Topic: `<topic>`. Your framing/sub-question: `<question>`. Why you exist: `<role in the portfolio>`.
@@ -90,14 +91,30 @@ top_domain_share ⇒ don't treat convergence as truth; trace to independent orig
 Before believing the root's leading framing, take the adversary branch's findings and the
 un-laundered channels and try to break it. If it survives, keep it; else revise/downgrade. Log it.
 
-### 6. Verify citations (gate)
-Extract the root draft's claims into `claims.jsonl` (`{"claim":"…","url":"…"}`) and run:
+### 6. Verify citations (two-layer gate)
+Extract the root draft's claims into `claims.jsonl` (`{"claim":"…","url":"…"}`), then run the
+**deterministic layer** — it only certifies *relevance*, never *support*:
 ```bash
 python3 "$DA/verify.py" --claims "$RUN/claims.jsonl" --node "$RUN/tree/root" --out "$RUN/verify.jsonl"
 ```
-For every `weak`/`unsupported`/`broken` result, read the source and make the final entailment
-call (or a verifier subagent does): fix the citation, or **downgrade the claim to Unverified**.
-Target: no `unsupported` claims survive in Agreement.
+It emits `broken` (unreadable source → fix/drop the citation), `off_topic` (source doesn't discuss
+the claim → find the real primary), or `relevant` (on-topic — but **support is still UNKNOWN**).
+Every result carries `needs_llm_check=True`.
+
+**Then the LLM verifier pass (this is the actual gate — do NOT skip it).** Lexical overlap cannot
+see polarity/negation or magnitude — "IF is superior" vs "IF is *not* superior" share nearly all
+words, and "doubles fat loss" looks identical to a small effect. So a verifier **subagent must
+Fact-Check EVERY `relevant` claim**, not just the weak-looking ones. Spawn read-only verifier
+subagents (parallel, one per claim; adversarial — tell them to hunt for a mismatch); each reads
+the cited source in full and returns a final verdict, written back into `verify.jsonl`:
+- **`supported`** — the source's own findings entail the claim *as stated* (direction + magnitude).
+- **`contradicted`** — the source states the opposite direction, or a magnitude it refutes → the
+  claim is wrong: cut it or flip it.
+- **`unsupported`** — on-topic but doesn't establish the claim as stated (overstated magnitude,
+  missing result, mixed/weaker evidence) → **downgrade to Unverified** or fix the citation.
+
+Target: only `supported` claims survive in **Agreement**. `score_run.py` reads `verify.jsonl` and
+reports `citation_accuracy = supported/total` (plus contradicted/unsupported counts).
 
 ### 7. Answer, grounded
 Write `$RUN/brief.md`: **Agreement** (independent sources converge), **Disagreement** (name both

@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
-"""Deep Aletheia — claim -> source verification gate.
+"""Deep Aletheia — claim -> source verification gate (deterministic layer).
 
 From "Cited but Not Verified" (arXiv 2605.06635): surface-level citations mask factual
 failures, and MORE search can LOWER accuracy — so a draft's claims must be checked against the
-sources they cite, not just counted. This automates the deterministic layers:
+sources they cite, not just counted. Verification is TWO layers:
 
-  Link-Works    : the cited URL was actually read (note on disk) or is fetchable now.
-  Relevant      : lexical overlap between the claim and the source text.
-  support_signal: overlap strength + best-matching sentence (a proxy for entailment).
+  Layer 1 — this script (deterministic, cheap, runs first):
+    Link-Works : the cited URL was actually read (note on disk) or is fetchable now.
+    Relevant   : lexical overlap between the claim and the source text is above threshold.
+  It emits ONE of: broken (no readable source) / off_topic (source doesn't discuss the claim,
+  i.e. a bad citation) / relevant (on-topic). It also returns the best-matching snippet as a
+  lead for layer 2. Every result carries needs_llm_check=True.
 
-verify.py computes these and assigns a verdict (supported / weak / unsupported / broken) plus a
-best-matching snippet. The verifier SUBAGENT then makes the final entailment call on the ones
-flagged weak/unsupported (true Fact-Check is LLM judgment). Citation accuracy = supported/total.
+  Layer 2 — the LLM verifier SUBAGENT (see deep-aletheia/SKILL.md step 6):
+    Fact-Check : read the source and make the ENTAILMENT call, setting the final verdict
+    supported / contradicted / unsupported. Citation accuracy = supported / total (LLM-set).
+
+CRITICAL — why layer 1 NEVER emits "supported": lexical overlap proves a source is ON-TOPIC,
+not that it SUPPORTS the claim. It cannot see polarity/negation or magnitude ("IF is superior"
+vs "IF is NOT superior" share nearly all words; "doubles fat loss" vs a small effect look alike).
+So support/entailment is exclusively layer 2's call — the deterministic pass must not certify it.
 
 Input JSONL (one per line):  {"claim": "...", "url": "..."}  or  {"claim":"...","urls":[...]}
 Usage:
@@ -33,7 +41,7 @@ sys.path.insert(0, CH)
 import rerank  # noqa: E402  (tokenize)
 import read as readmod  # noqa: E402
 
-SUPPORTED, WEAK = 0.55, 0.30
+RELEVANT = 0.30  # below this, the source doesn't even discuss the claim (likely a bad citation)
 
 
 def _note_path(url: str, node: Optional[str], reads_dir: Optional[str]) -> Optional[str]:
@@ -82,16 +90,19 @@ def verify_claim(claim: str, urls: List[str], node, reads_dir, timeout: float) -
             sc = len(ctoks & set(rerank.tokenize(s))) / max(len(ctoks), 1)
             if sc > snip_score:
                 snip, snip_score = s, sc
-        if overlap > best["overlap"]:
+        # record the first readable source even at overlap 0 (else a readable-but-off-topic
+        # source is misreported as `broken`); later sources only replace it on higher overlap.
+        if not best["link_works"] or overlap > best["overlap"]:
             best = {"overlap": round(overlap, 3), "url": url, "link_works": True,
                     "snippet": snip[:300], "snippet_score": round(snip_score, 3)}
+    # broken -> no readable source; off_topic -> source doesn't discuss it (bad citation);
+    # relevant -> on-topic, but SUPPORT/polarity is unconfirmed (LLM must Fact-Check).
     verdict = ("broken" if not best["link_works"] else
-               "supported" if best["overlap"] >= SUPPORTED else
-               "weak" if best["overlap"] >= WEAK else "unsupported")
+               "relevant" if best["overlap"] >= RELEVANT else "off_topic")
     return {"claim": claim, "verdict": verdict, "overlap": best["overlap"],
             "url": best["url"], "link_works": best["link_works"],
             "snippet": best.get("snippet", ""),
-            "needs_llm_check": verdict in ("weak", "unsupported")}
+            "needs_llm_check": True}  # entailment ALWAYS needs the LLM verifier
 
 
 def run(claims: List[Dict[str, Any]], node, reads_dir, timeout: float) -> Dict[str, Any]:
@@ -101,10 +112,12 @@ def run(claims: List[Dict[str, Any]], node, reads_dir, timeout: float) -> Dict[s
         results.append(verify_claim(c.get("claim", ""), urls, node, reads_dir, timeout))
     n = len(results) or 1
     counts = {v: sum(1 for r in results if r["verdict"] == v)
-              for v in ("supported", "weak", "unsupported", "broken")}
+              for v in ("relevant", "off_topic", "broken")}
     return {"n_claims": len(results), "counts": counts,
-            "citation_accuracy": round(counts["supported"] / n, 3),
-            "needs_llm_check": sum(1 for r in results if r["needs_llm_check"]),
+            "on_topic_rate": round(counts["relevant"] / n, 3),
+            "off_topic_or_broken": counts["off_topic"] + counts["broken"],
+            "note": "Lexical pass: 'relevant' = on-topic only. SUPPORT/polarity is NOT verified "
+                    "here — the LLM verifier subagent must Fact-Check each 'relevant' claim.",
             "results": results}
 
 

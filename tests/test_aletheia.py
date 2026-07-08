@@ -6,18 +6,24 @@ Run: python3 -m unittest discover -s tests   (or: python3 tests/test_aletheia.py
 These lock in the fixes for the independence-math bugs found in review — the
 differentiator must never silently return wrong numbers again.
 """
+import json
 import os
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
 sys.path.insert(0, os.path.join(ROOT, ".cursor", "skills", "provenance-audit", "scripts"))
 sys.path.insert(0, os.path.join(ROOT, ".cursor", "skills", "defensibility-judge", "scripts"))
+sys.path.insert(0, os.path.join(ROOT, ".cursor", "skills", "deep-aletheia", "scripts"))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "eval"))
 
 import provenance_graph as pg  # noqa: E402
 import dedupe  # noqa: E402
 import rubric  # noqa: E402
+import verify  # noqa: E402  (deep-aletheia citation gate)
+import score_run  # noqa: E402  (deep-aletheia run scorer)
 
 
 def audit_one(sources, support):
@@ -139,6 +145,86 @@ class TestRubric(unittest.TestCase):
             "steelman": {"opposing_view": "the opposite camp says Y", "why_unconvinced": "their case is a different regime"},
         }
         self.assertTrue(rubric.judge(belief)["verdict"].startswith("defensible"))
+
+
+class TestVerifyGate(unittest.TestCase):
+    """Deep Aletheia's deterministic verify layer certifies RELEVANCE only, never SUPPORT —
+    lexical overlap can't see polarity/magnitude, so entailment is the LLM verifier's job.
+    Regression for the dogfooded bug: a false "IF doubles fat loss" claim was scored 'supported'
+    by lexical overlap alone; the fix is that this layer can NEVER emit 'supported'."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        # kill the live-read fallback so tests are hermetic (broken == no readable source)
+        self._orig = verify.readmod.read_url
+        verify.readmod.read_url = lambda *a, **k: ("", None)
+
+    def tearDown(self):
+        verify.readmod.read_url = self._orig
+
+    def _note(self, url, text):
+        import hashlib
+        h = hashlib.sha1(url.encode()).hexdigest()[:10]
+        with open(os.path.join(self.tmp, h + ".md"), "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def _verdict(self, claim, url):
+        return verify.verify_claim(claim, [url], None, self.tmp, 1.0)
+
+    def test_never_emits_supported_even_when_source_says_the_opposite(self):
+        claim = "Intermittent fasting is dramatically superior and doubles fat loss."
+        # on-topic + heavy word overlap, but the OPPOSITE polarity — lexical can't tell
+        self._note("u://a", "Intermittent fasting is not superior; it does not double fat loss. " * 8)
+        r = self._verdict(claim, "u://a")
+        self.assertEqual(r["verdict"], "relevant")        # relevant, NOT supported
+        self.assertNotEqual(r["verdict"], "supported")
+        self.assertTrue(r["needs_llm_check"])             # entailment always deferred to the LLM
+
+    def test_off_topic_when_no_overlap(self):
+        self._note("u://b", "The migratory patterns of arctic terns span pole to pole. " * 8)
+        r = self._verdict("Intermittent fasting beats caloric restriction for fat loss", "u://b")
+        self.assertEqual(r["verdict"], "off_topic")
+
+    def test_broken_when_source_unreadable(self):
+        r = self._verdict("anything at all here", "u://missing")  # no note + no live read
+        self.assertEqual(r["verdict"], "broken")
+        self.assertFalse(r["link_works"])
+
+    def test_run_summary_has_no_supported_bucket(self):
+        self._note("u://c", "matched calorie intermittent fasting weight loss advantage comparison " * 8)
+        out = verify.run([{"claim": "matched calorie intermittent fasting weight loss advantage",
+                           "url": "u://c"}], None, self.tmp, 1.0)
+        self.assertIn("on_topic_rate", out)
+        self.assertEqual(set(out["counts"]), {"relevant", "off_topic", "broken"})
+
+
+class TestScoreRunVerdicts(unittest.TestCase):
+    """score_run turns the LLM verdicts into citation_accuracy = supported/total, and exposes the
+    full breakdown so a caught false claim (contradicted/unsupported) is visible in the score."""
+
+    def _run_with_verify(self, verdicts, cfg=None):
+        run = tempfile.mkdtemp()
+        with open(os.path.join(run, "run.json"), "w", encoding="utf-8") as fh:
+            json.dump(cfg or {"topic": "t", "version": "test"}, fh)
+        os.makedirs(os.path.join(run, "tree"))
+        with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
+            for v in verdicts:
+                fh.write(json.dumps({"claim": "c", "verdict": v}) + "\n")
+        return run
+
+    def test_citation_accuracy_and_breakdown(self):
+        run = self._run_with_verify(["supported", "supported", "contradicted", "unsupported"])
+        s = score_run.score(run)
+        self.assertEqual(s["citation_accuracy"], 0.5)
+        self.assertEqual(s["verdicts"], {"supported": 2, "contradicted": 1,
+                                         "unsupported": 1, "awaiting_llm_check": 0})
+
+    def test_citation_accuracy_is_none_before_llm_pass(self):
+        run = self._run_with_verify(["relevant", "relevant", "relevant"])
+        s = score_run.score(run)
+        self.assertIsNone(s["citation_accuracy"])          # not yet Fact-Checked
+        self.assertEqual(s["verdicts"]["awaiting_llm_check"], 3)
+        self.assertEqual(s["on_topic_rate"], 1.0)
 
 
 if __name__ == "__main__":

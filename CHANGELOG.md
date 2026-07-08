@@ -25,7 +25,16 @@ First cut of the recursive architecture (see `docs/deep-aletheia-design.md`).
   farms (fixes lexical-rerank misranking blogs above papers).
 - **Leaf investigation pipeline** (`investigate.py`): route → retrieve → dedupe → rank → read →
   extract cited claims, writing artifacts to the node dir.
-- **Verification gate** (`verify.py`): per-claim Link-Works / Relevant / Fact-Check.
+- **Verification gate** (`verify.py`), two layers: a deterministic pass certifies **relevance
+  only** (`broken`/`off_topic`/`relevant`) and **never** `supported` — lexical overlap can't see
+  polarity/negation or magnitude ("IF is superior" vs "IF is *not* superior" share nearly all
+  words). Entailment (`supported`/`contradicted`/`unsupported`) is the **LLM verifier subagent's**
+  call on every `relevant` claim. Caught while dogfooding: the old lexical pass had scored a
+  deliberately-false "doubles fat loss" claim as `supported`. Also fixed a latent bug where a
+  readable-but-zero-overlap source was misreported as `broken` instead of `off_topic`.
+- **Run scorer** (`scripts/eval/score_run.py`): the deterministic half of the Anthropic-style
+  rubric plus Aletheia epistemics — citation accuracy (from the LLM verdicts), source quality,
+  independence/echo, framing coverage, disconfirmation, tree shape.
 - **Orchestrator skill** (`deep-aletheia/SKILL.md`): recursive decomposition, parallel read-only
   Task subagents, bottom-up synthesis with top-down clarification.
 
