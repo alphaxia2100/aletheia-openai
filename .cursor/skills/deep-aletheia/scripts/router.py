@@ -56,6 +56,13 @@ FRAMING_BOOST = {
     "a_primary_source": ["primary", "paper", "papers", "academic", "peer", "study",
                          "evidence", "original", "dataset", "source code", "spec"],
 }
+# arXiv is CS/physics/math preprints — it has ~no biomedical/clinical/nutrition content, so on
+# clearly-biomed topics it returns keyword-matched CS papers (e.g. "Head Gesture" for a nutrition
+# query). Drop it there; openalex + web (which surfaces PubMed/Nature) carry the primaries.
+BIOMED = ["clinical", "fasting", "diet", "dietary", "caloric", "calorie", "metabolic",
+          "insulin", "glucose", "obesity", "weight loss", "patient", "disease", "drug",
+          "dose", "nutrition", "cardiovascular", "cholesterol", "lipid", "cancer", "therapy",
+          "trial", "medicine", "medical", "health", "blood", "hormone", "vitamin", "gut"]
 
 
 def _cfg() -> dict:
@@ -104,7 +111,11 @@ def route(topic: str, framing: str = "", category: str = "",
     for c in base:
         if c in usable and c not in seen:
             seen.add(c); channels.append(c)
-    return {"topic": topic, "framing": framing, "category": cat,
+    # biomed topics: arXiv is off-domain noise -> drop it (keep openalex + web)
+    biomed = sum(1 for kw in BIOMED if kw in text) >= 2
+    if biomed and "arxiv" in channels:
+        channels = [c for c in channels if c != "arxiv"]
+    return {"topic": topic, "framing": framing, "category": cat, "biomed": biomed,
             "channels": channels, "roles": chosen_roles}
 
 

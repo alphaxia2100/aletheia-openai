@@ -27,6 +27,17 @@ import _http  # noqa: E402
 import _agentreach  # noqa: E402
 
 _STUB = 1500  # bytes below this = likely blocked / JS-gated / stub
+# Content markers of a block/captcha/interstitial page that can EXCEED _STUB bytes and thus
+# masquerade as a successful read (e.g. ScienceDirect "Are you a robot?" ~1.6 KB).
+_BLOCK_MARKERS = ("are you a robot", "just a moment", "enable javascript", "captcha",
+                  "verify you are human", "please confirm you are a human", "access denied",
+                  "cf-browser-verification", "checking your browser", "request unsuccessful",
+                  "please enable cookies", "attention required")
+
+
+def _blocked(text: str) -> bool:
+    tl = text[:2000].lower()
+    return any(m in tl for m in _BLOCK_MARKERS)
 
 
 def _is_reddit_thread(url: str) -> bool:
@@ -55,11 +66,14 @@ def read_url(url: str, timeout: float, max_chars: int, browser: bool = False) ->
         except Exception:  # noqa: BLE001
             text = ""
     method = "jina"
-    # 3. Way-around: Jina stubbed (or forced) -> render in real logged-in Chrome
-    if (browser or len(text.strip()) < _STUB) and _agentreach.browser_available():
+    blocked = _blocked(text)
+    # 3. Way-around: Jina stubbed/blocked (or forced) -> render in real logged-in Chrome
+    if (browser or len(text.strip()) < _STUB or blocked) and _agentreach.browser_available():
         btxt, _berr = _agentreach.browser_extract(url, max(timeout, 60), max_chars or 40000)
-        if btxt and len(btxt) > len(text):
-            text, method = btxt, "opencli-browser"
+        if btxt and not _blocked(btxt) and len(btxt) > (0 if blocked else len(text)):
+            text, method, blocked = btxt, "opencli-browser", False
+    if blocked:  # unrecoverable block -> honest failure, not a fake success
+        return "", "blocked"
     return text, method
 
 

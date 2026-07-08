@@ -39,6 +39,29 @@ import dedupe  # noqa: E402
 import read as readmod  # noqa: E402
 
 _ARXIV = re.compile(r"arxiv\.org/(?:abs|html|pdf)/([0-9]{4}\.[0-9]{4,5})", re.I)
+_STOP = set("the a an of for and or to in on is are be was were with without vs versus more "
+            "than better best effect effects does do how what why which when who into over "
+            "real world results side its their your our".split())
+
+
+def _run_topic(node: str) -> str:
+    run = treestate._find_run(node)
+    cfg = treestate._read_json(os.path.join(run, "run.json"), {}) or {}
+    return cfg.get("topic", "") if run else ""
+
+
+def _anchor(question: str, topic: str) -> str:
+    """Keep a sub-question tied to the ROOT SUBJECT. A leaf like 'real-world adherence' must
+    still be about *intermittent fasting*, not medication adherence — so if the question shares
+    <2 content words with the topic, prepend the topic's salient terms."""
+    if not topic:
+        return question
+    tt = [w for w in re.findall(r"[a-z]{4,}", topic.lower()) if w not in _STOP]
+    ql = question.lower()
+    if sum(1 for w in set(tt) if w in ql) >= 2:
+        return question
+    subj = " ".join(dict.fromkeys(tt))[:60]
+    return (subj + " " + question).strip()
 
 
 def _work_key(r: Dict[str, Any]) -> str:
@@ -121,6 +144,7 @@ def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
                 channels: List[str] = None, timeout: float = 30.0) -> dict:
     st = treestate._read_json(os.path.join(node, "status.json"), {}) or {}
     query = query or st.get("question", "")
+    query = _anchor(query, _run_topic(node))       # keep the leaf tied to the root subject
     budget = float(st.get("budget", 4))
     reads = reads or max(3, round(budget))
     treestate.set_status(node, state="active")
