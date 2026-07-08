@@ -1,12 +1,46 @@
 # Changelog
 
-Two products, versioned independently:
-- **aletheia** — v1 judgment-driven surveyor (stable; quick single-agent surveys).
-- **deep-aletheia** — recursive, filesystem-coordinated orchestrator-worker research tree
-  (in development; deep, high-scrutiny surveys).
+Current skill:
+- **surveyor** — thoroughness-scaled research surveyor (single-agent-first; fans out for breadth only
+  at high thoroughness). This is the one to use.
 
-Versioning is [SemVer](https://semver.org/). `deep-aletheia` is expected to iterate quickly;
-each notable change bumps the minor/patch and is tagged `deep-aletheia-vX.Y.Z`.
+Retired (kept runnable ONLY as eval baselines, `scripts/eval/eval_compare.py`):
+- **aletheia** — v1 judgment-driven surveyor. Retired 2026-07-08.
+- **deep-aletheia** — recursive orchestrator-worker tree. Retired 2026-07-08 (the self-audit found it
+  over-claimed and structurally flawed — see below).
+
+Versioning is [SemVer](https://semver.org/); each notable change bumps minor/patch and is tagged `<skill>-vX.Y.Z`.
+
+---
+
+## surveyor 0.1.0 — unreleased
+
+Fresh skill rebuilt from the deep-aletheia self-audit (X/Reddit/HN/papers), which retired both prior
+skills. Design + evidence: `docs/surveyor-design.md`.
+
+- **Single-agent-first.** The audit's strongest finding: frontier deep-research is single-loop
+  (OpenAI Deep Research, HF smolagents 55%↔67% GAIA, Step-DeepResearch, Tran & Kiela SAS≈MAS at equal
+  tokens); multi-agent only earns its cost for *independent breadth* (Anthropic +90.2%). So surveyor's
+  core is a single-agent loop; it fans out to one read-only worker per angle ONLY at `deep`/`exhaustive`
+  — no recursive tree.
+- **Thoroughness dial replaces the flawed uniform budget.** `quick | standard | deep | exhaustive`
+  plus `auto` (scope → scale to breadth×contestedness). Effort scales to complexity (Anthropic), not
+  the retired conserved-B/K "equal scrutiny per leaf" currency (graded FLAWED: ~12.8% worse, and it
+  made deep leaves single-pass).
+- **Verification that completes.** Two layers — deterministic relevance (never certifies support) then
+  an LLM entailment Fact-Check on every claim → supported/contradicted/unsupported. Reports a real
+  `citation_accuracy` (the 0.2 flagship verifier never completed; `null` on its runs).
+- **Flat run dir** by default (`sources.jsonl`, `notes/`, `deepen.json`, `verify.jsonl`, `brief.md`);
+  `angles/<a>/` only at `deep`. Reuses the sound utilities (channel clients, read, rerank, dedupe,
+  independence) — none of the retired tree/budget/gate machinery.
+- **One driver, `surveyor.py`** (`plan|gather|deepen|independence|verify|score`) + a short callable
+  `SKILL.md`. Callable from any session: `use the surveyor skill to survey <topic> (thoroughness: auto)`.
+- **Eval harness** (`scripts/eval/eval_compare.py` + `topics.jsonl`): scores surveyor vs the retired
+  baselines on a shared rubric so improvement is measured, not asserted. First run (IF topic):
+  surveyor-standard had the **highest source-quality (0.567) and independence (0.567)** and a completed
+  `citation_accuracy` of 0.5, vs deep-aletheia-0.2 (`None` — gate never ran) and 0.1 (0.5).
+- Tests: `tests/test_surveyor.py` (tiers, channel roles, dedup, deepen convergence, independence,
+  verify relevance-only, score). 39/39 pass.
 
 ---
 

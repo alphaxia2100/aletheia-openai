@@ -37,9 +37,16 @@ flowchart TD
 
 ## Skills
 
+> **Current skill: `surveyor`.** The research surveyor is now the single, thoroughness-scaled
+> **`surveyor`** skill (single-agent-first; fans out for breadth only at high thoroughness). It
+> **retires** `aletheia` and `deep-aletheia` (kept only as eval baselines — see `docs/surveyor-design.md`
+> and `scripts/eval/eval_compare.py`). Invoke: *"use the surveyor skill to survey \<topic\> (thoroughness: auto)."*
+
 | Skill | Role |
 |-------|------|
-| `aletheia` | Top-level orchestrator. Invoke it with a topic; it runs the flow above. |
+| **`surveyor`** | **Current** top-level surveyor. Topic + `thoroughness: auto\|quick\|standard\|deep\|exhaustive`. |
+| `aletheia` | *Retired 2026-07-08 — eval baseline.* v1 quick single-agent loop. |
+| `deep-aletheia` | *Retired 2026-07-08 — eval baseline.* v0.2 recursive tree (audit found it flawed). |
 | `survey-scope` | Turns a topic into a **portfolio of competing framings** + scoped subagent specs. Resolves entities *before* searching. |
 | `channel-retrieval` | Per-channel playbooks. Every result is tagged with `index_of_origin` + an **evidence / lead-gen / color** class. |
 | `iterative-deepening` | Breadth x depth search loop with reflection (search -> learn -> recurse into gaps). Turns flat fan-out into real research. |

@@ -1,9 +1,13 @@
 ---
 name: aletheia
-description: Research surveyor that beats a bare LLM by refusing to anchor on the consensus, pulling current/diverse/real sources it can't reach, reading them in full, judging whether the support is independent or echoed, adversarially attacking its own leading conclusion, and answering with every claim tied to a source. Use when the user asks to research, survey, map, or "get an accurate picture of" a field, topic, technology, or task.
+description: DEPRECATED (retired 2026-07-08) — superseded by the `surveyor` skill; kept runnable as an eval baseline. Prefer `surveyor`. Research surveyor that beats a bare LLM by refusing to anchor on the consensus, pulling current/diverse/real sources it can't reach, reading them in full, judging whether the support is independent or echoed, adversarially attacking its own leading conclusion, and answering with every claim tied to a source. Use when the user asks to research, survey, map, or "get an accurate picture of" a field, topic, technology, or task.
 ---
 
 # Aletheia — research surveyor
+
+> **DEPRECATED (retired 2026-07-08).** Superseded by the **`surveyor`** skill (single-agent-first,
+> thoroughness-scaled). This v1 is kept only as an **eval baseline** (`scripts/eval/eval_compare.py`).
+> For new work, use `surveyor`.
 
 **Goal:** an accurate, un-anchored picture of a field. A bare LLM anchors on the consensus in its priors, searches to confirm it, cites nothing, and is stale. You beat it with discipline, not machinery:
 
