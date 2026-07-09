@@ -41,6 +41,65 @@ def _shingles(text: str, k: int = _SHINGLE_K) -> Set[str]:
     return {" ".join(words[i:i + k]) for i in range(len(words) - k + 1)}
 
 
+# strong-identifier canonicalization — so the SAME work in different notations (arXiv: prefix vs
+# bare id, doi.org URL vs bare DOI, .pdf, vN) is recognized as one work, while genuinely DISTINCT
+# ids veto the near-duplicate text merge (rule 4). Fixes the audited false-merge of distinct DOIs.
+_ARXIV_RE = re.compile(r"arxiv\.org/(?:abs|pdf)/([a-z0-9][a-z0-9.\-]*(?:/\d+)?)", re.I)
+_DOI_PREFIX_RE = re.compile(r"^(?:https?://)?(?:www\.|dx\.)?doi\.org/|^doi:\s*", re.I)
+_ARXIV_PREFIX_RE = re.compile(r"^arxiv:\s*", re.I)
+
+
+def _norm_doi(raw: Any) -> str:
+    # strip the doi.org/dx./www. prefix or a "doi:" label, then any ?query / #fragment / trailing
+    # slash — so 10.1/x, https://doi.org/10.1/x/, www.doi.org/10.1/x?y=1 all canonicalize the same.
+    s = _DOI_PREFIX_RE.sub("", str(raw or "").strip().lower())
+    return s.split("#", 1)[0].split("?", 1)[0].rstrip("/")
+
+
+def _arxiv_id(record: Dict[str, Any]) -> str:
+    val = _ARXIV_PREFIX_RE.sub("", str(record.get("arxiv_id") or record.get("arxiv") or "").strip().lower())
+    if not val:
+        m = _ARXIV_RE.search(str(record.get("url") or ""))
+        if m:
+            val = m.group(1).lower()
+    val = re.sub(r"\.pdf$", "", val)
+    return re.sub(r"v\d+$", "", val) if val else ""
+
+
+def _pmid(record: Dict[str, Any]) -> str:
+    raw = str(record.get("pmid") or "")
+    if not raw:
+        m = re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", str(record.get("url") or ""), re.I)
+        raw = m.group(1) if m else ""
+    return re.sub(r"\D", "", raw)
+
+
+def _work_identity(record: Dict[str, Any]) -> Dict[str, str]:
+    ids: Dict[str, str] = {}
+    doi = _norm_doi(record.get("doi"))
+    if doi:
+        ids["doi"] = doi
+    ax = _arxiv_id(record)
+    if ax:
+        ids["arxiv"] = ax
+    pm = _pmid(record)
+    if pm:
+        ids["pmid"] = pm
+    return ids
+
+
+def _distinct_works(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+    """True iff a strong identifier PROVES a and b are different works (distinct DOI / arXiv id /
+    PMID). Canonicalized first, so the SAME work in different notations is not seen as distinct. A
+    MATCHING strong id dominates: if any shared id type is equal the works are the same, so we never
+    block their merge (even if another id type differs)."""
+    ia, ib = _work_identity(a), _work_identity(b)
+    shared = ia.keys() & ib.keys()
+    if any(ia[k] == ib[k] for k in shared):     # a matching strong id => same work; never veto
+        return False
+    return any(ia[k] != ib[k] for k in shared)
+
+
 # ---------- shared ----------
 
 class UnionFind:
@@ -158,6 +217,11 @@ def build_clusters(sources: List[Dict[str, Any]]) -> Tuple[UnionFind, Dict[str, 
             b = ids[b_i]
             sb = shingles[b]
             if len(sb) < 5 or uf.find(a) == uf.find(b):
+                continue
+            # distinct DOIs/arXiv ids/PMIDs prove different works -> veto the text merge (fixes the
+            # false-merge of distinct primaries). A matching id, or no ids, lets the shingle test run
+            # (so genuine title/lede echoes still collapse — no over-count of independence).
+            if _distinct_works(by_id[a], by_id[b]):
                 continue
             inter = len(sa & sb)
             if inter and inter / len(sa | sb) >= _NEARDUP_THRESHOLD:

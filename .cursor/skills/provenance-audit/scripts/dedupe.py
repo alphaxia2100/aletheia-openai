@@ -27,25 +27,6 @@ _MULTI_SUFFIXES = {
     "com.tw", "com.ar", "com.sa", "co.il", "org.il", "ac.il", "edu.cn", "gov.cn",
 }
 
-# Platform domains where different authors are different voices (merge only w/ author).
-# Includes blogging/social platforms AND academic repositories/aggregators, which
-# host many INDEPENDENT authors — merging them by bare domain would wrongly collapse
-# distinct works into one "voice".
-PLATFORM_DOMAINS = {
-    # blogging / social / q&a
-    "medium.com", "substack.com", "github.com", "gitlab.com", "youtube.com",
-    "youtu.be", "reddit.com", "twitter.com", "x.com", "dev.to", "wordpress.com",
-    "blogspot.com", "tumblr.com", "linkedin.com", "facebook.com", "quora.com",
-    "stackexchange.com", "stackoverflow.com", "news.ycombinator.com",
-    "hashnode.dev", "notion.site", "google.com", "sites.google.com",
-    # academic repositories / aggregators (many independent authors)
-    "arxiv.org", "doi.org", "semanticscholar.org", "openalex.org", "ssrn.com",
-    "biorxiv.org", "medrxiv.org", "researchgate.net", "ncbi.nlm.nih.gov",
-    "europepmc.org", "ebi.ac.uk", "nih.gov", "springer.com", "sciencedirect.com",
-    "nature.com", "acm.org", "ieee.org", "wiley.com", "tandfonline.com",
-    "gutenberg.org", "archive.org", "openlibrary.org",
-}
-
 try:  # optional correctness upgrade
     import tldextract as _tldextract  # type: ignore
 except Exception:  # noqa: BLE001
@@ -125,9 +106,11 @@ def voice_key(record: Dict[str, Any]) -> str:
 
     - a DOI identifies a distinct work -> two papers on ONE publisher/journal are
       two voices, not one (this is the fix for the publisher-domain over-merge);
-    - otherwise a distinct author on a domain is a distinct voice;
-    - only truly undifferentiated same-domain items (no doi, no author) merge by
-      domain (e.g. several anonymous posts on one small blog).
+    - a distinct author on a domain is a distinct voice;
+    - author-less items (no doi, no author) key on their canonical URL, so two
+      distinct anonymous pages on one domain stay distinct voices; genuine
+      exact-dups and copy-paste echoes are still collapsed downstream by
+      build_clusters rule 1 (canonical url) and rule 4 (content shingles).
 
     (canonical_url identity is handled separately in build_clusters, so literal
     duplicates still collapse regardless of this key.)
@@ -135,12 +118,14 @@ def voice_key(record: Dict[str, Any]) -> str:
     doi = (record.get("doi") or "").strip().lower()
     if doi:
         return "doi::" + doi
-    dom = record.get("domain") or registrable_domain(record.get("url", ""))
     author = _primary_author_key(record)
     if author:
+        dom = record.get("domain") or registrable_domain(record.get("url", ""))
         return "%s::%s" % (dom, author)
-    if dom:
-        return "dom::" + dom
+    # author-less (common for web scrapes, e.g. Brave records): key on the canonical
+    # URL, NOT the bare domain — two distinct anonymous pages on one domain are two
+    # voices. True exact-dups / echoes are still collapsed by build_clusters rule 1
+    # (canonical url) & rule 4 (content shingles).
     return "url::" + (record.get("canonical_url") or canonical_url(record.get("url", "")))
 
 

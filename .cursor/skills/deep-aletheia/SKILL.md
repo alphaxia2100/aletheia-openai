@@ -131,9 +131,10 @@ smooth over) · **Unverified** (single-origin/unsupported). Then the **two-layer
 ```bash
 python3 "$DA/verify.py" --claims "$RUN/claims.jsonl" --node "$RUN/tree/root" --out "$RUN/verify.jsonl"
 ```
-Layer 1 (lexical) only certifies **relevance** (`broken`/`off_topic`/`relevant`). Then a **verifier
-subagent must Fact-Check EVERY `relevant` claim** (it can't see polarity/magnitude) → final verdict
-`supported`/`contradicted`/`unsupported`, written back to `verify.jsonl`. Only `supported` claims
+Layer 1 (lexical) only certifies **relevance** (`broken`/`off_topic`/`borderline`/`relevant`; a
+`borderline` low-overlap source is a likely paraphrase and must NOT be dropped). Then a **verifier
+subagent must Fact-Check EVERY `relevant` AND `borderline` claim** (it can't see polarity/magnitude) →
+final verdict `supported`/`contradicted`/`unsupported`, written back to `verify.jsonl`. Only `supported` claims
 survive in **Agreement**; `contradicted` → cut/flip; `unsupported` → downgrade to Unverified. Every
 claim links to the **primary you read**; reddit/youtube/x are **color**, never proof. Accrete into the
 Atlas so runs compound (`consilient-atlas`). **The human makes the final DOK 3-4 judgment.**

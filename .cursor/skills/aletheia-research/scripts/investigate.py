@@ -48,6 +48,12 @@ _STOP = set("the a an of for and or to in on is are be was were with without vs 
 _SELFREF = set("agent agents tool tools skill skills system systems framework frameworks design "
                "designs decision decisions assumption assumptions approach approaches project "
                "projects pipeline pipelines model models itself every core loop".split())
+#: generic research/structure meta words — they describe HOW something is studied, not WHAT. On a
+#: coined "deep per-component per-step survey" topic these are all that survive the proper-noun/
+#: self-ref drop, so anchoring on them prepends pure fragment noise ("deep component step ..."). Dropped.
+_META = set("deep survey research study studies review reviews analysis analyses overview summary "
+            "comparison comparisons component components step steps phase phases stage stages part "
+            "parts section sections aspect aspects factor factors general overall audit self".split())
 
 
 def _run_topic(node: str) -> str:
@@ -88,10 +94,16 @@ def _anchor(question: str, topic: str) -> str:
     if len(q_terms) >= 5:                                  # specific enough to stand on its own
         return question
     proper = _proper_nouns(topic)
-    subj_terms = [w for w in dict.fromkeys(tt) if w not in proper and w not in _SELFREF]
-    if len(subj_terms) < 2:      # topic is a pure proper noun / coined name — no citable anchor
+    # candidates = the topic's content words minus proper nouns, self-ref, and generic research-meta
+    # words. Since _META already strips the generic words, whatever survives is a real subject term —
+    # so keep the FIRST few in topic order (do NOT rank by length: a short word like "keto"/"json"
+    # is often the MOST specific term, and length-ranking would wrongly drop it for a longer generic
+    # word). If nothing survives (pure proper noun / coined name / only meta words), leave unchanged.
+    subj_terms = [w for w in dict.fromkeys(tt)
+                  if w not in proper and w not in _SELFREF and w not in _META][:3]
+    if not subj_terms:
         return question
-    subj = " ".join(subj_terms[:3])[:60]
+    subj = " ".join(subj_terms)[:60]
     return (subj + " " + question).strip()
 
 

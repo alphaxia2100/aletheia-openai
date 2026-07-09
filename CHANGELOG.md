@@ -27,6 +27,39 @@ Versioning is [SemVer](https://semver.org/); each notable change bumps minor/pat
 
 ---
 
+## aletheia-research 0.3.2 — 2026-07-09 (deep-audit bug fixes)
+
+Fixes the 6 code bugs the deeper per-component/per-step self-audit
+(`runs/aletheia-research/2026-07-08-2139-self-audit-031-deep/brief.md`) reproduced deterministically.
+Each fix was designed and then adversarially reviewed by a workflow that RAN the code; the review
+caught and corrected two would-be regressions before they shipped (noted below). Tests 61 → 65.
+
+- **B1 (budget):** `treestate.split_node` now warns (stderr) when a weighted split has no headroom
+  (`B = K·U`, so weights can't apply above the scrutiny-unit floor), and folds the rounding residual
+  into the most-scrutinized child so children sum **exactly** to the parent (fixes Σ=32.001 drift).
+- **B2 (independence):** `provenance_graph.build_clusters` no longer false-merges distinct primaries —
+  a near-duplicate text merge is vetoed when a **canonicalized** strong id (DOI / arXiv / PMID) proves
+  the works are distinct. *Review-caught:* the first attempt (a `snippet≥5` guard) re-introduced an
+  over-count by missing title-only wire-echoes, and `_norm_doi` missed `www.doi.org`/trailing-slash/
+  `?query` notations — both fixed (veto-only + full DOI canonicalization; a matching id now dominates).
+- **B3 (independence):** `dedupe.voice_key` keys author-less records on their canonical URL (not the
+  bare domain), so distinct anonymous pages on one domain stay distinct voices; dead `PLATFORM_DOMAINS`
+  removed.
+- **B4 (verification):** `verify.py` (both copies, kept byte-identical) adds a light stemmer
+  (`caloric`~`calorie`, `fasting`~`fast`; excludes collision-prone `al`/`ational`) and a `borderline`
+  verdict so a readable low-overlap paraphrase is routed to the LLM instead of being silently dropped.
+  `score_run.py` now counts readable `off_topic` in the precision **denominator** (a dropped citation
+  can no longer vanish and inflate precision). Both SKILLs: Fact-Check every `relevant` **and**
+  `borderline` claim.
+- **B5 (router):** keyword matching is now on **word boundaries** (`kw in tokens`), killing the
+  `"gene"`-in-`"general"` mis-scope. *Review-caught:* the added `<2` abstain wrongly stripped the
+  domain primary from narrow single-signal queries (`insulin resistance`→general) — removed; the
+  word-boundary fix alone resolves B5 with no collateral loss.
+- **B6 (retrieval):** `investigate._anchor` drops generic research-meta words (`_META`) and keeps the
+  first ≤3 surviving subject terms **in topic order** (not by length), so a coined/meta topic yields
+  no fragment-noise prefix and a short distinctive token (`keto`/`json`) is no longer dropped for a
+  longer generic word.
+
 ## aletheia-research 0.3.1 — 2026-07-08 (audit fixes)
 
 Fixes grounded in the exhaustive design self-audit (`docs/evals/2026-07-08-aletheia-design-audit.md`,

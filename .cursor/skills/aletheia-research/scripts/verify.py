@@ -8,9 +8,10 @@ sources they cite, not just counted. Verification is TWO layers:
   Layer 1 — this script (deterministic, cheap, runs first):
     Link-Works : the cited URL was actually read (note on disk) or is fetchable now.
     Relevant   : lexical overlap between the claim and the source text is above threshold.
-  It emits ONE of: broken (no readable source) / off_topic (source doesn't discuss the claim,
-  i.e. a bad citation) / relevant (on-topic). It also returns the best-matching snippet as a
-  lead for layer 2. Every result carries needs_llm_check=True.
+  It emits ONE of: broken (no readable source) / off_topic (readable but genuinely unrelated) /
+  borderline (readable, low overlap — likely a paraphrase, so the LLM MUST still check it; never a
+  silent drop) / relevant (on-topic). It returns the best-matching snippet as a lead for layer 2.
+  Every result carries needs_llm_check=True.
 
   Layer 2 — the LLM verifier SUBAGENT (see deep-aletheia/SKILL.md step 6):
     Fact-Check : read the source and make the ENTAILMENT call, setting the final verdict
@@ -41,7 +42,26 @@ sys.path.insert(0, CH)
 import rerank  # noqa: E402  (tokenize)
 import read as readmod  # noqa: E402
 
-RELEVANT = 0.30  # below this, the source doesn't even discuss the claim (likely a bad citation)
+RELEVANT = 0.30    # at/above: clearly on-topic
+BORDERLINE = 0.08  # readable but low overlap: could be a paraphrase — route to the LLM, do NOT drop
+#: light suffix stemmer so morphological variants match (caloric~calorie, fasting~fast). This raises
+#: layer-1 RECALL so a truly-supported paraphrase is not silently dropped as off_topic before the LLM
+#: ever sees it (the audited false-negative). Not linguistically perfect — deliberately conservative.
+#: deliberately excludes "al"/"ational" — they collide unrelated words (international↔internal,
+#: national↔nation, rational↔ration) for little recall gain; the target folds survive via ic/ie/ing.
+_SUFFIXES = ("ations", "ation", "izing", "ized", "izes", "ize", "ings", "ing",
+             "ies", "ied", "ie", "ic", "es", "ly", "s", "e")
+
+
+def _stem(w: str) -> str:
+    for suf in _SUFFIXES:
+        if w.endswith(suf) and len(w) - len(suf) >= 3:
+            return w[:-len(suf)]
+    return w
+
+
+def _stems(text: str) -> set:
+    return {_stem(t) for t in rerank.tokenize(text)}
 
 
 def _note_path(url: str, node: Optional[str], reads_dir: Optional[str]) -> Optional[str]:
@@ -73,7 +93,7 @@ def _sentences(text: str) -> List[str]:
 
 
 def verify_claim(claim: str, urls: List[str], node, reads_dir, timeout: float) -> Dict[str, Any]:
-    ctoks = set(rerank.tokenize(claim))
+    ctoks = _stems(claim)                              # stemmed so paraphrase/inflection still matches
     best = {"overlap": 0.0, "url": "", "link_works": False, "snippet": ""}
     for url in urls:
         text = _source_text(url, node, reads_dir, timeout)
@@ -82,12 +102,12 @@ def verify_claim(claim: str, urls: List[str], node, reads_dir, timeout: float) -
             if not best["url"]:
                 best["url"] = url
             continue
-        stoks = set(rerank.tokenize(text))
+        stoks = _stems(text)
         overlap = len(ctoks & stoks) / max(len(ctoks), 1)
         # best matching sentence (proxy for the supporting passage)
         snip, snip_score = "", 0.0
         for s in _sentences(text):
-            sc = len(ctoks & set(rerank.tokenize(s))) / max(len(ctoks), 1)
+            sc = len(ctoks & _stems(s)) / max(len(ctoks), 1)
             if sc > snip_score:
                 snip, snip_score = s, sc
         # record the first readable source even at overlap 0 (else a readable-but-off-topic
@@ -95,10 +115,17 @@ def verify_claim(claim: str, urls: List[str], node, reads_dir, timeout: float) -
         if not best["link_works"] or overlap > best["overlap"]:
             best = {"overlap": round(overlap, 3), "url": url, "link_works": True,
                     "snippet": snip[:300], "snippet_score": round(snip_score, 3)}
-    # broken -> no readable source; off_topic -> source doesn't discuss it (bad citation);
-    # relevant -> on-topic, but SUPPORT/polarity is unconfirmed (LLM must Fact-Check).
-    verdict = ("broken" if not best["link_works"] else
-               "relevant" if best["overlap"] >= RELEVANT else "off_topic")
+    # broken -> no readable source; off_topic -> readable but genuinely unrelated;
+    # borderline -> readable, low overlap (likely a paraphrase) so the LLM MUST check it, never drop;
+    # relevant -> on-topic. SUPPORT/polarity is unconfirmed for all readable verdicts (LLM Fact-Check).
+    if not best["link_works"]:
+        verdict = "broken"
+    elif best["overlap"] >= RELEVANT:
+        verdict = "relevant"
+    elif best["overlap"] >= BORDERLINE:
+        verdict = "borderline"
+    else:
+        verdict = "off_topic"
     return {"claim": claim, "verdict": verdict, "overlap": best["overlap"],
             "url": best["url"], "link_works": best["link_works"],
             "snippet": best.get("snippet", ""),
@@ -112,12 +139,13 @@ def run(claims: List[Dict[str, Any]], node, reads_dir, timeout: float) -> Dict[s
         results.append(verify_claim(c.get("claim", ""), urls, node, reads_dir, timeout))
     n = len(results) or 1
     counts = {v: sum(1 for r in results if r["verdict"] == v)
-              for v in ("relevant", "off_topic", "broken")}
+              for v in ("relevant", "borderline", "off_topic", "broken")}
     return {"n_claims": len(results), "counts": counts,
-            "on_topic_rate": round(counts["relevant"] / n, 3),
+            "on_topic_rate": round((counts["relevant"] + counts["borderline"]) / n, 3),
             "off_topic_or_broken": counts["off_topic"] + counts["broken"],
-            "note": "Lexical pass: 'relevant' = on-topic only. SUPPORT/polarity is NOT verified "
-                    "here — the LLM verifier subagent must Fact-Check each 'relevant' claim.",
+            "note": "Lexical pass: 'relevant'/'borderline' = on-topic (borderline = low overlap, "
+                    "likely paraphrase). SUPPORT/polarity is NOT verified here — the LLM verifier "
+                    "subagent must Fact-Check each 'relevant' AND 'borderline' claim.",
             "results": results}
 
 

@@ -124,21 +124,25 @@ def score(run: str) -> dict:
     }
 
     ver = _jsonl(os.path.join(run, "verify.jsonl"))
-    # lexical layer emits relevant/off_topic/broken; the LLM verifier upgrades each 'relevant'
-    # to a final verdict supported/contradicted/unsupported (see deep-aletheia/SKILL.md step 6).
+    # lexical layer emits relevant/borderline/off_topic/broken; the LLM verifier upgrades each
+    # 'relevant' AND 'borderline' to a final supported/contradicted/unsupported (SKILL.md step 6).
     vc = Counter(r.get("verdict") for r in ver)
     supported, contradicted, unsupported = vc["supported"], vc["contradicted"], vc["unsupported"]
-    relevant = vc["relevant"]  # on-topic but still awaiting the LLM Fact-Check
-    bad = vc["off_topic"] + vc["broken"]
-    llm_done = supported + contradicted + unsupported          # the stated denominator (final verdicts)
-    checkable = llm_done + relevant                            # on-topic claims that are/should be judged
-    # precision = of the claims we Fact-Checked, the fraction that actually hold
-    precision = round(supported / llm_done, 3) if llm_done else None
-    # coverage = how much of the checkable set has reached a final verdict (incomplete-until-all)
-    coverage = round(llm_done / checkable, 3) if checkable else None
-    complete = bool(llm_done and relevant == 0)               # every on-topic claim finally judged
+    awaiting = vc["relevant"] + vc["borderline"]   # on-topic, still awaiting the LLM Fact-Check
+    off_topic, broken = vc["off_topic"], vc["broken"]
+    # off_topic is a READABLE source the lexical layer judged unrelated -> a FAILED citation, NOT a
+    # non-event. It MUST stay in the precision denominator or a wrongly-dropped true claim vanishes
+    # and biases precision up (the audited bug). broken = unreadable link (access failure), reported
+    # separately since support can't be judged without reading. (coverage != answer recall.)
+    judged = supported + contradicted + unsupported + off_topic   # the stated denominator
+    precision = round(supported / judged, 3) if judged else None  # of judged citations, fraction that hold
+    coverage = round(judged / (judged + awaiting), 3) if (judged + awaiting) else None
+    complete = bool(judged and awaiting == 0)      # every on-topic claim has a final verdict
     # headline accuracy is only real once the pass is COMPLETE; None while claims still await checking
     cit_acc = precision if complete else None
+    llm_done = supported + contradicted + unsupported            # (kept for the depth/verdicts report)
+    relevant = awaiting                                          # back-compat alias for the report
+    bad = off_topic + broken
     on_topic = round((len(ver) - bad) / len(ver), 3) if ver else None
 
     brief = os.path.join(run, "brief.md")
@@ -148,11 +152,12 @@ def score(run: str) -> dict:
     return {
         "topic": cfg.get("topic"), "version": cfg.get("version"),
         "citation_accuracy": cit_acc, "citation_precision": precision,
-        "citation_coverage": coverage, "citation_denominator": llm_done,
+        "citation_coverage": coverage, "citation_denominator": judged,
         "citation_complete": complete, "on_topic_rate": on_topic,
         "verified_claims": len(ver), "off_topic_or_broken_citations": bad,
         "verdicts": {"supported": supported, "contradicted": contradicted,
-                     "unsupported": unsupported, "awaiting_llm_check": relevant},
+                     "unsupported": unsupported, "off_topic": off_topic, "broken": broken,
+                     "awaiting_llm_check": awaiting},
         "source_quality": quality, "sources": len(idx),
         "independence": round(1 - echo, 3), "echo_ratio": echo, "unique_voices": len(voices),
         "origin_independence": origin_indep, "origin_echo_ratio": origin_echo,

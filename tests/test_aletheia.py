@@ -85,6 +85,47 @@ class TestIndependence(unittest.TestCase):
         srcs = [{"id": "a", "url": "https://x.example/1", "index_of_origin": "brave", "primary": True}]
         self.assertNotIn("discovery_monoculture", audit_one(srcs, ["a"])["flags"])
 
+    def test_b2_shingle_rule_does_not_merge_distinct_dois(self):
+        # B2: identical boilerplate title + empty snippet + DIFFERENT DOIs must stay 2 (false-merge fix)
+        title = ("A Very Long Identical Title About The Metabolic Effects Of Prolonged Fasting In "
+                 "Healthy Adults Across Multiple Cohorts")
+        srcs = [{"id": "p1", "url": "https://j.org/1", "doi": "10.1/a", "title": title, "snippet": "", "primary": True},
+                {"id": "p2", "url": "https://j.org/2", "doi": "10.1/b", "title": title, "snippet": "", "primary": True}]
+        self.assertEqual(audit_one(srcs, ["p1", "p2"])["independent_sources"], 2)
+
+    def test_b2_same_work_different_notation_still_merges(self):
+        # B2 no-over-count control: same arXiv paper via url vs arxiv_id field (shared body) -> 1 origin
+        body = ("we present a method that improves retrieval by reranking candidate passages with a "
+                "learned model and report consistent gains across several benchmarks and ablations")
+        srcs = [{"id": "a", "url": "https://arxiv.org/abs/2101.00001", "title": "Same Paper", "snippet": body,
+                 "authors": [{"name": "Alpha"}]},
+                {"id": "b", "url": "https://news.example/x", "arxiv_id": "arXiv:2101.00001", "title": "Same Paper",
+                 "snippet": body, "authors": [{"name": "Beta"}]}]
+        self.assertEqual(audit_one(srcs, ["a", "b"])["independent_sources"], 1)
+
+    def test_b3_authorless_distinct_pages_stay_distinct(self):
+        # B3: two distinct anonymous pages on ONE domain must be 2 voices (voice_key over-merge fix)
+        srcs = [{"id": "a", "url": "https://site.example/one", "title": "First distinct anonymous page"},
+                {"id": "b", "url": "https://site.example/two", "title": "Second unrelated anonymous page"}]
+        self.assertEqual(audit_one(srcs, ["a", "b"])["independent_sources"], 2)
+
+    def test_b2_title_only_syndication_still_merges(self):
+        # review regression: a real wire-story echo (identical long headline, no snippet, no ids,
+        # different outlets) must STILL collapse to 1 — must not over-count independence.
+        head = ("Central Bank Raises Benchmark Interest Rate By Fifty Basis Points Citing Persistent "
+                "Inflation Across The Broader Economy This Quarter")
+        srcs = [{"id": "w1", "url": "https://ap.example/a", "title": head, "snippet": "", "authors": [{"name": "AP"}]},
+                {"id": "w2", "url": "https://reuters.example/b", "title": head, "snippet": "", "authors": [{"name": "Reuters"}]}]
+        self.assertEqual(audit_one(srcs, ["w1", "w2"])["independent_sources"], 1)
+
+    def test_b2_doi_notation_variants_are_same_work(self):
+        # review regression: bare DOI vs doi.org URL with trailing slash/query must canonicalize equal
+        body = ("this study reports that the intervention lowered the primary endpoint by a modest but "
+                "statistically significant margin across the enrolled cohort over twelve months")
+        srcs = [{"id": "a", "url": "https://j/a", "doi": "10.1/samework", "title": "Study", "snippet": body},
+                {"id": "b", "url": "https://j/b", "doi": "https://doi.org/10.1/samework/", "title": "Study", "snippet": body}]
+        self.assertEqual(audit_one(srcs, ["a", "b"])["independent_sources"], 1)
+
 
 class TestCitations(unittest.TestCase):
     def test_shared_institution_is_not_echo(self):
@@ -200,7 +241,24 @@ class TestVerifyGate(unittest.TestCase):
         out = verify.run([{"claim": "matched calorie intermittent fasting weight loss advantage",
                            "url": "u://c"}], None, self.tmp, 1.0)
         self.assertIn("on_topic_rate", out)
-        self.assertEqual(set(out["counts"]), {"relevant", "off_topic", "broken"})
+        self.assertEqual(set(out["counts"]), {"relevant", "borderline", "off_topic", "broken"})
+
+    def test_stem_folds_morphological_variants(self):
+        # B4: the light stemmer folds inflections so paraphrase overlap is not lost
+        self.assertEqual(verify._stem("caloric"), verify._stem("calorie"))   # both -> calor
+        self.assertEqual(verify._stem("fasting"), "fast")
+
+    def test_readable_low_overlap_is_borderline_not_offtopic(self):
+        # B4: a readable source that shares SOME (stemmed) terms but below the relevant threshold is
+        # 'borderline' (still LLM-checked), never a terminal silent 'off_topic'
+        claim = ("intermittent fasting substantially outperforms continuous caloric restriction for "
+                 "long term adipose reduction in middle aged sedentary overweight adults everywhere")
+        self._note("u://bl", "An editorial that only mentions fasting and adults in passing, with no "
+                             "comparison, data, effect sizes, or restriction protocol reported here. " * 4)
+        r = self._verdict(claim, "u://bl")
+        self.assertNotEqual(r["verdict"], "off_topic")            # NOT silently dropped
+        self.assertIn(r["verdict"], ("borderline", "relevant"))  # readable + on-topic -> LLM checks it
+        self.assertTrue(r["needs_llm_check"])
 
 
 class TestScoreRunVerdicts(unittest.TestCase):
@@ -221,8 +279,8 @@ class TestScoreRunVerdicts(unittest.TestCase):
         run = self._run_with_verify(["supported", "supported", "contradicted", "unsupported"])
         s = score_run.score(run)
         self.assertEqual(s["citation_accuracy"], 0.5)
-        self.assertEqual(s["verdicts"], {"supported": 2, "contradicted": 1,
-                                         "unsupported": 1, "awaiting_llm_check": 0})
+        self.assertEqual(s["verdicts"], {"supported": 2, "contradicted": 1, "unsupported": 1,
+                                         "off_topic": 0, "broken": 0, "awaiting_llm_check": 0})
 
     def test_citation_accuracy_is_none_before_llm_pass(self):
         run = self._run_with_verify(["relevant", "relevant", "relevant"])
@@ -230,6 +288,23 @@ class TestScoreRunVerdicts(unittest.TestCase):
         self.assertIsNone(s["citation_accuracy"])          # not yet Fact-Checked
         self.assertEqual(s["verdicts"]["awaiting_llm_check"], 3)
         self.assertEqual(s["on_topic_rate"], 1.0)
+
+    def test_offtopic_readable_counts_in_denominator_not_hidden(self):
+        # B4: a readable off_topic citation is a FAILED citation, not a non-event — it must stay in
+        # the precision denominator so a wrongly-dropped claim can't silently vanish & inflate precision.
+        run = self._run_with_verify(["supported", "off_topic"])
+        s = score_run.score(run)
+        self.assertEqual(s["citation_denominator"], 2)     # supported + off_topic (NOT just supported)
+        self.assertEqual(s["citation_precision"], 0.5)     # 1 supported / 2 judged (was 1.0 before the fix)
+        self.assertTrue(s["citation_complete"])            # nothing awaiting the LLM
+        self.assertEqual(s["citation_accuracy"], 0.5)
+
+    def test_borderline_counts_as_awaiting_llm(self):
+        run = self._run_with_verify(["supported", "borderline"])
+        s = score_run.score(run)
+        self.assertEqual(s["verdicts"]["awaiting_llm_check"], 1)   # borderline still needs the LLM
+        self.assertFalse(s["citation_complete"])                   # so the pass is not complete
+        self.assertIsNone(s["citation_accuracy"])
 
 
 class TestInvestigateRounds(unittest.TestCase):
@@ -356,6 +431,20 @@ class TestRouterScoping(unittest.TestCase):
             self.assertTrue(any(w in r["channels"] for w in ("brave", "duckduckgo", "marginalia")))
             self.assertLessEqual(len(r["channels"]), 6)   # scoped, not "all channels"
 
+    def test_b5_word_boundary_match_and_abstain(self):
+        # B5: 'gene' must NOT fire biomed inside 'general'; a lone weak/ambiguous signal -> abstain
+        self.assertEqual(self._route("a general strategy for launching a company")["category"], "general")
+        self.assertEqual(self._route("how to start a startup")["category"], "general")
+        # a genuine multi-signal biomed query still routes correctly
+        self.assertEqual(self._route("insulin resistance and glucose metabolism in diabetes")["category"],
+                         "biomed")
+
+    def test_b5_narrow_single_signal_keeps_domain_primary(self):
+        # review regression: a narrow query with ONE strong domain signal must still hit its primary
+        # (the earlier abstain<2 wrongly stripped europepmc/arxiv here). europepmc in-scope for biomed.
+        self.assertIn("europepmc", self._route("cancer immunotherapy outcomes")["channels"])
+        self.assertIn("arxiv", self._route("rust borrow checker explained")["channels"])
+
 
 class TestAletheia03Thoroughness(unittest.TestCase):
     """aletheia 0.3's thoroughness dial sets the tree budget/caps and tags version 0.3.0.
@@ -371,7 +460,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     def test_tiers_scale_and_version(self):
         base = tempfile.mkdtemp()
         q, dp = self._init("quick", base), self._init("deep", base)
-        self.assertEqual(q["version"], "aletheia-research 0.3.1")
+        self.assertEqual(q["version"], "aletheia-research 0.3.2")
         self.assertEqual(q["thoroughness"], "quick")
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
@@ -465,6 +554,25 @@ class TestAletheiaResearch031(unittest.TestCase):
                          "multi-agent tree vs single-agent loop")
         # but a bare leaf on a common-noun topic still gets anchored to the subject
         self.assertIn("fasting", inv._anchor("real-world adherence", "intermittent fasting fat loss"))
+
+    def test_b6_anchor_prefers_specific_terms_and_drops_meta_fragments(self):
+        inv = self._load("ar_investigate", "investigate.py")
+        topic = "Aletheia Research 0.3.1 deep per-component per-step self-audit"
+        # short question on a coined/meta topic -> UNCHANGED (no "deep component step" fragment noise)
+        self.assertEqual(inv._anchor("adherence over time", topic), "adherence over time")
+        # keeps the 2 most-specific (longest) subject words, drops generic meta words
+        out = inv._anchor("dropout rates", "reinforcement learning curricula deep study analysis")
+        self.assertIn("reinforcement", out)
+        self.assertIn("curricula", out)
+        self.assertNotIn("study", out)      # generic meta word, dropped
+        self.assertNotIn("analysis", out)
+
+    def test_b6_short_distinctive_token_not_dropped(self):
+        # review regression: a short but SPECIFIC token (keto/json) must not be dropped in favor of a
+        # longer generic co-occurring word — anchor keeps topic order, not length ranking.
+        inv = self._load("ar_investigate", "investigate.py")
+        self.assertIn("keto", inv._anchor("efficacy over time", "keto epilepsy children"))
+        self.assertIn("json", inv._anchor("validation errors", "json schema validation rules"))
 
     def test_biomed_and_regulatory_venues_rank_primary(self):
         rk = self._load("ar_rank", "rank.py")

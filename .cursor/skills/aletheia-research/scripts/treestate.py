@@ -134,7 +134,7 @@ def init_run(topic: str, slug: str = "", budget: float = 32.0, unit: float = 4.0
     run = os.path.join(base, "%s-%s" % (ts, _slugify(slug or topic)))
     os.makedirs(os.path.join(run, "index"), exist_ok=True)
     _write_json(os.path.join(run, "run.json"), {
-        "topic": topic, "created": _now(), "version": "aletheia-research 0.3.1",
+        "topic": topic, "created": _now(), "version": "aletheia-research 0.3.2",
         "thoroughness": tier or (thoroughness or "custom"),
         "budget": budget, "unit": unit, "max_depth": max_depth,
         "max_children": max_children, "max_nodes": max_nodes, "state": "framing",
@@ -209,13 +209,26 @@ def split_node(node: str, children: List[List[str]], actor: str = "orchestrator"
     U = float(chk.get("unit", 4) or 4)
     if weights and len(weights) == k and sum(w for w in weights if w > 0) > 0:
         floor = min(U, B / k)                          # guarantee ≥ floor each (no starvation)
-        rem = max(0.0, B - floor * k)                  # distribute the remainder by contestedness
+        rem = max(0.0, B - floor * k)                  # remainder distributed by contestedness
         tot = sum(max(0.0, w) for w in weights)
         budgets = [round(floor + rem * (max(0.0, w) / tot), 3) for w in weights]
-        how = "weighted (floor %.2f + remainder by contestedness)" % floor
+        if rem < 1e-9:                                 # tight budget: the floor eats everything,
+            how = ("weighted requested but NO EFFECT (budget %.2f only covers K=%d at the unit "
+                   "floor %.2f)" % (B, k, floor))      # so weights cannot apply — say so loudly
+            sys.stderr.write("treestate: %s; every child gets the scrutiny unit. Raise budget or "
+                             "reduce K to let weights bite.\n" % how)
+        else:
+            how = "weighted (floor %.2f + remainder by contestedness)" % floor
     else:
         budgets = [round(B / k, 3)] * k
         how = "uniform"
+    # Conserve EXACTLY: rounding leaves budgets summing to e.g. 32.001, not B. Fold the residual
+    # into the most-scrutinized child — its budget is always strictly > floor when the residual is
+    # nonzero, so absorbing ±0.001 can never push a child below the scrutiny-unit floor.
+    drift = round(B - sum(budgets), 3)
+    if abs(drift) >= 1e-9 and budgets:
+        j = max(range(k), key=lambda i: budgets[i])
+        budgets[j] = round(budgets[j] + drift, 3)
     depth = int(st.get("depth", 0)) + 1
     made = []
     for (qid, q), cb in zip(children, budgets):

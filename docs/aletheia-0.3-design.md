@@ -1,6 +1,6 @@
 # Aletheia 0.3 — design
 
-**Status:** built (aletheia-research 0.3.1). Built **off deep-aletheia 0.2** (its direct ancestor).
+**Status:** built (aletheia-research 0.3.2). Built **off deep-aletheia 0.2** (its direct ancestor).
 Supersedes `surveyor`; the `aletheia` name is rebased from the retired v1 onto the deep-tree line.
 
 ## Why 0.3 is built on deep-aletheia 0.2
@@ -92,6 +92,20 @@ drove these, each traceable to a numbered recommendation:
 - **Labels (audit #7):** dropped "equal time per level" (breadth-first is a scheduling order, not an
   equal-time promise); "blackboard" → "shared-artifact store"; fixed the Reddit color/lead_gen
   contradiction.
+
+## 0.3.2 — deep per-component/per-step self-audit bug fixes (2026-07-09)
+A deeper self-audit (12 read-only workers, one per component + a dedicated adversary;
+`runs/aletheia-research/2026-07-08-2139-self-audit-031-deep/brief.md`) graded the architecture sound
+but every 0.3.1 *fix* `improvable`, and reproduced **6 code bugs** deterministically. All six are fixed
+in 0.3.2 (B1 budget weight-vanish/rounding; B2 shingle false-merge of distinct DOIs; B3 voice_key
+author-less over-merge; B4 lexical verify dropping true-support paraphrase + score_run hiding it; B5
+router substring mis-scope; B6 `_anchor` fragment noise). The fixes were designed and then
+**adversarially reviewed by a workflow that ran the code**, which caught two would-be regressions
+before they shipped (a `snippet≥5` guard that re-introduced a title-only over-count; a router abstain
+that stripped domain primaries from narrow queries) — both corrected. See CHANGELOG for specifics.
+The audit's *architectural* verdicts (weighting still static not adaptive; keyword-recall the dominant
+weakness; thresholds uncalibrated; the whole promotion still N=1) are **design-level, not bugs** — they
+remain open and are the honest agenda below, not something a patch closes.
 
 ## Honestly unresolved after 0.3.1
 - The budget verdict rests on LLM-reasoning test-time-compute papers (tokens/samples), not a direct

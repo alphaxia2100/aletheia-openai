@@ -130,7 +130,9 @@ Extract the draft's claims → `$RUN/claims.jsonl` (`{"claim":"…","url":"…"}
 ```bash
 python3 "$A/verify.py" --claims "$RUN/claims.jsonl" --node "$RUN/tree/root" --out "$RUN/verify.jsonl"
 ```
-Layer 1 (lexical) certifies **relevance only**, never support. Then **Fact-Check EVERY `relevant`
+Layer 1 (lexical) certifies **relevance only**, never support — it emits `relevant` (on-topic),
+`borderline` (readable but low overlap: a likely paraphrase — must still be checked, never dropped),
+`off_topic` (readable but unrelated), or `broken`. Then **Fact-Check EVERY `relevant` AND `borderline`
 claim** (read the cited primary in a small context; watch polarity + magnitude) and rewrite each
 verdict to `supported`/`contradicted`/`unsupported`. Only `supported` survives in Agreement;
 `contradicted` → cut/flip; `unsupported` → downgrade to Unverified.

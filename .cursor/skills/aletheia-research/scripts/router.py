@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from typing import Dict, List
 
@@ -83,12 +84,25 @@ _COMMUNITY_FRAMING = ["practitioner", "field report", "lived", "hands-on", "foru
                       "anecdot", "people who", "disconfirm", "criticism", "adversary", "real-world"]
 
 
+def _kw_hit(kw: str, text: str, tokens: set) -> bool:
+    """Match a signal on WORD BOUNDARIES, not as a substring — the audited bug was `kw in text`
+    firing "gene" inside "general" and "art" inside "startup". A single alphanumeric signal matches
+    a whole token (+ a light plural 's', so "model" still catches "models" — load-bearing for the
+    cs route); a multi-word/punctuated signal (e.g. "10-k", " vs ") uses a \\b regex."""
+    if kw.isalnum():
+        return kw in tokens or (kw + "s") in tokens
+    return re.search(r"\b" + re.escape(kw) + r"\b", text) is not None
+
+
 def _domains_for(text: str) -> List[str]:
-    scores = {d: sum(1 for kw in cfg["signals"] if kw in text) for d, cfg in DOMAINS.items() if cfg["signals"]}
+    tokens = set(re.findall(r"[a-z0-9]+", text))
+    scores = {d: sum(1 for kw in cfg["signals"] if _kw_hit(kw, text, tokens))
+              for d, cfg in DOMAINS.items() if cfg["signals"]}
     ranked = sorted((d for d, s in scores.items() if s > 0), key=lambda d: -scores[d])
-    if not ranked:
-        return ["general"]
-    picks = [ranked[0]]
+    if not ranked:                                      # no domain signal at all -> general fallback
+        return ["general"]                              # (word-boundary matching alone kills the
+    picks = [ranked[0]]                                 #  'gene'-in-'general' mis-scope; no abstain
+    #  threshold, which would wrongly strip the domain primary from narrow single-signal queries)
     if len(ranked) > 1 and scores[ranked[1]] >= 2:      # a second domain only if clearly present
         picks.append(ranked[1])
     return picks
