@@ -1,6 +1,9 @@
-{"domain":"health","topic":"Is intermittent fasting more effective than caloric restriction for fat loss and metabolic health?"}
-{"domain":"software","topic":"Are multi-agent LLM systems better than a single well-run agent for deep research?"}
-{"domain":"consumer","topic":"What is the best budget mirrorless camera for a beginner in 2026?"}
-{"domain":"science","topic":"Does creatine supplementation improve cognition in healthy adults?"}
-{"domain":"policy","topic":"Do four-day work weeks improve productivity without cutting output?"}
-{"domain":"technology","topic":"Is RAG being replaced by long-context models for enterprise QA?"}
+{"id":"if-fatloss","domain":"health","topic":"Is intermittent fasting more effective than caloric restriction for fat loss and metabolic health?","frozen":true}
+{"id":"multiagent-research","domain":"software","topic":"Are multi-agent LLM systems better than a single well-run agent for deep research?","frozen":true}
+{"id":"budget-mirrorless","domain":"consumer","topic":"What is the best budget mirrorless camera for a beginner in 2026?","frozen":true}
+{"id":"creatine-cognition","domain":"science","topic":"Does creatine supplementation improve cognition in healthy adults?","frozen":true}
+{"id":"four-day-week","domain":"policy","topic":"Do four-day work weeks improve productivity without cutting output?","frozen":true}
+{"id":"rag-longcontext","domain":"technology","topic":"Is RAG being replaced by long-context models for enterprise QA?","frozen":true}
+{"id":"berberine-hba1c","domain":"health","topic":"Does berberine meaningfully lower HbA1c in type 2 diabetes, and how does it compare to metformin?","frozen":false}
+{"id":"standing-desks","domain":"health","topic":"Do standing desks improve health outcomes, or mainly reduce discomfort without cardiometabolic benefit?","frozen":false}
+{"id":"seed-oils-cvd","domain":"science","topic":"Is dietary linoleic acid (seed oils) causally linked to cardiovascular harm in humans, or is that claim unsupported?","frozen":false}

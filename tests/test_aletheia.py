@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(ROOT, ".cursor", "skills", "channel-retrieval", 
 sys.path.insert(0, os.path.join(ROOT, "scripts", "eval"))
 
 import provenance_graph as pg  # noqa: E402
+import judge_score as js  # noqa: E402  (eval measurement core: win-rate + judge-trust gate)
 import _http  # noqa: E402  (shared channel helpers: keywordize)
 import dedupe  # noqa: E402
 import rubric  # noqa: E402
@@ -774,6 +775,40 @@ class TestKeywordizeRecall(unittest.TestCase):
         out = _http.keywordize('find "alpha one" "beta two" "gamma three" "delta four" now', 2)
         self.assertLessEqual(out.count('"') // 2 + len([w for w in out.split()]), 4)  # <= 2 phrase-units
         self.assertIn("alpha", out)
+
+
+class TestEvalJudgeCore(unittest.TestCase):
+    """The eval measurement core must be HONEST: it declares a winner ONLY when the win-rate CI clears
+    0.5 AND the automated judge is calibrated to the human anchor — otherwise 'inconclusive'. This is
+    the code-level guard against the audited failure (asserting improvement without valid measurement)."""
+
+    def test_uncalibrated_judge_is_never_trusted(self):
+        # high win-rate but no human anchor -> provisional, NOT "better"
+        r = {"pairwise": [{"topic": t, "winner": "candidate"} for t in "abcd"]}
+        self.assertIn("UNCALIBRATED", js.summarize(r)["verdict"])
+
+    def test_judge_disagreeing_with_human_blocks_the_win(self):
+        r = {"pairwise": [{"topic": t, "winner": "candidate"} for t in "abcde"],
+             "human": [{"topic": t, "winner": "baseline"} for t in "abde"] + [{"topic": "c", "winner": "tie"}]}
+        s = js.summarize(r)
+        self.assertFalse(s["judge_calibration"]["trusted"])
+        self.assertIn("NOT TRUSTED", s["verdict"])
+
+    def test_small_n_stays_inconclusive_even_when_judge_perfect(self):
+        # 4/5 wins + kappa=1.0, but N is too small: CI spans 0.5 -> must NOT claim "better"
+        r = {"pairwise": [{"topic": t, "winner": "candidate"} for t in "abcd"] + [{"topic": "e", "winner": "baseline"}],
+             "human": [{"topic": t, "winner": "candidate"} for t in "abcd"] + [{"topic": "e", "winner": "baseline"}]}
+        s = js.summarize(r)
+        self.assertEqual(s["judge_calibration"]["cohen_kappa"], 1.0)
+        self.assertIn("inconclusive", s["verdict"])           # honest about statistical power
+
+    def test_objective_deltas_and_tie_handling(self):
+        r = {"pairwise": [{"topic": "a", "winner": "tie"}],
+             "objective": {"candidate": {"a": {"citation_precision": 0.9}},
+                           "baseline": {"a": {"citation_precision": 0.8}}}}
+        s = js.summarize(r)
+        self.assertEqual(s["objective_delta_candidate_minus_baseline"]["citation_precision"], 0.1)
+        self.assertEqual(s["ties"], 1)
 
 
 if __name__ == "__main__":
