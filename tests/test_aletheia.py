@@ -463,7 +463,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     def test_tiers_scale_and_version(self):
         base = tempfile.mkdtemp()
         q, dp = self._init("quick", base), self._init("deep", base)
-        self.assertEqual(q["version"], "aletheia-research 0.4.0")
+        self.assertEqual(q["version"], "aletheia-research 0.4.1")
         self.assertEqual(q["thoroughness"], "quick")
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
@@ -501,6 +501,31 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         out = subprocess.check_output([sys.executable, rep, "bundle", "--run", run], text=True)
         self.assertIn("FULL BUNDLE", out)
         self.assertIn("UNIQUE_FINDING_MARKER", out)           # the actual file content is included verbatim
+
+    def test_report_score_ships_with_skill(self):
+        # 0.4.1 parity: the headline scorer is INSIDE the skill (report.py score) — no repo/eval dep.
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "score topic", "--base", base], text=True).strip()
+        os.makedirs(os.path.join(run, "index"), exist_ok=True)
+        with open(os.path.join(run, "verify.jsonl"), "w") as fh:
+            for v in ("supported", "supported", "off_topic", "relevant"):
+                fh.write(json.dumps({"verdict": v}) + "\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        s = json.loads(subprocess.check_output([sys.executable, rep, "score", "--run", run], text=True))
+        self.assertEqual(s["citation_precision"], round(2 / 3, 3))   # off_topic counts in denominator
+        self.assertEqual(s["citation_denominator"], 3)
+        self.assertFalse(s["citation_complete"])                     # 1 claim still awaiting
+        self.assertIsNone(s["citation_accuracy"])
+
+    def test_report_write_brief_emits_deliverable(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "brief topic", "--base", base], text=True).strip()
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        subprocess.check_call([sys.executable, rep, "write-brief", "--run", run, "--text",
+                               "# Brief\nMULTIPAGE_MARKER"], stdout=subprocess.DEVNULL)
+        self.assertIn("MULTIPAGE_MARKER", open(os.path.join(run, "brief.md")).read())
 
     def test_bundle_survives_corrupt_artifacts(self):
         # review hardening: a non-UTF-8 byte or a non-dict sources line must NOT abort the whole
@@ -620,6 +645,25 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertIn("curricula", out)
         self.assertNotIn("study", out)      # generic meta word, dropped
         self.assertNotIn("analysis", out)
+
+    def test_rank_relevance_gate_excludes_offtopic_high_authority(self):
+        # 0.4.1 efficacy parity: authority must NOT buy a read slot for an off-topic source; the
+        # decisive on-topic primary must be read instead (the cold-caller quality gap).
+        rk = self._load("ar_rank", "rank.py")
+        q = "does magnesium glycinate supplementation improve sleep in adults"
+        recs = [
+            {"url": "https://www.nature.com/articles/x", "title": "Deep learning segmentation of coral reefs",
+             "_class": "evidence", "primary": True},                                     # off-topic, high authority
+            {"url": "https://consensus.app/r/mg", "title": "does magnesium improve sleep summary",
+             "_class": "evidence"},                                                       # secondary aggregator
+            {"url": "https://j.example/rct", "title": "magnesium glycinate supplementation improves sleep quality randomized adults",
+             "_class": "evidence", "primary": True},                                      # on-topic primary
+        ]
+        sel = rk.select_reads(rk.rank(q, recs), 1)
+        urls = " ".join(r["url"] for r in sel)
+        self.assertIn("j.example/rct", urls)          # the on-topic primary is read
+        self.assertNotIn("nature.com", urls)          # off-topic-high-authority is NOT
+        self.assertNotIn("consensus.app", urls)       # secondary aggregator is NOT
 
     def test_b6_short_distinctive_token_not_dropped(self):
         # review regression: a short but SPECIFIC token (keto/json) must not be dropped in favor of a

@@ -27,6 +27,34 @@ Versioning is [SemVer](https://semver.org/); each notable change bumps minor/pat
 
 ---
 
+## aletheia-research 0.4.1 — 2026-07-09 (portability parity — ship == test)
+
+A cold-caller audit (a subagent invoking the skill from an unrelated project with ONLY the installed
+SKILL.md) confirmed the **engine** is byte-identical cross-project (install is symlinks → `realpath`
+resolves scripts, cross-skill imports, and `.env` back to the repo) — but found the skill was **not
+self-contained** and its **default output was lower quality than a hand-driven run**. Both break the
+iterate-then-ship loop (you'd test one thing and ship another). Fixed:
+
+- **Scorer now ships with the skill.** The headline `citation_accuracy` used `scripts/eval/score_run.py`
+  — outside the skills tree and coupled to `deep-aletheia`. Added `report.py score` (self-contained via
+  the sibling-skill `realpath` path); SKILL step 6 calls it. A cold caller can now compute the gated score.
+- **Deliverable is script-writable.** `brief.md` had no command and a guarded harness blocks writing
+  report `.md` files. Added `report.py write-brief`; SKILL step 7 offers it.
+- **Atlas step made optional/repo-local.** The final "accrete to consilient-atlas" required another
+  skill's outputs (`synthesis.md`/`defensibility.md`) this loop never produces — it now cleanly skips
+  outside the repo (not part of the deliverable).
+- **Ranker efficacy fix (the real "test ≠ ship" gap).** `rank.select_reads` now applies a hard
+  relevance READ-gate (`REL_READ=0.25`): authority can reorder among on-topic hits but can NEVER buy a
+  read slot for an off-topic source — the cold run had been reading high-authority-but-off-topic papers
+  (and a secondary aggregator, `consensus.app`) while the decisive primaries sat unread. Secondary
+  research-summarizers (consensus/elicit/scite/…) added to `FARM`.
+- **SKILL: framings vs `max_children` clarified** (don't split into more branches than `max_k`; merge
+  or push extras to depth-2), and version headings/docstrings corrected to 0.4.
+
+Tests 78 → 81. NOTE: cross-*machine* portability still requires the repo present + `install.sh` re-run
+(the symlinks resolve to this repo); on the same machine, a cold call is now byte-identical AND
+self-contained through the deliverable.
+
 ## aletheia-research 0.4.0 — 2026-07-09 (unlimited by default + verbosity dial)
 
 Depth and audience are now first-class. Motivation: bounded tiers produced surface-level briefs that

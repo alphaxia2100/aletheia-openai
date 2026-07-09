@@ -51,11 +51,14 @@ AUTH_MED = {  # reputable orgs / official docs / code / wire services
     "kernel.org", "postgresql.org", "anthropic.com", "openai.com", "deepmind.com",
     "cognition.ai", "stanford.edu", "mit.edu", "berkeley.edu",
     "reuters.com", "apnews.com", "bbc.com", "bbc.co.uk"}
-FARM = {  # low-authority aggregators / SEO-prone
+FARM = {  # low-authority aggregators / SEO-prone / SECONDARY research-summarizers (never a primary)
     "medium.com", "dev.to", "geeksforgeeks.org", "w3schools.com", "tutorialspoint.com",
     "javatpoint.com", "simplilearn.com", "guru99.com", "baeldung.com", "toptal.com",
     "analyticsvidhya.com", "kdnuggets.com", "towardsdatascience.com", "hackernoon.com",
-    "quora.com", "linkedin.com"}
+    "quora.com", "linkedin.com",
+    # secondary AI/research summarizers — they restate primaries; chase the primary, never cite these
+    "consensus.app", "elicit.com", "elicit.org", "scholarcy.com", "scite.ai",
+    "connectedpapers.com", "researchrabbit.ai", "semanticscholar.org.reader", "perplexity.ai"}
 
 
 def authority(url: str) -> float:
@@ -95,14 +98,24 @@ def rank(query: str, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
+#: hard relevance gate for READS: authority can reorder among on-topic hits but must NEVER buy a read
+#: slot for an off-topic source. Fixes the audited failure where a high-authority but off-topic paper
+#: (or a secondary aggregator) got read while the decisive on-topic primary sat unread.
+REL_READ = 0.25
+
+
 def select_reads(ranked: List[Dict[str, Any]], k: int) -> List[Dict[str, Any]]:
     """Spend the read budget with class quotas so primaries are read, not crowded out.
-    >=60% evidence, >=1 un-laundered (lead_gen/color), color capped at ~25%."""
+    >=60% evidence, >=1 un-laundered (lead_gen/color), color capped at ~25%. RELEVANCE-GATED:
+    only sources at/above REL_READ (normalized relevance) are eligible, so authority can't pull an
+    off-topic source into a read slot — unless too few pass, then fall back to score order."""
     if k <= 0:
         return []
-    ev = [r for r in ranked if _class_of(r) == "evidence"]
-    lg = [r for r in ranked if _class_of(r) == "lead_gen"]
-    co = [r for r in ranked if _class_of(r) == "color"]
+    relevant = [r for r in ranked if r.get("_relnorm", 0) >= REL_READ]
+    pool = relevant if len(relevant) >= k else ranked   # don't starve reads if the topic is thin
+    ev = [r for r in pool if _class_of(r) == "evidence"]
+    lg = [r for r in pool if _class_of(r) == "lead_gen"]
+    co = [r for r in pool if _class_of(r) == "color"]
     want_ev = max(1, math.ceil(0.6 * k))
     want_co = max(0, int(0.25 * k))
     pick: List[Dict[str, Any]] = []
@@ -119,13 +132,14 @@ def select_reads(ranked: List[Dict[str, Any]], k: int) -> List[Dict[str, Any]]:
     take(ev, want_ev)
     take(lg, max(1, k // 4))          # ensure some un-laundered lead-gen
     take(co, want_co)
-    # fill the rest by pure score
-    for r in ranked:
-        if len(pick) >= k:
-            break
-        u = r.get("url", "")
-        if u and u not in seen:
-            seen.add(u); pick.append(r)
+    # fill the rest by pure score — from the relevance-gated pool first, only then the full list
+    for src in (pool, ranked):
+        for r in src:
+            if len(pick) >= k:
+                break
+            u = r.get("url", "")
+            if u and u not in seen:
+                seen.add(u); pick.append(r)
     pick.sort(key=lambda r: r["score"], reverse=True)
     return pick[:k]
 

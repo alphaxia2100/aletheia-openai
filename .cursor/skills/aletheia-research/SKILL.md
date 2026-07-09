@@ -100,6 +100,10 @@ independence report (step 5), not asserted.
 
 ### 2. Decompose into a budget-weighted tree
 Split the root into the framings; a node **splits** if broad and budget allows, else it's a **leaf**.
+`cansplit` reports `max_k` (= `max_children`): the default `unlimited`/`max` allow 6/8, but bounded
+tiers cap at 3–5, so if you have MORE framings than `max_k`, don't exceed it — either merge related
+framings into one branch or split the root into the top branches and push the extra framings to a
+second level (depth-2). Never pass K > `max_k` (it errors by design, to avoid starving children).
 ```bash
 python3 "$A/treestate.py" cansplit --node "$RUN/tree/root"
 python3 "$A/treestate.py" split --node "$RUN/tree/root" \
@@ -163,13 +167,20 @@ verdict to `supported`/`contradicted`/`unsupported`. Only `supported` survives i
 `contradicted` → cut/flip; `unsupported` → downgrade to Unverified.
 **Use a DIFFERENT model for the Fact-Check than wrote the draft** (self-preference/verbosity bias is
 real — the writer grades its own work too kindly; at `deep`/`exhaustive`/`unlimited`/`max` spawn the verifier as a
-subagent on another model). The score is **code-gated, not honor-system**: `score_run.py` reports
-`citation_accuracy` (= precision) as **null until `citation_complete` is true** — i.e. every on-topic
-claim has a final verdict (`citation_coverage` = 1.0) — alongside the stated `citation_denominator`
-(claims judged). A run with claims still `awaiting_llm_check` has NO headline accuracy: finish the pass.
+subagent on another model). The score is **code-gated, not honor-system** — compute it with the
+skill's own scorer (ships with the skill; no repo/eval dependency):
+```bash
+python3 "$A/report.py" score --run "$RUN"    # citation_accuracy/precision/coverage/denominator + independence
+```
+`citation_accuracy` (= precision) is **null until `citation_complete` is true** — i.e. every on-topic
+claim has a final verdict (`citation_coverage` = 1.0), with the stated `citation_denominator` (claims
+judged; readable `off_topic` counts against it so a dropped citation can't vanish). A run with claims
+still `awaiting_llm_check` has NO headline accuracy: finish the pass.
 
 ### 7. Answer, grounded — scaled to the VERBOSITY
-Always write `$RUN/brief.md` with: **Bottom line** · **Agreement** (independent sources converge) ·
+Always write `$RUN/brief.md` (author it directly; or if your harness blocks writing report `.md`
+files, use the skill's own writer: `python3 "$A/report.py" write-brief --run "$RUN" --file <draft>`).
+Include: **Bottom line** · **Agreement** (independent sources converge) ·
 **Disagreement** (name both sides; do not smooth over) · **Unverified / single-origin** · **Gaps**
 (paywalled primaries, missing large RCTs, empty/degraded channels — state them). Every claim links to
 the **primary you read**; dates on time-sensitive claims. **X/YouTube are `color`** (never cite as
@@ -183,7 +194,10 @@ fact); **Reddit/HN are `lead_gen`** — cite the primary they point to, not the 
   manual searching. Use `report.py outline --run "$RUN"` to make sure every branch is represented so
   nothing is silently dropped. If it reads like a five-minute Google, expand it.
 
-Accrete the brief into the `consilient-atlas` so surveys compound.
+**Optional (repo-local):** if you are running inside the Aletheia repo, accrete the brief into the
+`consilient-atlas` so surveys compound (copy `brief.md` into `atlas/surveys/` and add an index row).
+Skip this cleanly when called from any other project — it is not part of the deliverable and has no
+external dependency; the brief + the run dir are the output.
 
 ## Observability & resume
 `treestate.py tree --run "$RUN"` shows the whole tree (state/budget/findings). Every node has
