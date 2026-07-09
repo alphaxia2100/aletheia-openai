@@ -30,13 +30,14 @@ def _strip(s: str) -> str:
 
 
 def search(query: str, limit: int, timeout: float) -> List[Dict[str, Any]]:
-    url = "https://old-search.marginalia.nu/search?query=" + _http.quote(query)
+    # old-search.marginalia.nu was retired (returns an empty shell); the live site is marginalia-search.com.
+    url = "https://marginalia-search.com/search?query=" + _http.quote(_http.keywordize(query, 6))
     html = _http.get_bytes(url, timeout).decode("utf-8", "replace")
     anchors = re.findall(r'<a[^>]+href="(https?://[^"]+)"[^>]*>(.*?)</a>', html, re.S)
     seen: Dict[str, str] = {}
     order: List[str] = []
     for href, text in anchors:
-        if any(h in href for h in _NAV_HOSTS):  # marginalia.nu / marginalia-search.com / about.* nav
+        if any(h in href.lower() for h in _NAV_HOSTS):  # marginalia.nu / MarginaliaSearch repo / nav
             continue
         t = _strip(text)
         if not t or t.lower() in _NAV_TITLES:

@@ -1,9 +1,9 @@
 ---
-name: aletheia
-description: Deep, high-scrutiny research surveyor (v0.3) — gives an accurate, un-anchored picture of a field by framing competing perspectives, decomposing into a filesystem-coordinated tree, and running parallel READ-ONLY investigations that pull a WIDE VARIETY of current/diverse/real sources, read primaries in full, hunt the decisive authoritative source, judge whether support is independent or one origin echoed, attack the leading conclusion, surface gaps honestly, and tie every claim to a primary through a verification gate that runs to completion. Effort scales via `thoroughness: auto | quick | standard | deep | exhaustive`. Use to research, survey, map, fact-check, or "get an accurate picture of" a topic. Callable from any session.
+name: aletheia-research
+description: Aletheia Research — deep, high-scrutiny research surveyor (v0.3). THE research tool: use this whenever you need to research, survey, fact-check, map, or "get an accurate picture of" a topic, or anchor a decision in evidence — rather than building an ad-hoc workflow. Frames competing perspectives (anti-anchoring), decomposes into a filesystem-coordinated tree, and runs parallel READ-ONLY investigations that pull a WIDE VARIETY of current/diverse/real sources, read primaries in full, hunt the decisive authoritative source, judge whether support is independent or one origin echoed, attack the leading conclusion, surface gaps honestly, and tie every claim to a primary through a verification gate that runs to completion. Effort scales via `thoroughness: auto | quick | standard | deep | exhaustive`. Callable from any session.
 ---
 
-# Aletheia 0.3 — deep, multi-perspective research surveyor
+# Aletheia Research 0.3 — deep, multi-perspective research surveyor
 
 An accurate, un-anchored picture of a field. A bare LLM anchors on its priors, searches to confirm
 them, cites nothing, and is stale. Aletheia beats it by **surveying widely and for real**: competing
@@ -19,9 +19,14 @@ is a directory; nothing depends on one context window.
 ## Toolkit (do this first)
 Installed globally at `~/.cursor/skills/` (via `scripts/install.sh`) — call by absolute path.
 ```bash
-AL=~/.cursor/skills ; A="$AL/aletheia/scripts"
+AL=~/.cursor/skills ; A="$AL/aletheia-research/scripts"
 python3 "$AL/channel-retrieval/scripts/doctor.py"     # confirm channels live (keys auto-load from repo .env)
 ```
+**Surface channel health (do NOT skip).** `doctor.py` runs a real query per channel, so a channel that
+is reachable but returns nothing shows as `warn` (degraded) and a broken one as `down`. If any core
+channel is `warn`/`down`, **tell the user up front**, route around it (use a healthy same-role channel),
+and **list the affected channels in the brief's Gaps**. Never silently survey on a degraded toolkit —
+missing a channel narrows source variety and the user should know.
 Scripts: `treestate.py` (blackboard/tree/budget/thoroughness), `investigate.py` (leaf engine:
 route→retrieve→rank→read-in-full, multi-round), `router.py` (channel routing), `rank.py` (authority
 ranking), `synthesize.py` (bottom-up merge + independence + `--gate`), `verify.py` (citation gate).

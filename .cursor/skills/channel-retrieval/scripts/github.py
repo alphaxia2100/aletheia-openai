@@ -19,7 +19,7 @@ def search(query: str, limit: int, timeout: float) -> List[Dict[str, Any]]:
     if os.environ.get("GITHUB_TOKEN"):
         headers["Authorization"] = "Bearer " + os.environ["GITHUB_TOKEN"]
     url = ("https://api.github.com/search/repositories?q=%s&sort=stars&order=desc&per_page=%d"
-           % (_http.quote(query), min(limit, 50)))
+           % (_http.quote(_http.keywordize(query, 4)), min(limit, 50)))  # GitHub ANDs terms -> long q = 0
     data = _http.get_json(url, timeout, headers)
     out: List[Dict[str, Any]] = []
     for r in (data.get("items") or []):

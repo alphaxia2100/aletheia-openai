@@ -1,8 +1,21 @@
 # Changelog
 
 Current skill:
-- **aletheia 0.3** — deep, multi-perspective research surveyor (filesystem tree; parallel read-only
-  investigations; wide source variety; decisive-source hunt; completed verification). This is the one to use.
+- **aletheia-research 0.3** — deep, multi-perspective research surveyor (filesystem tree; parallel
+  read-only investigations; wide source variety; decisive-source hunt; completed verification). This is
+  the one to use. (Renamed from `aletheia` so its purpose — the research tool to invoke — is explicit.)
+
+## channel-retrieval — reliability fixes (2026-07-08)
+- **Query formulation:** keyword channels (HN/Stack Exchange/GitHub/Marginalia) returned 0 on long
+  natural-language queries; added a shared `_http.keywordize()` (short queries pass through) so they
+  match. Fixes the silent variety loss seen in real runs.
+- **Marginalia:** pointed at the dead `old-search.marginalia.nu`; switched to the live
+  `marginalia-search.com` (results parse again).
+- **Enabled DuckDuckGo** as a second reliable keyless independent web index alongside Brave.
+- **doctor.py is now FUNCTIONAL:** it runs a real query per channel and flags "live but 0 results" as
+  `warn` (a false `ok` had hidden Marginalia). aletheia-research surfaces `warn`/`down` channels to the
+  user and lists them in the brief's Gaps. See `docs/channel-proposals.md` for sources worth adding.
+
 
 Kept runnable ONLY as eval baselines (`scripts/eval/eval_compare.py`):
 - **deep-aletheia 0.2** — the direct **ancestor** of aletheia 0.3 (frozen).

@@ -1,7 +1,7 @@
 {
   "_comment": "Single source of truth for retrieval channels. 'index_group' is what independence is counted over (two channels sharing an index_group are NOT independent = fake diversity). 'class' is the default epistemic weight: evidence > lead_gen > color. Scripts (provenance_graph.py) and skills read this file.",
   "core_default": ["brave", "marginalia", "youtube", "x", "openalex", "arxiv", "reddit", "hackernews"],
-  "enabled": ["brave", "marginalia", "youtube", "x", "openalex", "arxiv", "reddit", "hackernews", "github", "stackexchange"],
+  "enabled": ["brave", "duckduckgo", "marginalia", "youtube", "x", "openalex", "arxiv", "reddit", "hackernews", "github", "stackexchange"],
   "utilities_always_on": ["read", "rerank", "provenance_graph", "dedupe", "deepen", "doctor", "entity_resolve"],
   "enabled_note": "NO-KEY FIRST (this is a personal research project). The core runs with ZERO API keys: web = marginalia (independent) + duckduckgo, video = youtube (yt-dlp discovery + youtube-transcript-api), primary = arxiv + openalex (keyless low-volume), community = reddit (pullpush) + hackernews, X via agent-reach browser session. Free-key UPGRADES (not required): add 'brave' (better independent web) and put OPENALEX_API_KEY for volume. PAID upgrades (optional): exa (neural web), getxapi/twitterapi (X API). Enable any hidden channel: `python3 ~/.cursor/skills/channel-retrieval/scripts/channels.py enable <name>`.",
   "classes": {

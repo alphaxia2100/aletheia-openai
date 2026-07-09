@@ -37,17 +37,18 @@ flowchart TD
 
 ## Skills
 
-> **Current skill: `aletheia` 0.3.** The flagship is the deep, multi-perspective tree surveyor —
-> built off **deep-aletheia 0.2** (which won a blind LLM-judge on completeness, source variety, and
-> grounding), keeping its good parts and adding a decisive-source hunt, chase-the-primary discipline,
-> wider source variety, and a thoroughness dial. See `docs/aletheia-0.3-design.md` and the bake-off in
-> `docs/evals/`. Invoke: *"use the aletheia skill to survey \<topic\> (thoroughness: auto)."*
+> **Current skill: `aletheia-research` 0.3.** The flagship is the deep, multi-perspective tree
+> surveyor — built off **deep-aletheia 0.2** (which won a blind LLM-judge on completeness, source
+> variety, and grounding), keeping its good parts and adding a decisive-source hunt, chase-the-primary
+> discipline, wider source variety, and a thoroughness dial. See `docs/aletheia-0.3-design.md` and the
+> bake-off in `docs/evals/`. Invoke: *"use the aletheia-research skill to survey \<topic\> (thoroughness: auto)."*
 
 | Skill | Role |
 |-------|------|
-| **`aletheia` 0.3** | **Current** deep surveyor (multi-perspective tree). `thoroughness: auto\|quick\|standard\|deep\|exhaustive`. |
-| `deep-aletheia` 0.2 | *Frozen — direct ancestor of aletheia 0.3; eval baseline.* |
+| **`aletheia-research` 0.3** | **Current** deep surveyor (multi-perspective tree). `thoroughness: auto\|quick\|standard\|deep\|exhaustive`. |
+| `deep-aletheia` 0.2 | *Frozen — direct ancestor of aletheia-research 0.3; eval baseline.* |
 | `surveyor` 0.1 | *Retired 2026-07-08 — eval baseline (single-agent).* |
+| `aletheia` v1.0 | *Retired — original single-agent loop; superseded by `aletheia-research`.* |
 | `survey-scope` | Turns a topic into a **portfolio of competing framings** + scoped subagent specs. Resolves entities *before* searching. |
 | `channel-retrieval` | Per-channel playbooks. Every result is tagged with `index_of_origin` + an **evidence / lead-gen / color** class. |
 | `iterative-deepening` | Breadth x depth search loop with reflection (search -> learn -> recurse into gaps). Turns flat fan-out into real research. |

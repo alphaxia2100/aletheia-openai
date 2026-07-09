@@ -121,7 +121,7 @@ THOROUGHNESS = {
 
 def init_run(topic: str, slug: str = "", budget: float = 32.0, unit: float = 4.0,
              max_depth: int = 3, max_children: int = 5, max_nodes: int = 40,
-             base: str = "runs/aletheia", thoroughness: str = "") -> str:
+             base: str = "runs/aletheia-research", thoroughness: str = "") -> str:
     tier = thoroughness if thoroughness in THOROUGHNESS else ""
     if tier:  # tier overrides the budget/caps
         t = THOROUGHNESS[tier]
@@ -131,7 +131,7 @@ def init_run(topic: str, slug: str = "", budget: float = 32.0, unit: float = 4.0
     run = os.path.join(base, "%s-%s" % (ts, _slugify(slug or topic)))
     os.makedirs(os.path.join(run, "index"), exist_ok=True)
     _write_json(os.path.join(run, "run.json"), {
-        "topic": topic, "created": _now(), "version": "aletheia 0.3.0",
+        "topic": topic, "created": _now(), "version": "aletheia-research 0.3.0",
         "thoroughness": tier or (thoroughness or "custom"),
         "budget": budget, "unit": unit, "max_depth": max_depth,
         "max_children": max_children, "max_nodes": max_nodes, "state": "framing",
@@ -341,7 +341,7 @@ def main(argv=None) -> int:
     p.add_argument("--slug", default=""); p.add_argument("--budget", type=float, default=32.0)
     p.add_argument("--unit", type=float, default=4.0); p.add_argument("--max-depth", type=int, default=3)
     p.add_argument("--max-children", type=int, default=5); p.add_argument("--max-nodes", type=int, default=40)
-    p.add_argument("--base", default="runs/aletheia")
+    p.add_argument("--base", default="runs/aletheia-research")
     p.add_argument("--thoroughness", default="", help="quick|standard|deep|exhaustive (overrides budget/caps)")
 
     p = sub.add_parser("split"); p.add_argument("--node", required=True)

@@ -99,15 +99,31 @@ def _simple(name: str, group: str, url: str, t: float, headers=None, warn_note="
     return (name, group, "ok" if ok else "down", name if ok else "-", note if ok else (warn_note or note))
 
 
+def p_search(name: str, group: str, modname: str, t: float, q: str = "climate change") -> Tuple[str, ...]:
+    """FUNCTIONAL probe: actually call the client's search() and count results, so a channel that is
+    HTTP-200 but returns NOTHING (e.g. a dead scrape endpoint or an API change) shows as `warn`,
+    not a false `ok`. This is what lets Aletheia surface silently-broken channels."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+        m = __import__(modname)
+        fn = getattr(m, "search", None) or getattr(m, "yt_search", None)
+        out = fn(q, 3, t) or []
+        n = len(out)
+        return (name, group, "ok" if n else "warn", name,
+                ("%d results" % n) if n else "live but 0 results — DEGRADED (check client/endpoint)")
+    except Exception as e:  # noqa: BLE001
+        return (name, group, "down", "-", "%s: %s" % (type(e).__name__, str(e)[:55]))
+
+
 def p_arxiv(t: float) -> Tuple[str, ...]:
     ok, note = live("https://export.arxiv.org/api/query?search_query=all:test&max_results=1", t)
     if "429" in note:
         return ("arxiv", "arxiv", "warn", "arxiv", "rate-limited (429); circuit-breaker active — use openalex/semanticscholar")
     return ("arxiv", "arxiv", "ok" if ok else "down", "arxiv" if ok else "-", note)
-def p_hn(t): return _simple("hackernews", "hackernews", "https://hn.algolia.com/api/v1/search?query=test&hitsPerPage=1", t)
+def p_hn(t): return p_search("hackernews", "hackernews", "hn", t)
 def p_wikipedia(t): return _simple("wikipedia", "wikipedia", "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=test&format=json&srlimit=1", t)
-def p_duckduckgo(t): return _simple("duckduckgo", "bing", "https://duckduckgo.com/ac/?q=test&type=list", t)
-def p_marginalia(t): return _simple("marginalia", "marginalia", "https://old-search.marginalia.nu/search?query=test", t)
+def p_duckduckgo(t): return p_search("duckduckgo", "duckduckgo", "web_ddg", t)
+def p_marginalia(t): return p_search("marginalia", "marginalia", "web_marginalia", t)
 def p_jina(t): return _simple("read (jina)", "jina", "https://r.jina.ai/https://example.com", t)
 
 
@@ -138,7 +154,7 @@ def p_youtube(t: float) -> Tuple[str, ...]:
     if ok:
         return ("youtube (transcripts)", "youtube", "warn", "-", "reachable; pip install --user youtube-transcript-api yt-dlp")
     return ("youtube (transcripts)", "youtube", "down", "-", note)
-def p_se(t): return _simple("stackexchange", "stackexchange", "https://api.stackexchange.com/2.3/info?site=stackoverflow", t)
+def p_se(t): return p_search("stackexchange", "stackexchange", "stackexchange", t, q="python asyncio")
 def _has_cli(name: str) -> bool:
     if shutil.which(name):
         return True
@@ -160,12 +176,8 @@ def p_crossref(t): return _simple("crossref", "crossref", "https://api.crossref.
 
 
 def p_github(t: float) -> Tuple[str, ...]:
-    headers = {"Accept": "application/vnd.github+json"}
-    if key("GITHUB_TOKEN"):
-        headers["Authorization"] = "Bearer " + os.environ["GITHUB_TOKEN"]
-    ok, note = live("https://api.github.com/rate_limit", t, headers)
-    status = "ok" if ok else "down"
-    return ("github", "github", status, "github", note + ("" if key("GITHUB_TOKEN") else " (60/hr unauth; add GITHUB_TOKEN)"))
+    name, group, status, active, note = p_search("github", "github", "github", t, q="deep learning")
+    return (name, group, status, active, note + ("" if key("GITHUB_TOKEN") else " (60/hr unauth; add GITHUB_TOKEN)"))
 
 
 def p_s2(t: float) -> Tuple[str, ...]:

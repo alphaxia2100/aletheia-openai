@@ -15,7 +15,7 @@ import _http  # noqa: E402
 
 def search(query: str, limit: int, timeout: float) -> List[Dict[str, Any]]:
     url = ("https://hn.algolia.com/api/v1/search?tags=story&hitsPerPage=%d&query=%s"
-           % (limit, _http.quote(query)))
+           % (limit, _http.quote(_http.keywordize(query, 5))))  # long NL queries return 0 on Algolia
     data = _http.get_json(url, timeout)
     out: List[Dict[str, Any]] = []
     for h in data.get("hits", []):

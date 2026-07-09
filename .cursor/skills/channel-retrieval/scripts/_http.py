@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -61,6 +62,30 @@ def now_iso() -> str:
 
 def quote(s: str) -> str:
     return urllib.parse.quote(str(s))
+
+
+_KW_STOP = set(
+    "the a an of for and or to in on is are be was were with without vs versus more than most "
+    "how what why which when who into over under about across your our their its it this that these "
+    "those do does did can could should would will may might best good better new using use used "
+    "study studies research paper papers review overview guide intro introduction survey".split())
+
+
+def keywordize(query: str, n: int = 6) -> str:
+    """Reduce a long natural-language query to its salient keywords for KEYWORD-matching APIs
+    (HN Algolia, Stack Exchange, GitHub, Marginalia), which return NOTHING when a long sentence
+    over-constrains them. Short queries pass through unchanged; quoted phrases are preserved."""
+    if not query or len(query.split()) <= n:
+        return query
+    phrases = re.findall(r'"([^"]+)"', query)
+    kept, seen = [], set()
+    for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9+.#_-]{1,}", query.lower()):
+        if len(w) < 3 or w in _KW_STOP or w in seen:
+            continue
+        seen.add(w)
+        kept.append(w)
+    terms = phrases + [w for w in kept if w not in " ".join(phrases).lower()]
+    return " ".join(terms[:n]) or query
 
 
 def get_bytes(url: str, timeout: float = 10.0, headers: Optional[Dict[str, str]] = None,

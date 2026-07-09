@@ -331,7 +331,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     Run via subprocess to avoid a module-name clash with the frozen deep-aletheia `treestate`."""
 
     def _init(self, tier, base):
-        t = os.path.join(ROOT, ".cursor", "skills", "aletheia", "scripts", "treestate.py")
+        t = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "treestate.py")
         run = subprocess.check_output(
             [sys.executable, t, "init", "test topic", "--thoroughness", tier, "--base", base],
             text=True).strip()
@@ -340,7 +340,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     def test_tiers_scale_and_version(self):
         base = tempfile.mkdtemp()
         q, dp = self._init("quick", base), self._init("deep", base)
-        self.assertEqual(q["version"], "aletheia 0.3.0")
+        self.assertEqual(q["version"], "aletheia-research 0.3.0")
         self.assertEqual(q["thoroughness"], "quick")
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper

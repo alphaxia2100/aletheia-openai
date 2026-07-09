@@ -29,7 +29,7 @@ def _get_json_gz(url: str, timeout: float) -> Any:
 def search(query: str, limit: int, timeout: float) -> List[Dict[str, Any]]:
     site = os.environ.get("SE_SITE", "stackoverflow")
     params = ("order=desc&sort=relevance&pagesize=%d&site=%s&q=%s"
-              % (min(limit, 100), site, _http.quote(query)))
+              % (min(limit, 100), site, _http.quote(_http.keywordize(query, 5))))  # long q -> 0 hits
     key = os.environ.get("STACKEXCHANGE_KEY")
     if key:
         params += "&key=" + _http.quote(key)
