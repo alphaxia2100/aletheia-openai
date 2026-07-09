@@ -371,10 +371,121 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     def test_tiers_scale_and_version(self):
         base = tempfile.mkdtemp()
         q, dp = self._init("quick", base), self._init("deep", base)
-        self.assertEqual(q["version"], "aletheia-research 0.3.0")
+        self.assertEqual(q["version"], "aletheia-research 0.3.1")
         self.assertEqual(q["thoroughness"], "quick")
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
+
+
+class TestAletheiaResearch031(unittest.TestCase):
+    """0.3.1 audit fixes: weighted split, resumable frontier, structural independence,
+    _anchor de-pollution, biomed authority, code-gated citation coverage. The aletheia-research
+    scripts share module names with the frozen deep-aletheia baseline imported above, so CLI-level
+    checks go through subprocess and Python-level checks load the AR modules under distinct names."""
+
+    AR = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts")
+
+    @classmethod
+    def _load(cls, name, fname):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(name, os.path.join(cls.AR, fname))
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        return m
+
+    def _tinit(self, base, budget, unit):
+        t = os.path.join(self.AR, "treestate.py")
+        return subprocess.check_output([sys.executable, t, "init", "topic", "--budget", str(budget),
+                                        "--unit", str(unit), "--base", base], text=True).strip()
+
+    def test_weighted_split_conserves_and_floors(self):
+        run = self._tinit(tempfile.mkdtemp(), 32, 4)
+        root = os.path.join(run, "tree", "root")
+        t = os.path.join(self.AR, "treestate.py")
+        dirs = subprocess.check_output(
+            [sys.executable, t, "split", "--node", root, "--children",
+             json.dumps([["a", "qa"], ["b", "qb"], ["c", "qc"]]), "--weights", "[3,1,2]"],
+            text=True).split()
+        b = [json.load(open(os.path.join(d, "status.json")))["budget"] for d in dirs]
+        self.assertAlmostEqual(sum(b), 32, places=2)      # budget conserved across the split
+        self.assertTrue(all(x >= 4 - 1e-9 for x in b))    # every child floored at the scrutiny unit
+        self.assertGreater(b[0], b[2])                    # weight 3 > weight 2 ...
+        self.assertGreater(b[2], b[1])                    # ... > weight 1 (contestedness-scaled)
+
+    def test_uniform_split_is_the_default(self):
+        run = self._tinit(tempfile.mkdtemp(), 12, 4)
+        root = os.path.join(run, "tree", "root")
+        t = os.path.join(self.AR, "treestate.py")
+        dirs = subprocess.check_output(
+            [sys.executable, t, "split", "--node", root, "--children",
+             json.dumps([["a", "qa"], ["b", "qb"], ["c", "qc"]])], text=True).split()
+        b = [json.load(open(os.path.join(d, "status.json")))["budget"] for d in dirs]
+        self.assertEqual(b, [4.0, 4.0, 4.0])              # no weights -> uniform (backward compatible)
+
+    def test_resumable_frontier_repicks_crashed_active_node(self):
+        run = self._tinit(tempfile.mkdtemp(), 12, 4)
+        root = os.path.join(run, "tree", "root")
+        t = os.path.join(self.AR, "treestate.py")
+        subprocess.check_call([sys.executable, t, "split", "--node", root, "--children",
+                               json.dumps([["a", "qa"], ["b", "qb"]])], stdout=subprocess.DEVNULL)
+        ca = os.path.join(root, "children", "a")
+        subprocess.check_call([sys.executable, t, "status", "--node", ca, "--set", "active"],
+                              stdout=subprocess.DEVNULL)   # simulate a crash mid-round
+        plain = subprocess.check_output([sys.executable, t, "frontier", "--run", run,
+                                         "--state", "pending"], text=True).split()
+        resume = subprocess.check_output([sys.executable, t, "frontier", "--run", run,
+                                          "--resumable"], text=True).split()
+        self.assertNotIn(ca, plain)                       # plain pending scan silently skips it (the bug)
+        self.assertIn(ca, resume)                         # --resumable catches the crashed active node
+
+    def test_structural_independence_catches_echo_voice_key_misses(self):
+        syn = self._load("ar_synthesize", "synthesize.py")
+        text = ("the agency concluded the additive is safe at current exposure after reviewing the "
+                "full toxicological evidence and found no cause to revise the acceptable intake")
+        echo = [{"id": "e%d" % i, "url": "https://s%d.example/a" % i, "title": "Agency clears additive",
+                 "snippet": text, "authors": [{"name": "Reporter %d" % i}]} for i in range(6)]
+        ind = syn.independence(echo)
+        self.assertGreaterEqual(ind["voices"], 5)             # voice_key thinks they're independent
+        self.assertLessEqual(ind["independent_origins"], 2)   # structural clustering collapses the echo
+        self.assertGreaterEqual(ind["origin_echo_ratio"], 0.6)
+
+    def test_structural_independence_keeps_distinct_primaries(self):
+        syn = self._load("ar_synthesize", "synthesize.py")
+        prim = [{"id": "p%d" % i, "url": "https://journals.plos.org/x?id=%d" % i,
+                 "doi": "10.1371/j.%d" % i, "title": "Distinct study %d" % i,
+                 "snippet": "a unique finding about cohort %d" % i,
+                 "authors": [{"name": "Team %d" % i}], "primary": True} for i in range(6)]
+        self.assertEqual(syn.independence(prim)["independent_origins"], 6)
+
+    def test_anchor_skips_proper_noun_and_self_contained(self):
+        inv = self._load("ar_investigate", "investigate.py")
+        # proper-noun / coined topic must NOT be prepended (the self-referential-Aletheia bug)
+        self.assertEqual(inv._anchor("multi-agent tree vs single-agent loop",
+                                     "the Aletheia Research deep-survey agent"),
+                         "multi-agent tree vs single-agent loop")
+        # but a bare leaf on a common-noun topic still gets anchored to the subject
+        self.assertIn("fasting", inv._anchor("real-world adherence", "intermittent fasting fat loss"))
+
+    def test_biomed_and_regulatory_venues_rank_primary(self):
+        rk = self._load("ar_rank", "rank.py")
+        for u in ("https://www.thelancet.com/x", "https://www.nejm.org/x", "https://www.bmj.com/x",
+                  "https://www.efsa.europa.eu/x", "https://www.who.int/x", "https://www.nice.org.uk/x"):
+            self.assertEqual(rk.authority(u), 1.0, u)
+
+    def test_citation_accuracy_null_until_coverage_complete(self):
+        run = tempfile.mkdtemp()
+        json.dump({"topic": "t", "version": "aletheia-research 0.3.1"},
+                  open(os.path.join(run, "run.json"), "w"))
+        os.makedirs(os.path.join(run, "tree"))
+        with open(os.path.join(run, "verify.jsonl"), "w") as fh:
+            for v in ("supported", "contradicted", "relevant"):     # one still awaiting the LLM pass
+                fh.write(json.dumps({"claim": "c", "verdict": v}) + "\n")
+        s = score_run.score(run)
+        self.assertFalse(s["citation_complete"])
+        self.assertIsNone(s["citation_accuracy"])            # no headline while a claim is unverified
+        self.assertEqual(s["citation_precision"], 0.5)       # 1 supported / 2 finally judged
+        self.assertEqual(s["citation_denominator"], 2)       # stated denominator = claims judged
+        self.assertEqual(s["citation_coverage"], round(2 / 3, 3))
 
 
 if __name__ == "__main__":

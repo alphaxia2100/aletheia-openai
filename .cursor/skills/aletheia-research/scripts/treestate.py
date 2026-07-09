@@ -6,12 +6,14 @@ nothing depends on a single context window: state survives on disk (resumable, a
 findings flow UP (findings.md), clarifications flow DOWN (questions.jsonl/answers.jsonl),
 and each agent keeps a reasoning log (decisions.jsonl).
 
-Budget model ("equal time per level" + "equal scrutiny per leaf"):
-  A node holds a numeric BUDGET. Splitting into K children gives each budget/K — budget is
-  CONSERVED across a split. Recurse while budget/K >= U (the scrutiny unit); otherwise the
-  node is a LEAF that spends its budget investigating. For a balanced tree this makes every
-  level sum to ~budget_root (equal effort/level) and every leaf get ~U (equal scrutiny).
-  Hard caps (max_depth/max_children/max_nodes) bound fan-out.
+Budget model (conserved split, contestedness-weighted):
+  A node holds a numeric BUDGET. Splitting into K children CONSERVES budget (children sum to the
+  parent). Allocation is uniform (budget/K) by default, or WEIGHTED by contestedness/uncertainty
+  (split --weights): floor every child at U (the scrutiny unit, no starvation), then distribute the
+  remainder by weight — contested children get deeper scrutiny (the audited fix for the old uniform
+  "equal scrutiny per leaf"; scale-effort-to-complexity, Snell 2408.03314 / UAB 2605.26849). Recurse
+  while budget/K >= U; else the node is a LEAF that spends its budget investigating. Hard caps
+  (max_depth/max_children/max_nodes) bound fan-out.
 
 Layout:
   runs/deep/<ts>-<slug>/
@@ -29,7 +31,8 @@ CLI (used by the orchestrator skill + subagents):
   treestate.py ask    --node CHILD_DIR --from PARENT --q "specific question"
   treestate.py answer --node DIR --qid QID --a "answer text"
   treestate.py findings --node DIR --text "..."   (or --file f)
-  treestate.py frontier --run RUNDIR [--state pending]
+  treestate.py split  --node DIR --children '[...]' [--weights "[3,1,2]"]
+  treestate.py frontier --run RUNDIR [--state pending] [--resumable]
   treestate.py tree   --run RUNDIR
 """
 from __future__ import annotations
@@ -131,7 +134,7 @@ def init_run(topic: str, slug: str = "", budget: float = 32.0, unit: float = 4.0
     run = os.path.join(base, "%s-%s" % (ts, _slugify(slug or topic)))
     os.makedirs(os.path.join(run, "index"), exist_ok=True)
     _write_json(os.path.join(run, "run.json"), {
-        "topic": topic, "created": _now(), "version": "aletheia-research 0.3.0",
+        "topic": topic, "created": _now(), "version": "aletheia-research 0.3.1",
         "thoroughness": tier or (thoroughness or "custom"),
         "budget": budget, "unit": unit, "max_depth": max_depth,
         "max_children": max_children, "max_nodes": max_nodes, "state": "framing",
@@ -183,8 +186,15 @@ def _find_run(node: str) -> str:
     return d if os.path.exists(os.path.join(d, "run.json")) else ""
 
 
-def split_node(node: str, children: List[List[str]], actor: str = "orchestrator") -> List[str]:
-    """children = [[qid, question], ...]. Budget is CONSERVED: each child gets budget/K."""
+def split_node(node: str, children: List[List[str]], actor: str = "orchestrator",
+               weights: Optional[List[float]] = None) -> List[str]:
+    """children = [[qid, question], ...]. Budget is CONSERVED (sum of children = parent budget).
+
+    Allocation: uniform by default (child = budget/K). If `weights` is given (one per child), use a
+    two-phase scheme — floor every child to the scrutiny `unit`, then distribute the REMAINDER by
+    weight. This is the fix for the audited "equal scrutiny per leaf" flaw: uniform allocation is
+    suboptimal (Snell arXiv:2408.03314; UAB arXiv:2605.26849; Anthropic "scale effort to complexity"),
+    so contested/uncertain children (higher weight from the scout round) get more, none below the floor."""
     st = _read_json(os.path.join(node, "status.json"), {}) or {}
     chk = can_split(node)
     k = len(children)
@@ -195,16 +205,26 @@ def split_node(node: str, children: List[List[str]], actor: str = "orchestrator"
     if k > chk["max_k"]:
         raise SystemExit("K=%d exceeds max viable %d (would starve children below the scrutiny "
                          "unit). Propose fewer, broader children." % (k, chk["max_k"]))
-    child_budget = float(st.get("budget", 0)) / k
+    B = float(st.get("budget", 0))
+    U = float(chk.get("unit", 4) or 4)
+    if weights and len(weights) == k and sum(w for w in weights if w > 0) > 0:
+        floor = min(U, B / k)                          # guarantee ≥ floor each (no starvation)
+        rem = max(0.0, B - floor * k)                  # distribute the remainder by contestedness
+        tot = sum(max(0.0, w) for w in weights)
+        budgets = [round(floor + rem * (max(0.0, w) / tot), 3) for w in weights]
+        how = "weighted (floor %.2f + remainder by contestedness)" % floor
+    else:
+        budgets = [round(B / k, 3)] * k
+        how = "uniform"
     depth = int(st.get("depth", 0)) + 1
     made = []
-    for qid, q in children:
+    for (qid, q), cb in zip(children, budgets):
         cdir = os.path.join(node, "children", _slugify(qid, 24))
-        _init_node_dir(cdir, qid, q, child_budget, depth, "worker", st.get("qid"))
+        _init_node_dir(cdir, qid, q, cb, depth, "worker", st.get("qid"))
         made.append(cdir)
     set_status(node, state="split", children=[c[0] for c in children])
-    log_decision(node, actor, "split into %d children" % k,
-                 "budget %.2f -> %.2f each (conserved); depth %d" % (st.get("budget", 0), child_budget, depth))
+    log_decision(node, actor, "split into %d children (%s)" % (k, how),
+                 "budget %.2f -> %s (conserved); depth %d" % (B, [b for b in budgets], depth))
     return made
 
 
@@ -296,14 +316,24 @@ def answer(node: str, qid: str, text: str) -> None:
     set_status(node, state="answered")
 
 
-def frontier(run: str, state: str = "pending", depth: Optional[int] = None) -> List[str]:
-    """Nodes in a given state; with --depth D, only that level (for level-by-level processing =
-    'equal time per level')."""
+#: states that still have work — a resumable frontier re-picks all of these after a crash/interrupt.
+#: `active` is the key one: a node that died mid-round is left `state=active`, and a plain
+#: `--state pending` scan silently SKIPS it (the audited resumability bug — audit rec #6).
+_RESUMABLE_STATES = ("pending", "active", "needs_answer", "proposes_split")
+
+
+def frontier(run: str, state: str = "pending", depth: Optional[int] = None,
+             resumable: bool = False) -> List[str]:
+    """Nodes with work left; with --depth D, only that level (for level-by-level processing).
+    `resumable=True` ignores `state` and returns every node still needing work — pending PLUS
+    crashed-mid-round `active`, unanswered `needs_answer`, and un-materialized `proposes_split` —
+    so re-running after an interrupt picks up exactly what didn't finish, with no silent skips."""
+    want = set(_RESUMABLE_STATES) if resumable else {state}
     out = []
     for d, _s, fs in os.walk(os.path.join(run, "tree")):
         if "status.json" in fs:
             st = _read_json(os.path.join(d, "status.json"), {}) or {}
-            if st.get("state") == state and (depth is None or int(st.get("depth", 0)) == depth):
+            if st.get("state") in want and (depth is None or int(st.get("depth", 0)) == depth):
                 out.append(d)
     out.sort(key=lambda p: (_read_json(os.path.join(p, "status.json"), {}).get("depth", 0), p))
     return out
@@ -347,6 +377,9 @@ def main(argv=None) -> int:
     p = sub.add_parser("split"); p.add_argument("--node", required=True)
     p.add_argument("--children", required=True, help='JSON: [["qid","question"],...]')
     p.add_argument("--actor", default="orchestrator")
+    p.add_argument("--weights", default="", help='JSON list of per-child contestedness weights, '
+                   'e.g. "[3,1,2]" — higher = more scrutiny budget (floored at the scrutiny unit). '
+                   "Omit for a uniform split.")
 
     p = sub.add_parser("cansplit"); p.add_argument("--node", required=True)
 
@@ -375,6 +408,9 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("frontier"); p.add_argument("--run", required=True)
     p.add_argument("--state", default="pending"); p.add_argument("--depth", type=int, default=None)
+    p.add_argument("--resumable", action="store_true",
+                   help="return ALL nodes still needing work (pending+active+needs_answer+"
+                   "proposes_split) — use after a crash/interrupt so mid-round nodes aren't skipped")
 
     p = sub.add_parser("tree"); p.add_argument("--run", required=True)
 
@@ -387,7 +423,8 @@ def main(argv=None) -> int:
     elif args.cmd == "cansplit":
         print(json.dumps(can_split(args.node), indent=2))
     elif args.cmd == "split":
-        for d in split_node(args.node, json.loads(args.children), args.actor):
+        wts = json.loads(args.weights) if args.weights.strip() else None
+        for d in split_node(args.node, json.loads(args.children), args.actor, wts):
             print(d)
     elif args.cmd == "propose":
         propose_split(args.node, json.loads(args.children), args.why)
@@ -407,7 +444,7 @@ def main(argv=None) -> int:
         txt = open(args.file, encoding="utf-8").read() if args.file else args.text
         write_findings(args.node, txt)
     elif args.cmd == "frontier":
-        for d in frontier(args.run, args.state, args.depth):
+        for d in frontier(args.run, args.state, args.depth, args.resumable):
             print(d)
     elif args.cmd == "tree":
         print(tree_view(args.run))

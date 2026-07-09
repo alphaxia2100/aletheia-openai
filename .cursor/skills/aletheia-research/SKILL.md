@@ -27,7 +27,7 @@ is reachable but returns nothing shows as `warn` (degraded) and a broken one as 
 channel is `warn`/`down`, **tell the user up front**, route around it (use a healthy same-role channel),
 and **list the affected channels in the brief's Gaps**. Never silently survey on a degraded toolkit —
 missing a channel narrows source variety and the user should know.
-Scripts: `treestate.py` (blackboard/tree/budget/thoroughness), `investigate.py` (leaf engine:
+Scripts: `treestate.py` (shared-artifact store: tree/budget/thoroughness), `investigate.py` (leaf engine:
 route→retrieve→rank→read-in-full, multi-round), `router.py` (channel routing), `rank.py` (authority
 ranking), `synthesize.py` (bottom-up merge + independence + `--gate`), `verify.py` (citation gate).
 Do NOT fall back to plain web search — the point is the channels (Brave/OpenAlex/arXiv/Reddit/HN/
@@ -66,19 +66,34 @@ For `auto`, pick the tier by breadth×contestedness, then re-init with it. Write
 framings** into `$RUN/portfolio.md` BEFORE searching: mainstream/consensus (to test, not serve),
 ≥1 heterodox, ≥1 practitioner/field-report, ≥1 orthogonal reframe, and name one **leading** framing
 for the adversary. Commit to none.
+**Force the diversity structurally — don't trust one model's imagination.** Asking one model to "be
+heterodox" mode-collapses to near-copies (confirmed: Persona-Generators 2602.03545, Verbalized-Sampling
+2510.01171). So a framing is real only if it is **grounded in a different SOURCE BASE**: give each
+framing distinct channels/index-groups (consensus→primaries/regulators; heterodox→a named dissenting
+author or preprint; practitioner→community/forums) and, if two framings would retrieve the same sources,
+they're one framing — merge them and add a genuinely different angle. Diversity is measured by the
+independence report (step 5), not asserted.
 
-### 2. Decompose into a budget-balanced tree
+### 2. Decompose into a budget-weighted tree
 Split the root into the framings; a node **splits** if broad and budget allows, else it's a **leaf**.
 ```bash
 python3 "$A/treestate.py" cansplit --node "$RUN/tree/root"
 python3 "$A/treestate.py" split --node "$RUN/tree/root" \
-  --children '[["consensus","<q>"],["heterodox","<q>"],["practitioner","<q>"],["adversary","strongest disconfirming evidence for the leading framing"]]'
+  --children '[["consensus","<q>"],["heterodox","<q>"],["practitioner","<q>"],["adversary","strongest disconfirming evidence for the leading framing"]]' \
+  --weights '[2,3,1,3]'
 ```
-Give contested/broad framings more scope; always include an **adversary** child. Log decisions
+**Scale scrutiny to contestedness, not uniformly** (the audited fix: uniform "equal scrutiny per leaf"
+is suboptimal — Snell 2408.03314 / UAB 2605.26849). Pass `--weights` (one per child) so contested /
+uncertain / adversary branches get more budget; budget is still conserved and every child is floored at
+the scrutiny unit (no starvation). Omit `--weights` only when the children are genuinely equal effort.
+Always include an **adversary** child, weighted high. Log decisions
 (`treestate.py decide --node <n> --actor orchestrator --why "…" "<decision>"`).
 
 ### 3. Investigate leaves — multi-round, WIDE, primary-first
-Process **level by level**. For each pending leaf (`treestate.py frontier --run "$RUN" --state pending --depth <d>`),
+Process **breadth-first (level by level)** — this is a scheduling order, not an equal-time promise;
+scrutiny is set by each node's budget (step 2). For each pending leaf
+(`treestate.py frontier --run "$RUN" --state pending --depth <d>`; after a crash/interrupt use
+`frontier --run "$RUN" --resumable` so mid-round `active` nodes are re-picked, not skipped),
 run the leaf engine, which reads primaries in full and **accumulates across rounds**:
 ```bash
 python3 "$A/investigate.py" --node "<NODE_DIR>"     # round 1; repeat with --query "<gap>" to deepen
@@ -104,8 +119,11 @@ sources** (`treestate.py answer …`) before you author. Then write `<NODE_DIR>/
 (single-threaded), honoring the independence report (high echo ⇒ don't treat convergence as truth).
 
 ### 5. Judge independence + attack the leading conclusion
-`synthesize.py` reports echo/voice/domain concentration ("40 sources or 1 origin echoed 40×?").
-Take the **adversary** branch + un-laundered channels and try to break the leading framing. Survive → keep; else downgrade. Log it.
+`synthesize.py` reports two independence signals: identity `echo_ratio` (voice_key) AND the stronger
+structural `origin_echo_ratio` / `independent_origins` (shared-origin clusters — it catches "40 domains
+but 1 origin echoed 40×", which voice_key alone scores as independent). **Low echo does NOT license
+"Agreement" — high `origin_echo_ratio` means trace claims to their independent origins first.** Take the
+**adversary** branch + un-laundered channels and try to break the leading framing. Survive → keep; else downgrade. Log it.
 
 ### 6. Verify every load-bearing claim (must complete)
 Extract the draft's claims → `$RUN/claims.jsonl` (`{"claim":"…","url":"…"}`):
@@ -115,19 +133,27 @@ python3 "$A/verify.py" --claims "$RUN/claims.jsonl" --node "$RUN/tree/root" --ou
 Layer 1 (lexical) certifies **relevance only**, never support. Then **Fact-Check EVERY `relevant`
 claim** (read the cited primary in a small context; watch polarity + magnitude) and rewrite each
 verdict to `supported`/`contradicted`/`unsupported`. Only `supported` survives in Agreement;
-`contradicted` → cut/flip; `unsupported` → downgrade to Unverified. Report a real `citation_accuracy`.
+`contradicted` → cut/flip; `unsupported` → downgrade to Unverified.
+**Use a DIFFERENT model for the Fact-Check than wrote the draft** (self-preference/verbosity bias is
+real — the writer grades its own work too kindly; at `deep`/`exhaustive` spawn the verifier as a
+subagent on another model). The score is **code-gated, not honor-system**: `score_run.py` reports
+`citation_accuracy` (= precision) as **null until `citation_complete` is true** — i.e. every on-topic
+claim has a final verdict (`citation_coverage` = 1.0) — alongside the stated `citation_denominator`
+(claims judged). A run with claims still `awaiting_llm_check` has NO headline accuracy: finish the pass.
 
 ### 7. Answer, grounded — with gaps
 Write `$RUN/brief.md`: **Bottom line** · **Agreement** (independent sources converge) ·
 **Disagreement** (name both sides; do not smooth over) · **Unverified / single-origin** ·
 **Gaps** (what couldn't be reached: paywalled primaries, missing large RCTs, empty channels — state
-them). Every claim links to the **primary you read**; dates on time-sensitive claims; reddit/youtube/x
-are **color**, never proof. Accrete into the `consilient-atlas` so surveys compound.
+them). Every claim links to the **primary you read**; dates on time-sensitive claims. **X/YouTube are
+`color`** (never cite as fact); **Reddit/HN are `lead_gen`** — mine them for the primary they point to
+and cite THAT, not the thread. Accrete into the `consilient-atlas` so surveys compound.
 
 ## Observability & resume
 `treestate.py tree --run "$RUN"` shows the whole tree (state/budget/findings). Every node has
 `decisions.jsonl`, `questions.jsonl`/`answers.jsonl`, `sources.jsonl`, `notes/`, `evidence.md`,
-`findings.md`. Fully resumable — re-run `frontier`.
+`findings.md`. Fully resumable — after a crash/interrupt re-run `frontier --run "$RUN" --resumable`
+(re-picks pending + mid-round `active` + unanswered nodes, so nothing in flight is silently skipped).
 
 ## Rules
 Channel **classes**: `evidence` citable · `lead_gen` (search/HN/Reddit) → **find & cite the primary** ·

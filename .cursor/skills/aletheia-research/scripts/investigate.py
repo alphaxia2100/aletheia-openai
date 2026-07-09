@@ -38,10 +38,16 @@ import rank as rankmod  # noqa: E402
 import dedupe  # noqa: E402
 import read as readmod  # noqa: E402
 
+MAX_READ_CHARS = 40000   #: read cap; a read that hits it is flagged `_truncated` (no silent cut-off)
 _ARXIV = re.compile(r"arxiv\.org/(?:abs|html|pdf)/([0-9]{4}\.[0-9]{4,5})", re.I)
 _STOP = set("the a an of for and or to in on is are be was were with without vs versus more "
             "than better best effect effects does do how what why which when who into over "
             "real world results side its their your our".split())
+#: generic/self-referential terms that never make a useful subject anchor (a topic that is a coined
+#: artifact — "the X agent/skill/system" — anchored on these just injects self-reference).
+_SELFREF = set("agent agents tool tools skill skills system systems framework frameworks design "
+               "designs decision decisions assumption assumptions approach approaches project "
+               "projects pipeline pipelines model models itself every core loop".split())
 
 
 def _run_topic(node: str) -> str:
@@ -50,17 +56,42 @@ def _run_topic(node: str) -> str:
     return cfg.get("topic", "") if run else ""
 
 
+def _proper_nouns(topic: str) -> set:
+    """Tokens that look like a PROPER NOUN / coined name in the ORIGINAL topic string — a
+    capitalized word that is either not sentence-initial or part of a Capitalized run (e.g.
+    'Aletheia Research', 'OpenAI Deep Research'). Anchoring on these returns self-referential junk,
+    so they're dropped. Sentence-initial single caps (a Title-cased common noun) are NOT flagged."""
+    words = re.findall(r"[A-Za-z][A-Za-z-]*", topic)
+    proper = set()
+    for i, w in enumerate(words):
+        if len(w) >= 4 and w[:1].isupper():
+            prev_cap = i > 0 and words[i - 1][:1].isupper()
+            next_cap = i + 1 < len(words) and words[i + 1][:1].isupper()
+            if i > 0 or prev_cap or next_cap:      # not a lone sentence-initial capital
+                proper.add(w.lower())
+    return proper
+
+
 def _anchor(question: str, topic: str) -> str:
-    """Keep a sub-question tied to the ROOT SUBJECT. A leaf like 'real-world adherence' must
-    still be about *intermittent fasting*, not medication adherence — so if the question shares
-    <2 content words with the topic, prepend the topic's salient terms."""
+    """Keep an UNDER-SPECIFIED sub-question tied to the ROOT SUBJECT — a bare leaf like
+    'real-world adherence' must still be about *intermittent fasting*, not medication adherence.
+    But do NOT anchor when it would only pollute (the audited '_anchor injected Aletheia papers'
+    bug): skip if the question already carries the subject or is self-contained, and build the
+    anchor from COMMON-NOUN subject terms only (drop proper nouns + generic self-referential words)."""
     if not topic:
         return question
     tt = [w for w in re.findall(r"[a-z]{4,}", topic.lower()) if w not in _STOP]
     ql = question.lower()
-    if sum(1 for w in set(tt) if w in ql) >= 2:
+    if sum(1 for w in set(tt) if w in ql) >= 2:            # already tied to the subject
         return question
-    subj = " ".join(dict.fromkeys(tt))[:60]
+    q_terms = {w for w in re.findall(r"[a-z]{4,}", ql) if w not in _STOP}
+    if len(q_terms) >= 5:                                  # specific enough to stand on its own
+        return question
+    proper = _proper_nouns(topic)
+    subj_terms = [w for w in dict.fromkeys(tt) if w not in proper and w not in _SELFREF]
+    if len(subj_terms) < 2:      # topic is a pure proper noun / coined name — no citable anchor
+        return question
+    subj = " ".join(subj_terms[:3])[:60]
     return (subj + " " + question).strip()
 
 
@@ -136,13 +167,15 @@ def retrieve(query: str, channels: List[str], limit: int, timeout: float):
     return recs, per
 
 
-def _save_read(node: str, url: str, text: str, method: str) -> str:
+def _save_read(node: str, url: str, text: str, method: str, truncated: bool = False) -> str:
     d = os.path.join(node, "notes")
     os.makedirs(d, exist_ok=True)
     h = hashlib.sha1(url.encode()).hexdigest()[:10]
     path = os.path.join(d, h + ".md")
+    trunc = " TRUNCATED at %d chars — re-read with a larger cap if a claim rests on the tail" % \
+        MAX_READ_CHARS if truncated else ""
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write("<!-- %s (via %s) -->\n\n%s" % (url, method, text))
+        fh.write("<!-- %s (via %s)%s -->\n\n%s" % (url, method, trunc, text))
     return path
 
 
@@ -216,12 +249,15 @@ def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
             continue
         t0 = time.time()
         try:
-            txt, method = readmod.read_url(u, timeout, 40000, False)
-            path = _save_read(node, u, txt, method)
+            txt, method = readmod.read_url(u, timeout, MAX_READ_CHARS, False)
+            truncated = len(txt) >= MAX_READ_CHARS      # hit the cap -> tail may be missing
+            path = _save_read(node, u, txt, method, truncated)
             ok = len(txt.strip()) >= 1500
             r["_read_file"] = os.path.relpath(path, node)
             r["_read_ok"] = ok
+            r["_truncated"] = truncated
             read_meta.append({"url": u, "chars": len(txt), "method": method, "ok": ok,
+                              "truncated": truncated,
                               "t": round(time.time() - t0, 1), "title": r.get("title", "")})
         except Exception as e:  # noqa: BLE001
             read_meta.append({"url": u, "chars": 0, "method": "FAIL", "ok": False,
@@ -257,6 +293,8 @@ def _write_evidence(node, query, ranked, sel, per, read_meta, round_no=1):
     for r in sel:
         m = rf.get(r.get("url", ""), {})
         flag = "ok" if m.get("ok") else "MISS(%s)" % m.get("method", "?")
+        if m.get("truncated"):
+            flag += " ⚠TRUNCATED"
         excerpt = ""
         if r.get("_read_file"):
             try:

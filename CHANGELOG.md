@@ -27,6 +27,43 @@ Versioning is [SemVer](https://semver.org/); each notable change bumps minor/pat
 
 ---
 
+## aletheia-research 0.3.1 — 2026-07-08 (audit fixes)
+
+Fixes grounded in the exhaustive design self-audit (`docs/evals/2026-07-08-aletheia-design-audit.md`,
+472 sources), which found one confirmed flaw, one under-detection, and a set of tool bugs caught while
+dogfooding. Every change below traces to a numbered audit recommendation.
+
+- **Budget — killed the uniform split (audit #1).** `treestate.split_node` now takes optional
+  `--weights`: budget is still conserved and every child floored at the scrutiny unit, but the
+  *remainder* is distributed by contestedness/uncertainty (scale-effort-to-complexity; Snell
+  2408.03314, UAB 2605.26849). Uniform stays the default when no weights are given.
+- **Independence — fixed `voice_key` under-detection (audit #2).** `synthesize.independence` now also
+  reports structural `independent_origins` / `origin_echo_ratio` via `provenance_graph.build_clusters`
+  (canonical-url + voice + `derives_from` + near-duplicate shingles), so "40 domains echoing one origin"
+  no longer scores as independent. The synthesis warning and `score_run` now key off the structural
+  signal; low identity-echo no longer licenses "Agreement."
+- **Verification — made it real & code-gated (audit #3).** `score_run` demotes `citation_accuracy` to
+  **precision** (`supported / finally-judged`) reported **only when `citation_complete`** (every
+  on-topic claim has a verdict, `citation_coverage` = 1.0), with a stated `citation_denominator`. SKILL
+  now mandates a **different judge model** than the writer (self-preference bias).
+- **Diversity — forced structurally (audit #4).** SKILL requires each framing to be grounded in a
+  distinct source base / channels (mode collapse: Persona-Generators 2602.03545, Verbalized-Sampling
+  2510.01171); framings that retrieve the same sources are merged.
+- **Retrieval bugs the run itself exposed (audit #5).** `investigate._anchor` no longer pollutes queries
+  with proper-noun/coined topics or over-anchors self-contained questions (the self-referential
+  "Aletheia papers" bug); reads flag `_truncated` at the 40k cap (no silent cut-off); `semanticscholar`
+  gets exponential backoff with jitter (was 429-throttled nearly every run); `rank.AUTH_HIGH` adds
+  biomed/regulatory venues (Lancet/BMJ/JAMA/NEJM/Cochrane/EFSA/EMA/WHO/NICE) + wire services — the
+  CS-bias fix.
+- **Resumability (audit #6).** `frontier --resumable` re-picks pending **plus** crashed-mid-round
+  `active`, unanswered `needs_answer`, and un-materialized `proposes_split` nodes — a mid-round crash is
+  no longer silently skipped.
+- **Labels/docs (audit #7).** Dropped the unsupported "equal time per level" claim (breadth-first is a
+  scheduling order, not an equal-time promise); "blackboard" → "shared-artifact store"; fixed the
+  Reddit `color`/`lead_gen` contradiction (X/YouTube = color; Reddit/HN = lead_gen → cite the primary).
+- Tests: 44 → 52 (weighted split conservation/floor, resumable frontier, structural independence both
+  directions, `_anchor` de-pollution, biomed authority, code-gated citation coverage).
+
 ## aletheia 0.3.0 — unreleased
 
 Built **off deep-aletheia 0.2**, which won a blind LLM-judge (5 judges, order-randomized) over the

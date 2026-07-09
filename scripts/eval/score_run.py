@@ -4,9 +4,15 @@ plus Aletheia-specific epistemic metrics. (Factual accuracy & completeness are L
 dimensions added by a judging subagent; this covers what can be computed.)
 
 Metrics:
-  citation_accuracy   supported / total          (from verify.jsonl)
+  citation_precision  supported / finally-judged   (of the claims Fact-Checked, the fraction that hold)
+  citation_coverage   finally-judged / on-topic    (how much of the checkable set was actually checked)
+  citation_accuracy   the headline — = precision, but ONLY once coverage is complete (else None)
+  citation_denominator  # load-bearing claims that received a final verdict (the stated denominator)
+                        Precision-only is gameable (SAFE/VeriScore/FactScore pair it with a denominator
+                        and coverage); true recall of UNSTATED claims isn't machine-measurable here.
   source_quality      share of sources that are evidence-class AND high-authority
-  independence        1 - echo_ratio             (voice_key over the global source index)
+  independence        1 - echo_ratio (voice_key identity) AND origin_independence (structural,
+                      shared-origin clusters — the "40 domains, 1 origin" catch voice_key misses)
   framing_coverage    # root framings explored, # leaves with findings
   disconfirmation     an adversary branch exists AND produced findings
   tree                nodes / depth / leaves / reads
@@ -28,6 +34,7 @@ sys.path.insert(0, os.path.join(REPO, ".cursor", "skills", "provenance-audit", "
 sys.path.insert(0, os.path.join(REPO, ".cursor", "skills", "deep-aletheia", "scripts"))
 import dedupe  # noqa: E402
 import rank as rankmod  # noqa: E402
+import provenance_graph as pg  # noqa: E402  (structural shared-origin independence)
 
 
 def _jsonl(p):
@@ -41,6 +48,15 @@ def score(run: str) -> dict:
     # independence + source quality over the global index
     voices = {dedupe.voice_key(r) for r in idx} if idx else set()
     echo = round(1 - len(voices) / len(idx), 3) if idx else 0
+    # structural independence: distinct shared-origin clusters (catches many domains echoing one
+    # origin, which identity-based voice_key scores as independent) — see synthesize.independence
+    try:
+        _uf, _by = pg.build_clusters([dict(r) for r in idx]) if idx else (None, {})
+        origins = len({_uf.find(s) for s in _by}) if idx else 0
+    except Exception:  # noqa: BLE001
+        origins = len(voices)
+    origin_indep = round(origins / len(idx), 3) if idx else 0
+    origin_echo = round(1 - origins / len(idx), 3) if idx else 0
     ev = sum(1 for r in idx if (r.get("_class") or r.get("channel_class")) == "evidence")
     hi = sum(1 for r in idx if rankmod.authority(r.get("url", "")) >= 0.8)
     quality = round(sum(1 for r in idx if (r.get("_class") or r.get("channel_class")) == "evidence"
@@ -114,9 +130,15 @@ def score(run: str) -> dict:
     supported, contradicted, unsupported = vc["supported"], vc["contradicted"], vc["unsupported"]
     relevant = vc["relevant"]  # on-topic but still awaiting the LLM Fact-Check
     bad = vc["off_topic"] + vc["broken"]
-    llm_done = supported + contradicted + unsupported
-    # citation accuracy is only meaningful once the LLM pass has run; None = not yet Fact-Checked
-    cit_acc = round(supported / len(ver), 3) if (ver and llm_done) else None
+    llm_done = supported + contradicted + unsupported          # the stated denominator (final verdicts)
+    checkable = llm_done + relevant                            # on-topic claims that are/should be judged
+    # precision = of the claims we Fact-Checked, the fraction that actually hold
+    precision = round(supported / llm_done, 3) if llm_done else None
+    # coverage = how much of the checkable set has reached a final verdict (incomplete-until-all)
+    coverage = round(llm_done / checkable, 3) if checkable else None
+    complete = bool(llm_done and relevant == 0)               # every on-topic claim finally judged
+    # headline accuracy is only real once the pass is COMPLETE; None while claims still await checking
+    cit_acc = precision if complete else None
     on_topic = round((len(ver) - bad) / len(ver), 3) if ver else None
 
     brief = os.path.join(run, "brief.md")
@@ -125,12 +147,16 @@ def score(run: str) -> dict:
 
     return {
         "topic": cfg.get("topic"), "version": cfg.get("version"),
-        "citation_accuracy": cit_acc, "on_topic_rate": on_topic,
+        "citation_accuracy": cit_acc, "citation_precision": precision,
+        "citation_coverage": coverage, "citation_denominator": llm_done,
+        "citation_complete": complete, "on_topic_rate": on_topic,
         "verified_claims": len(ver), "off_topic_or_broken_citations": bad,
         "verdicts": {"supported": supported, "contradicted": contradicted,
                      "unsupported": unsupported, "awaiting_llm_check": relevant},
         "source_quality": quality, "sources": len(idx),
         "independence": round(1 - echo, 3), "echo_ratio": echo, "unique_voices": len(voices),
+        "origin_independence": origin_indep, "origin_echo_ratio": origin_echo,
+        "independent_origins": origins,
         "framing_coverage": {"root_framings": len(root_framings), "leaves": leaves,
                              "leaves_with_findings": with_find},
         "disconfirmation": {"adversary_branch": adversary, "produced_findings": adversary_find},

@@ -38,11 +38,19 @@ AUTH_HIGH = {  # primary / near-primary
     "arxiv.org", "doi.org", "openalex.org", "semanticscholar.org", "nature.com",
     "science.org", "acm.org", "ieee.org", "ncbi.nlm.nih.gov", "nih.gov", "pnas.org",
     "cell.com", "plos.org", "biorxiv.org", "medrxiv.org", "jstor.org", "springer.com",
-    "sciencedirect.com", "europepmc.org", "aclanthology.org", "openreview.net"}
-AUTH_MED = {  # reputable orgs / official docs / code
+    "sciencedirect.com", "europepmc.org", "aclanthology.org", "openreview.net",
+    # biomed/clinical journals + evidence synthesis (audit: AUTH list was CS-biased)
+    "thelancet.com", "bmj.com", "jamanetwork.com", "nejm.org", "cochranelibrary.com",
+    "cochrane.org", "annualreviews.org", "wiley.com", "onlinelibrary.wiley.com", "oup.com",
+    "tandfonline.com", "ahajournals.org", "diabetesjournals.org", "physiology.org", "asm.org",
+    # regulators / health agencies — the decisive/settling sources on biomed & safety questions
+    # (europa.eu covers EFSA/EMA/ECDC subdomains; *.gov is already credited via the .gov suffix)
+    "who.int", "europa.eu", "nice.org.uk"}
+AUTH_MED = {  # reputable orgs / official docs / code / wire services
     "github.com", "gitlab.com", "python.org", "mozilla.org", "w3.org", "ietf.org",
     "kernel.org", "postgresql.org", "anthropic.com", "openai.com", "deepmind.com",
-    "cognition.ai", "stanford.edu", "mit.edu", "berkeley.edu"}
+    "cognition.ai", "stanford.edu", "mit.edu", "berkeley.edu",
+    "reuters.com", "apnews.com", "bbc.com", "bbc.co.uk"}
 FARM = {  # low-authority aggregators / SEO-prone
     "medium.com", "dev.to", "geeksforgeeks.org", "w3schools.com", "tutorialspoint.com",
     "javatpoint.com", "simplilearn.com", "guru99.com", "baeldung.com", "toptal.com",
