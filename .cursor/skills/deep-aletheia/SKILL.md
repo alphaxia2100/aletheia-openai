@@ -1,14 +1,16 @@
 ---
 name: deep-aletheia
-description: DEPRECATED (retired 2026-07-08) — superseded by the `surveyor` skill; kept runnable as an eval baseline. Prefer `surveyor`. Deep, high-scrutiny research surveyor. A DYNAMIC, question-driven tree coordinated through the filesystem — the lead frames a portfolio of competing perspectives (anti-anchoring), then GROWS a living outline FROM the evidence: each node investigates, reflects, and either deepens (drills the same question) or decomposes (spawns sub-questions) based on what it found. Findings bubble up; parents ask thin children for specifics instead of assuming; every claim is tied to a primary through a verification gate. The human owns framing sign-off and final judgment (DOK 3-4); the AI does breadth and stress-testing (DOK 1-2). Use for deep dives where surface-level answers are not enough and tokens/time are not a concern. For a quick single-pass survey, use `aletheia`.
+description: SUPERSEDED (2026-07-08) — this 0.2 is the ANCESTOR of the `aletheia` 0.3 skill (which is built from it and keeps its good parts); frozen and kept runnable only as an eval baseline. Prefer `aletheia`. Deep, high-scrutiny research surveyor. A DYNAMIC, question-driven tree coordinated through the filesystem — the lead frames a portfolio of competing perspectives (anti-anchoring), then GROWS a living outline FROM the evidence: each node investigates, reflects, and either deepens (drills the same question) or decomposes (spawns sub-questions) based on what it found. Findings bubble up; parents ask thin children for specifics instead of assuming; every claim is tied to a primary through a verification gate. The human owns framing sign-off and final judgment (DOK 3-4); the AI does breadth and stress-testing (DOK 1-2). Use for deep dives where surface-level answers are not enough and tokens/time are not a concern. For a quick single-pass survey, use `aletheia`.
 ---
 
 # Deep Aletheia — a dynamic, question-driven surveyor (v0.2)
 
-> **DEPRECATED (retired 2026-07-08).** Superseded by the **`surveyor`** skill. The self-audit found
-> this design over-claimed (net-bigger, not simpler; uniform-budget flaw; a verifier that never
-> completed on a real run; the multi-agent tree unproven vs a single-agent loop). Kept only as an
-> **eval baseline** (`scripts/eval/eval_compare.py`). For new work, use `surveyor`.
+> **SUPERSEDED (2026-07-08) → this is the ANCESTOR of `aletheia` 0.3.** A blind LLM-judge of fresh
+> runs found this design's tree/breadth produced the most complete, best-grounded briefs, so it was
+> promoted (not retired): **`aletheia` 0.3 is built from this 0.2**, keeps its good parts (variety of
+> sources, real multi-round surveying, honest gaps, adversary, independence, completed verification),
+> and adds a decisive-source hunt, chase-the-primary discipline, wider channel variety, and a
+> thoroughness dial. This 0.2 is frozen and kept runnable only as an eval baseline. Use `aletheia`.
 
 Depth is NOT a longer loop, and NOT a bigger pre-planned tree. It is **how expert researchers and the
 strongest deep-research systems actually work**: ask from many perspectives, gather evidence to disk,

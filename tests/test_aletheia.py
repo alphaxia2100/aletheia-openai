@@ -8,6 +8,7 @@ differentiator must never silently return wrong numbers again.
 """
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -323,6 +324,26 @@ class TestScoreRunDepth(unittest.TestCase):
         self.assertEqual(d["rounds_per_leaf"]["max"], 3)       # multi-round leaf visible
         self.assertEqual(d["reads_per_leaf"]["mean"], 9)
         self.assertIn("reads_by_depth", d)
+
+
+class TestAletheia03Thoroughness(unittest.TestCase):
+    """aletheia 0.3's thoroughness dial sets the tree budget/caps and tags version 0.3.0.
+    Run via subprocess to avoid a module-name clash with the frozen deep-aletheia `treestate`."""
+
+    def _init(self, tier, base):
+        t = os.path.join(ROOT, ".cursor", "skills", "aletheia", "scripts", "treestate.py")
+        run = subprocess.check_output(
+            [sys.executable, t, "init", "test topic", "--thoroughness", tier, "--base", base],
+            text=True).strip()
+        return json.load(open(os.path.join(run, "run.json"), encoding="utf-8"))
+
+    def test_tiers_scale_and_version(self):
+        base = tempfile.mkdtemp()
+        q, dp = self._init("quick", base), self._init("deep", base)
+        self.assertEqual(q["version"], "aletheia 0.3.0")
+        self.assertEqual(q["thoroughness"], "quick")
+        self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
+        self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
 
 
 if __name__ == "__main__":

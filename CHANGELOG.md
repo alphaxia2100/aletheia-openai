@@ -1,15 +1,39 @@
 # Changelog
 
 Current skill:
-- **surveyor** — thoroughness-scaled research surveyor (single-agent-first; fans out for breadth only
-  at high thoroughness). This is the one to use.
+- **aletheia 0.3** — deep, multi-perspective research surveyor (filesystem tree; parallel read-only
+  investigations; wide source variety; decisive-source hunt; completed verification). This is the one to use.
 
-Retired (kept runnable ONLY as eval baselines, `scripts/eval/eval_compare.py`):
-- **aletheia** — v1 judgment-driven surveyor. Retired 2026-07-08.
-- **deep-aletheia** — recursive orchestrator-worker tree. Retired 2026-07-08 (the self-audit found it
-  over-claimed and structurally flawed — see below).
+Kept runnable ONLY as eval baselines (`scripts/eval/eval_compare.py`):
+- **deep-aletheia 0.2** — the direct **ancestor** of aletheia 0.3 (frozen).
+- **surveyor 0.1** — single-agent-first surveyor; superseded 2026-07-08.
+- **aletheia v1.0** — the original single-agent judgment loop (the `aletheia` name was rebased onto the
+  deep-tree line at 0.3).
 
 Versioning is [SemVer](https://semver.org/); each notable change bumps minor/patch and is tagged `<skill>-vX.Y.Z`.
+
+---
+
+## aletheia 0.3.0 — unreleased
+
+Built **off deep-aletheia 0.2**, which won a blind LLM-judge (5 judges, order-randomized) over the
+single-agent `surveyor` on **completeness, source variety, and groundedness to distinct primaries** —
+see `docs/evals/2026-07-08-creatine-cognition-bakeoff.md`. 0.3 keeps 0.2's engine and good parts and
+adds four things. Design + evidence: `docs/aletheia-0.3-design.md`.
+
+- **Kept from 0.2 (the good parts):** the multi-perspective portfolio tree (→ variety of distinct
+  sources), real multi-round surveying, evidence-driven decomposition, bottom-up synthesis with an
+  enforced ask/answer gate, adversary, independence/echo judgment, honest gaps, and a verification
+  gate that runs to completion. Engine reused verbatim (`treestate/investigate/synthesize/verify/
+  rank/router`), copied into `aletheia/scripts/` so deep-aletheia 0.2 stays frozen as a baseline.
+- **New #1 — hunt the DECISIVE source.** Actively find the authoritative/settling source (regulator
+  opinion, landmark SR/MA, largest RCT), not just pool many primaries — the one place the single-agent
+  design beat 0.2 (it found the EFSA verdict that 0.2 missed).
+- **New #2 — chase the primary, never cite the secondary** (find the primary behind any blog/summary,
+  or mark Unverified).
+- **New #3 — wider source variety by design** (multiple index-groups per framing).
+- **New #4 — thoroughness dial** (`quick|standard|deep|exhaustive` + `auto`) on `treestate.py init`,
+  making it callable/scaled from any session (scales the tree's budget/caps to the question).
 
 ---
 

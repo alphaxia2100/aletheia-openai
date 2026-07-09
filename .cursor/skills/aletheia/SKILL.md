@@ -1,60 +1,121 @@
 ---
 name: aletheia
-description: DEPRECATED (retired 2026-07-08) — superseded by the `surveyor` skill; kept runnable as an eval baseline. Prefer `surveyor`. Research surveyor that beats a bare LLM by refusing to anchor on the consensus, pulling current/diverse/real sources it can't reach, reading them in full, judging whether the support is independent or echoed, adversarially attacking its own leading conclusion, and answering with every claim tied to a source. Use when the user asks to research, survey, map, or "get an accurate picture of" a field, topic, technology, or task.
+description: Deep, high-scrutiny research surveyor (v0.3) — gives an accurate, un-anchored picture of a field by framing competing perspectives, decomposing into a filesystem-coordinated tree, and running parallel READ-ONLY investigations that pull a WIDE VARIETY of current/diverse/real sources, read primaries in full, hunt the decisive authoritative source, judge whether support is independent or one origin echoed, attack the leading conclusion, surface gaps honestly, and tie every claim to a primary through a verification gate that runs to completion. Effort scales via `thoroughness: auto | quick | standard | deep | exhaustive`. Use to research, survey, map, fact-check, or "get an accurate picture of" a topic. Callable from any session.
 ---
 
-# Aletheia — research surveyor
+# Aletheia 0.3 — deep, multi-perspective research surveyor
 
-> **DEPRECATED (retired 2026-07-08).** Superseded by the **`surveyor`** skill (single-agent-first,
-> thoroughness-scaled). This v1 is kept only as an **eval baseline** (`scripts/eval/eval_compare.py`).
-> For new work, use `surveyor`.
+An accurate, un-anchored picture of a field. A bare LLM anchors on its priors, searches to confirm
+them, cites nothing, and is stale. Aletheia beats it by **surveying widely and for real**: competing
+perspectives, a **variety of distinct sources**, primaries read in full, the **decisive** source
+hunted down, independence judged, the leading conclusion attacked, and **gaps stated honestly** —
+every claim tied to a primary through a verification gate.
 
-**Goal:** an accurate, un-anchored picture of a field. A bare LLM anchors on the consensus in its priors, searches to confirm it, cites nothing, and is stale. You beat it with discipline, not machinery:
+**Lineage:** 0.3 is built on **deep-aletheia 0.2**, which won a blind LLM-judge over a single-agent
+design on *completeness*, *source variety*, and *groundedness to distinct primaries*. 0.3 keeps all of
+that and adds four things it was missing (see **What's new** below). Everything is files; every node
+is a directory; nothing depends on one context window.
 
-- **don't anchor** — hold several competing framings, never commit early;
-- pull **current, diverse, real sources** the model can't reach;
-- **read them in full**;
-- **judge what's cited** — is a claim backed by independent sources, or one origin echoed?
-- **attack your own leading conclusion** before you believe it;
-- answer with **every claim tied to a source**, disagreement kept visible.
-
-All steps below are the core loop — none is optional. They are agent judgment (instructions), not heavy architecture.
-
-## Toolkit — where the scripts are (DO THIS FIRST)
-
-Aletheia's scripts are installed **globally** at `~/.cursor/skills/` (via the repo's `scripts/install.sh`). They are **not** in the current workspace, so **always call them by absolute path** — never a workspace-relative path, or you'll (wrongly) conclude "the scripts aren't installed." Set a shorthand and use it for every command below:
-
+## Toolkit (do this first)
+Installed globally at `~/.cursor/skills/` (via `scripts/install.sh`) — call by absolute path.
 ```bash
-AL=~/.cursor/skills                                  # Aletheia's global home
-python3 "$AL/channel-retrieval/scripts/doctor.py"    # what's live (keys auto-load from the repo .env)
+AL=~/.cursor/skills ; A="$AL/aletheia/scripts"
+python3 "$AL/channel-retrieval/scripts/doctor.py"     # confirm channels live (keys auto-load from repo .env)
 ```
+Scripts: `treestate.py` (blackboard/tree/budget/thoroughness), `investigate.py` (leaf engine:
+route→retrieve→rank→read-in-full, multi-round), `router.py` (channel routing), `rank.py` (authority
+ranking), `synthesize.py` (bottom-up merge + independence + `--gate`), `verify.py` (citation gate).
+Do NOT fall back to plain web search — the point is the channels (Brave/OpenAlex/arXiv/Reddit/HN/
+Stack Exchange/GitHub/YouTube + real-browser reads) that reach current, diverse, authenticated sources.
 
-If that command fails, the toolkit really isn't installed — run `bash <aletheia-repo>/scripts/install.sh` once. **Do NOT fall back to plain web search/fetch.** The entire point is these channels (Brave / OpenAlex / arXiv / Reddit / Hacker News / YouTube + real-browser reads), which reach current, diverse, authenticated sources a bare LLM can't — a manual web search throws that away.
+## Thoroughness (scales effort to the question — pass it or judge it in SCOPE)
+| tier | budget | max_depth | max_children | ≈ leaves | when |
+|---|---|---|---|---|---|
+| `quick` | 8 | 1 | 3 | ~3 | narrow, settled |
+| `standard` | 16 | 2 | 3 | ~4–6 | the default workhorse |
+| `deep` | 32 | 3 | 4 | ~10+ | broad / contested (fan-out) |
+| `exhaustive` | 64 | 3 | 5 | ~15+ | maximal (fan-out) |
+`auto` = judge breadth×contestedness in SCOPE, then init with the chosen tier.
 
-## Pipeline
+## What's new in 0.3 (the good parts of deep-aletheia 0.2, plus these)
+1. **Hunt the DECISIVE source.** Don't just pool many primaries — actively find the *authoritative /
+   settling* source (a regulator/agency opinion, a landmark systematic review/meta-analysis, an
+   official standard, the largest RCT). This is the one thing the single-agent design beat 0.2 on.
+2. **Chase the primary, never cite the secondary.** If a load-bearing claim rests on a blog/summary
+   (Examine/Healthline/press), find and read the primary before citing; if you can't, mark it Unverified.
+3. **Wide source variety by design.** Cover the 3 classes AND multiple index-groups per framing
+   (independent web · academic · community · code/QA where relevant) so distinct origins surface.
+4. **Verification runs to completion** — every load-bearing claim gets a final supported/contradicted/
+   unsupported verdict and a real `citation_accuracy` (never left null). Callable via `thoroughness`.
 
-Work in a scratch dir `runs/<yyyy-mm-dd-hhmm>-<slug>/` (in the current workspace or /tmp); write each step to a file. `$AL` = `~/.cursor/skills` throughout.
+## The loop (do every step)
 
-1. **Frame a hypothesis portfolio (anti-anchoring — the load-bearing step).** Before searching, write **4-6 competing framings** of the field, deliberately spanning it, not variations on one theme. Always include: the **mainstream/consensus** view (so you can test it, not serve it), at least one **minority/heterodox** framing ("the experts are wrong because…"), one **practitioner/field-report** framing ("people who actually tried it report…"), and one **orthogonal reframe** ("this is really a question about Y"). Hold all provisionally; **commit to none**. Note which is currently "leading" so step 7 can attack it. This is the direct fix for consensus-lock — do not skip it or collapse to one frame.
+### 1. Frame the portfolio + init (anti-anchoring — load-bearing)
+```bash
+RUN=$(python3 "$A/treestate.py" init "<topic>" --slug "<slug>" --thoroughness auto)   # or quick|standard|deep|exhaustive
+```
+For `auto`, pick the tier by breadth×contestedness, then re-init with it. Write **4–6 competing
+framings** into `$RUN/portfolio.md` BEFORE searching: mainstream/consensus (to test, not serve),
+≥1 heterodox, ≥1 practitioner/field-report, ≥1 orthogonal reframe, and name one **leading** framing
+for the adversary. Commit to none.
 
-2. **Pick channels for the topic.** `python3 "$AL/channel-retrieval/scripts/channels.py" list`; enable per topic. Always cover three roles: an **independent web** index (brave/marginalia), a **primary** source (openalex/arxiv/github/books), an **un-laundered** community channel (reddit/hackernews/youtube) — the layer where a wrong consensus actually shows.
+### 2. Decompose into a budget-balanced tree
+Split the root into the framings; a node **splits** if broad and budget allows, else it's a **leaf**.
+```bash
+python3 "$A/treestate.py" cansplit --node "$RUN/tree/root"
+python3 "$A/treestate.py" split --node "$RUN/tree/root" \
+  --children '[["consensus","<q>"],["heterodox","<q>"],["practitioner","<q>"],["adversary","strongest disconfirming evidence for the leading framing"]]'
+```
+Give contested/broad framings more scope; always include an **adversary** child. Log decisions
+(`treestate.py decide --node <n> --actor orchestrator --why "…" "<decision>"`).
 
-3. **Retrieve per framing, independently.** Run the channel clients in `$AL/channel-retrieval/scripts/` (e.g. `python3 "$AL/channel-retrieval/scripts/brave.py" "q"`; see the `channel-retrieval` skill) for *each framing's* queries separately, so the consensus frame doesn't dictate every query. At least one search must hunt **disconfirming** evidence for the leading framing. Append to `sources.jsonl`; then `python3 "$AL/channel-retrieval/scripts/rerank.py"`; dedupe by URL.
+### 3. Investigate leaves — multi-round, WIDE, primary-first
+Process **level by level**. For each pending leaf (`treestate.py frontier --run "$RUN" --state pending --depth <d>`),
+run the leaf engine, which reads primaries in full and **accumulates across rounds**:
+```bash
+python3 "$A/investigate.py" --node "<NODE_DIR>"     # round 1; repeat with --query "<gap>" to deepen
+```
+At `deep`/`exhaustive`, spawn one **READ-ONLY worker subagent per leaf, in parallel** (Task tool),
+each given the topic + its framing + why it exists. Each worker: reads `evidence.md`+`notes/`;
+**pulls a variety of distinct sources**; **hunts the decisive source** for its sub-question; **chases
+primaries** (no secondhand citations); writes `<NODE_DIR>/findings.md` (3–8 claims, each with the
+**primary URL** + one-line quote + class; corroborated vs single-origin; disconfirming evidence; and
+**what's missing** — the gaps). Workers are independent; they write artifacts, not big blobs back.
 
-4. **Read the top sources IN FULL** — `python3 "$AL/channel-retrieval/scripts/read.py" --from-sources sources.jsonl --top-k 8` (pages + PDFs; auto-escalates to a real browser on stubs). Cite what you actually read, never a snippet.
+### 4. Synthesize bottom-up, with enforced back-and-forth
+Deepest nodes first. `python3 "$A/synthesize.py" --node "<NODE_DIR>" --gate` — if it exits 3, a child
+is thin/unanswered: **ask it** (`treestate.py ask …`) and let it **answer from its already-gathered
+sources** (`treestate.py answer …`) before you author. Then write `<NODE_DIR>/findings.md` yourself
+(single-threaded), honoring the independence report (high echo ⇒ don't treat convergence as truth).
 
-5. **Judge what's cited (independence as your own judgment — NOT a graph).** As you read, trace each claim to its origin and ask: *is this backed by genuinely independent sources, or is it one paper/origin echoed by many blogs?* When several "sources" trace to one origin, count them as **one**. Prefer the **primary** over aggregators. Flag single-origin claims and circular citation ("40 blogs, 1 paper"). This is understanding, from reading — you don't need a script to know when everything traces back to one place.
+### 5. Judge independence + attack the leading conclusion
+`synthesize.py` reports echo/voice/domain concentration ("40 sources or 1 origin echoed 40×?").
+Take the **adversary** branch + un-laundered channels and try to break the leading framing. Survive → keep; else downgrade. Log it.
 
-6. **Iterate** (`python3 "$AL/iterative-deepening/scripts/deepen.py"`) on the open questions your reading exposed; stop when new searches stop changing the picture.
+### 6. Verify every load-bearing claim (must complete)
+Extract the draft's claims → `$RUN/claims.jsonl` (`{"claim":"…","url":"…"}`):
+```bash
+python3 "$A/verify.py" --claims "$RUN/claims.jsonl" --node "$RUN/tree/root" --out "$RUN/verify.jsonl"
+```
+Layer 1 (lexical) certifies **relevance only**, never support. Then **Fact-Check EVERY `relevant`
+claim** (read the cited primary in a small context; watch polarity + magnitude) and rewrite each
+verdict to `supported`/`contradicted`/`unsupported`. Only `supported` survives in Agreement;
+`contradicted` → cut/flip; `unsupported` → downgrade to Unverified. Report a real `citation_accuracy`.
 
-7. **Attack your own leading conclusion (adversary — always run).** Take the current leading framing/answer and try to break it: hunt the strongest disconfirming evidence in the un-laundered channels; check whether the "consensus" is many independent sources or one echoed; don't accept the first plausible answer. If it survives, keep it; if not, revise or downgrade it. (See the `adversary` skill for the procedure.)
+### 7. Answer, grounded — with gaps
+Write `$RUN/brief.md`: **Bottom line** · **Agreement** (independent sources converge) ·
+**Disagreement** (name both sides; do not smooth over) · **Unverified / single-origin** ·
+**Gaps** (what couldn't be reached: paywalled primaries, missing large RCTs, empty channels — state
+them). Every claim links to the **primary you read**; dates on time-sensitive claims; reddit/youtube/x
+are **color**, never proof. Accrete into the `consilient-atlas` so surveys compound.
 
-8. **Answer, grounded.** Separate **Agreement** (independent sources converge), **Disagreement** (name both sides — never smooth it over), **Unverified** (single origin). Every claim links to the primary you read. Dates on time-sensitive claims. reddit/youtube/x are **color**, not proof.
+## Observability & resume
+`treestate.py tree --run "$RUN"` shows the whole tree (state/budget/findings). Every node has
+`decisions.jsonl`, `questions.jsonl`/`answers.jsonl`, `sources.jsonl`, `notes/`, `evidence.md`,
+`findings.md`. Fully resumable — re-run `frontier`.
 
-## Channel classes (the one rule)
-`evidence` = citable · `lead_gen` (HN/Reddit/search) = find the primary, cite the primary · `color` (X/YouTube/podcasts) = never cite as fact. Tags in `channel-retrieval/channels.json`.
-
-## Optional power-tools (only if a survey needs the extra rigor)
-- `python3 "$AL/provenance-audit/scripts/provenance_graph.py"` — *computes* independence over a large source set. You normally do this by judgment (step 5); reach for the script only when the source set is too big to hold in your head.
-- `defensibility-judge` — a 4-point check before committing to a spiky claim.
-- `survey-scope` (entity-resolution) / `consilient-atlas` (save surveys so they compound).
+## Rules
+Channel **classes**: `evidence` citable · `lead_gen` (search/HN/Reddit) → **find & cite the primary** ·
+`color` (X/YouTube) → never cite as fact. Variety, decisive-source hunt, chase-the-primary,
+independence-by-judgment, adversary, read-in-full, honest gaps, and completed verification are
+non-optional from `standard` up.

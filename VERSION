@@ -1,3 +1,5 @@
-surveyor: 0.1.0
-aletheia: 1.0.0 (retired 2026-07-08 — eval baseline; use surveyor)
-deep-aletheia: 0.2.0 (retired 2026-07-08 — eval baseline; use surveyor)
+aletheia: 0.3.0
+deep-aletheia: 0.2.0 (frozen — direct ancestor of aletheia 0.3; eval baseline)
+surveyor: 0.1.0 (retired 2026-07-08 — eval baseline; superseded by aletheia 0.3)
+# note: the `aletheia` name (was v1.0.0, retired) now denotes the deep multi-perspective tree line,
+# rebased on deep-aletheia 0.2 and continued at 0.3. deep-aletheia + surveyor kept only as baselines.

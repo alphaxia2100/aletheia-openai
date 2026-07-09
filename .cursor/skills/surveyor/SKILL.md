@@ -1,9 +1,13 @@
 ---
 name: surveyor
-description: Research surveyor that gives an accurate, un-anchored picture of a field or task — pulling current/diverse/real sources a bare LLM can't reach, reading them in full, judging whether support is independent or one origin echoed, attacking its own leading conclusion, and tying every claim to a primary through a verification gate. SINGLE-AGENT by default; fans out to parallel breadth-workers only at high thoroughness. Thoroughness scales to the question: pass `thoroughness: auto` (default, scales to breadth×contestedness) or set `quick | standard | deep | exhaustive`. Use when asked to research, survey, map, fact-check, or "get an accurate picture of" a topic. Callable from any session.
+description: DEPRECATED (2026-07-08) — superseded by the `aletheia` (0.3) skill; kept runnable only as an eval baseline. Prefer `aletheia`. Research surveyor that gives an accurate, un-anchored picture of a field or task — pulling current/diverse/real sources a bare LLM can't reach, reading them in full, judging whether support is independent or one origin echoed, attacking its own leading conclusion, and tying every claim to a primary through a verification gate. SINGLE-AGENT by default; fans out to parallel breadth-workers only at high thoroughness. Thoroughness scales to the question: pass `thoroughness: auto` (default, scales to breadth×contestedness) or set `quick | standard | deep | exhaustive`. Use when asked to research, survey, map, fact-check, or "get an accurate picture of" a topic. Callable from any session.
 ---
 
 # Surveyor
+
+> **DEPRECATED (2026-07-08).** Superseded by **`aletheia` 0.3**. A blind LLM-judge of fresh runs found
+> the tree-based multi-perspective design produced more complete, better-grounded briefs; surveyor is
+> kept only as an **eval baseline** (`scripts/eval/eval_compare.py`). For new work, use `aletheia`.
 
 An accurate, un-anchored picture of a field. A bare LLM anchors on its priors, searches to confirm
 them, cites nothing, and is stale. Surveyor beats it with **discipline, not machinery**, and scales
