@@ -27,6 +27,32 @@ Versioning is [SemVer](https://semver.org/); each notable change bumps minor/pat
 
 ---
 
+## aletheia-research 0.4.0 — 2026-07-09 (unlimited by default + verbosity dial)
+
+Depth and audience are now first-class. Motivation: bounded tiers produced surface-level briefs that
+didn't beat a few minutes of Google — the target is a brief worth a full DAY of manual searching (a
+WEEK at `max`).
+
+- **`unlimited` is the new DEFAULT** (`treestate.py init` with no tier/budget). Budget and depth are
+  effectively unbounded (budget 1e6, max_depth 99); the stop is no longer budget-exhaustion but
+  **agent-paced convergence** — keep splitting/deepening until a branch is saturated (no new distinct
+  origins/claims). A high `max_nodes` (512; 2048 at `max`) remains only as a runaway backstop. The
+  bounded tiers (`quick`/`standard`/`deep`/`exhaustive`) stay for when speed matters; `max` is the
+  "proper flag" — same unbounded caps, run maximally (~a week). An explicit `--budget` still means a
+  bounded CUSTOM run (nothing silently overrides it).
+- **Verbosity dial** (`init --verbosity user|agent`, stored in run.json):
+  - `agent` → the skill returns the **FULL artifact bundle**, not a summary: new `report.py bundle
+    --run RUN --reads` concatenates every node's findings + evidence + sources + the primaries read in
+    full. A calling agent loses no nuance to compression.
+  - `user` (default) → a **multi-page nuanced summary** (a few pages minimum): mechanisms,
+    disagreements and why, decisive sources, caveats, gaps — the distilled equivalent of a day's work.
+- **New `report.py`** — output assembler: `bundle` (agent full-files) and `outline` (artifact
+  inventory, so the user summary covers every branch and drops nothing).
+- SKILL rewritten for the new default + verbosity; tests 74 → 77.
+
+Still open (design-level): neural retriever (Exa) for the recall ceiling; the equal-token-budget
+single-agent-vs-tree head-to-head; adaptive budget; threshold calibration.
+
 ## aletheia-research 0.3.3 — 2026-07-09 (keyword-recall — the audit's #1 systemic weakness)
 
 Closes the recall gap the deep audit ranked as the dominant systemic weakness — the free indexes AND

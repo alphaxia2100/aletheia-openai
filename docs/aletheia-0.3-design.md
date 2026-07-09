@@ -1,6 +1,6 @@
 # Aletheia 0.3 — design
 
-**Status:** built (aletheia-research 0.3.3). Built **off deep-aletheia 0.2** (its direct ancestor).
+**Status:** built (aletheia-research 0.4.0). Built **off deep-aletheia 0.2** (its direct ancestor).
 Supersedes `surveyor`; the `aletheia` name is rebased from the retired v1 onto the deep-tree line.
 
 ## Why 0.3 is built on deep-aletheia 0.2
@@ -117,6 +117,17 @@ review rejected a length-based first attempt that regressed front-loaded queries
 a *valid* single-agent-vs-tree head-to-head: that experiment can now run on a non-degraded toolkit
 rather than being confounded by the recall gap, as the audits were. Keyword recall remains
 fundamentally capped without a neural retriever (Exa as the first paid upgrade) — deferred.
+
+## 0.4.0 — unlimited by default + a verbosity dial (2026-07-09)
+Reframes the tool around **depth and audience**. The bounded tiers were producing surface briefs that
+didn't beat a few minutes of Google; the target is now a brief worth a **day** of manual searching (a
+**week** at `max`). Two changes: (1) `unlimited` is the DEFAULT — budget/depth are unbounded and the
+stop becomes **agent-paced convergence** (saturation: no new distinct origins), with a high `max_nodes`
+only as a runaway backstop (this deliberately relaxes the audit's "bounded caps are sound" stance in
+favor of the user's depth requirement — the node backstop keeps the Anthropic-50-subagent guard). (2) a
+**verbosity dial**: `agent` returns the full artifact bundle (`report.py bundle`, no compression),
+`user` gets a multi-page nuanced summary. An explicit `--budget` is still an honored bounded/custom run.
+This does NOT change the research loop, only its effort ceiling and its output shape.
 
 ## Honestly unresolved after 0.3.1
 - The budget verdict rests on LLM-reasoning test-time-compute papers (tokens/samples), not a direct

@@ -1,9 +1,9 @@
 ---
 name: aletheia-research
-description: Aletheia Research — deep, high-scrutiny research surveyor (v0.3). THE research tool: use this whenever you need to research, survey, fact-check, map, or "get an accurate picture of" a topic, or anchor a decision in evidence — rather than building an ad-hoc workflow. Frames competing perspectives (anti-anchoring), decomposes into a filesystem-coordinated tree, and runs parallel READ-ONLY investigations that pull a WIDE VARIETY of current/diverse/real sources, read primaries in full, hunt the decisive authoritative source, judge whether support is independent or one origin echoed, attack the leading conclusion, surface gaps honestly, and tie every claim to a primary through a verification gate that runs to completion. Effort scales via `thoroughness: auto | quick | standard | deep | exhaustive`. Callable from any session.
+description: Aletheia Research — deep, high-scrutiny research surveyor (v0.4). THE research tool: use this whenever you need to research, survey, fact-check, map, or "get an accurate picture of" a topic, or anchor a decision in evidence — rather than building an ad-hoc workflow. Frames competing perspectives (anti-anchoring), decomposes into a filesystem-coordinated tree, and runs parallel READ-ONLY investigations that pull a WIDE VARIETY of current/diverse/real sources, read primaries in full, hunt the decisive authoritative source, judge whether support is independent or one origin echoed, attack the leading conclusion, surface gaps honestly, and tie every claim to a primary through a verification gate that runs to completion. Effort defaults to UNLIMITED depth/budget (stop on saturation; `thoroughness: quick|standard|deep|exhaustive` to bound it, `max` for a week-deep run). Output scales to the reader via `verbosity: user` (a multi-page nuanced summary) or `agent` (the full artifact bundle). Callable from any session.
 ---
 
-# Aletheia Research 0.3 — deep, multi-perspective research surveyor
+# Aletheia Research 0.4 — deep, multi-perspective research surveyor
 
 An accurate, un-anchored picture of a field. A bare LLM anchors on its priors, searches to confirm
 them, cites nothing, and is stale. Aletheia beats it by **surveying widely and for real**: competing
@@ -29,20 +29,41 @@ and **list the affected channels in the brief's Gaps**. Never silently survey on
 missing a channel narrows source variety and the user should know.
 Scripts: `treestate.py` (shared-artifact store: tree/budget/thoroughness), `investigate.py` (leaf engine:
 route→retrieve→rank→read-in-full, multi-round), `router.py` (channel routing), `rank.py` (authority
-ranking), `synthesize.py` (bottom-up merge + independence + `--gate`), `verify.py` (citation gate).
+ranking), `synthesize.py` (bottom-up merge + independence + `--gate`), `verify.py` (citation gate),
+`report.py` (output assembler: `bundle` = full files for agents, `outline` = artifact inventory).
 Do NOT fall back to plain web search — the point is the channels (Brave/OpenAlex/arXiv/Reddit/HN/
 Stack Exchange/GitHub/YouTube + real-browser reads) that reach current, diverse, authenticated sources.
 
-## Thoroughness (scales effort to the question — pass it or judge it in SCOPE)
-| tier | budget | max_depth | max_children | ≈ leaves | when |
-|---|---|---|---|---|---|
-| `quick` | 8 | 1 | 3 | ~3 | narrow, settled |
-| `standard` | 16 | 2 | 3 | ~4–6 | the default workhorse |
-| `deep` | 32 | 3 | 4 | ~10+ | broad / contested (fan-out) |
-| `exhaustive` | 64 | 3 | 5 | ~15+ | maximal (fan-out) |
-`auto` = judge breadth×contestedness in SCOPE, then init with the chosen tier.
+## Thoroughness — `unlimited` is the DEFAULT (depth & budget are unbounded)
+The goal is a brief worth **a full day of manual searching** (and **a week** at `max`) — NOT a
+surface skim you could beat with five minutes of Google. So the default no longer caps effort.
+| tier | budget | max_depth | when |
+|---|---|---|---|
+| `quick` | 8 | 1 | narrow, settled — you want speed, not depth |
+| `standard` | 16 | 2 | a fast bounded pass |
+| `deep` | 32 | 3 | bounded but broad |
+| `exhaustive` | 64 | 3 | bounded maximal |
+| **`unlimited`** (default) | ∞ | ∞ | **the default** — keep going until saturated (~a day) |
+| `max` | ∞ | ∞ | the "proper flag": run it maximally (~a week) |
+**With `unlimited`/`max` the stop is NOT budget-exhaustion — it is AGENT-PACED CONVERGENCE:** keep
+splitting broad questions and deepening leaves (more rounds, more channels, more primaries) until a
+branch is **saturated** — new rounds surface no new *distinct origins* or claims (watch the
+independence report). A high `max_nodes` (512 / 2048) is only a runaway backstop, not a target. Only
+choose a bounded tier when the user explicitly wants it fast. `auto` → judge breadth×contestedness;
+default to `unlimited` unless the question is genuinely narrow/settled (then `quick`/`standard`).
 
-## What's new in 0.3 (the good parts of deep-aletheia 0.2, plus these)
+## Verbosity — who is the answer FOR? (`verbosity: agent | user`, default `user`)
+Pass it at init (`treestate.py init … --verbosity agent`). It changes the FINAL output, not the research.
+- **`agent`** (a calling session/subagent used this skill): hand back the **FULL files, not a summary**
+  — run `report.py bundle --run "$RUN" --reads` and return that whole pack (every node's findings +
+  evidence + sources + the primaries read in full). Agents lose nothing to compression; nuance lives
+  in the raw artifacts.
+- **`user`** (a human asked): write a **MULTI-PAGE summary** (a few pages MINIMUM) — a genuinely
+  nuanced synthesis, not a one-screen bottom-line. Surface the disagreements, the mechanisms, the
+  caveats, the decisive sources, and the gaps. If it reads like something a few minutes of search
+  would give, it has failed — it must read like a day's work distilled.
+
+## What's new (0.3 kept the good parts of deep-aletheia 0.2; 0.4 adds unlimited-default + verbosity)
 1. **Hunt the DECISIVE source.** Don't just pool many primaries — actively find the *authoritative /
    settling* source (a regulator/agency opinion, a landmark systematic review/meta-analysis, an
    official standard, the largest RCT). This is the one thing the single-agent design beat 0.2 on.
@@ -60,9 +81,12 @@ Stack Exchange/GitHub/YouTube + real-browser reads) that reach current, diverse,
 
 ### 1. Frame the portfolio + init (anti-anchoring — load-bearing)
 ```bash
-RUN=$(python3 "$A/treestate.py" init "<topic>" --slug "<slug>" --thoroughness auto)   # or quick|standard|deep|exhaustive
+RUN=$(python3 "$A/treestate.py" init "<topic>" --slug "<slug>")            # DEFAULT = unlimited depth/budget
+# fast/bounded instead: --thoroughness quick|standard|deep|exhaustive ;  deepest (~a week): --thoroughness max
+# if a calling AGENT invoked this skill, add: --verbosity agent           # -> full-files bundle at the end
 ```
-For `auto`, pick the tier by breadth×contestedness, then re-init with it. Write **4–6 competing
+Default is `unlimited` (no budget/depth cap; stop when saturated). Only pass a bounded tier if the user
+wants it fast. Write **4–6 competing
 framings** into `$RUN/portfolio.md` BEFORE searching: mainstream/consensus (to test, not serve),
 ≥1 heterodox, ≥1 practitioner/field-report, ≥1 orthogonal reframe, and name one **leading** framing
 for the adversary. Commit to none.
@@ -105,7 +129,8 @@ community and **excluding off-topic indexes**. Preview it: `python3 "$A/router.p
 The classifier is keyword-based, so if it mis-scopes (e.g. a title with no domain word), **override**:
 `investigate.py --node <N> --channels europepmc,openalex,brave,reddit`. Different framings warrant
 different channels (practitioner→community/forums; consensus→primaries).
-At `deep`/`exhaustive`, spawn one **READ-ONLY worker subagent per leaf, in parallel** (Task tool),
+At `deep`/`exhaustive`/`unlimited`/`max` (i.e. the default and every deep tier — anytime there are
+multiple leaves), spawn one **READ-ONLY worker subagent per leaf, in parallel** (Task tool),
 each given the topic + its framing + why it exists. Each worker: reads `evidence.md`+`notes/`;
 **pulls a variety of distinct sources**; **hunts the decisive source** for its sub-question; **chases
 primaries** (no secondhand citations); writes `<NODE_DIR>/findings.md` (3–8 claims, each with the
@@ -137,19 +162,28 @@ claim** (read the cited primary in a small context; watch polarity + magnitude) 
 verdict to `supported`/`contradicted`/`unsupported`. Only `supported` survives in Agreement;
 `contradicted` → cut/flip; `unsupported` → downgrade to Unverified.
 **Use a DIFFERENT model for the Fact-Check than wrote the draft** (self-preference/verbosity bias is
-real — the writer grades its own work too kindly; at `deep`/`exhaustive` spawn the verifier as a
+real — the writer grades its own work too kindly; at `deep`/`exhaustive`/`unlimited`/`max` spawn the verifier as a
 subagent on another model). The score is **code-gated, not honor-system**: `score_run.py` reports
 `citation_accuracy` (= precision) as **null until `citation_complete` is true** — i.e. every on-topic
 claim has a final verdict (`citation_coverage` = 1.0) — alongside the stated `citation_denominator`
 (claims judged). A run with claims still `awaiting_llm_check` has NO headline accuracy: finish the pass.
 
-### 7. Answer, grounded — with gaps
-Write `$RUN/brief.md`: **Bottom line** · **Agreement** (independent sources converge) ·
-**Disagreement** (name both sides; do not smooth over) · **Unverified / single-origin** ·
-**Gaps** (what couldn't be reached: paywalled primaries, missing large RCTs, empty channels — state
-them). Every claim links to the **primary you read**; dates on time-sensitive claims. **X/YouTube are
-`color`** (never cite as fact); **Reddit/HN are `lead_gen`** — mine them for the primary they point to
-and cite THAT, not the thread. Accrete into the `consilient-atlas` so surveys compound.
+### 7. Answer, grounded — scaled to the VERBOSITY
+Always write `$RUN/brief.md` with: **Bottom line** · **Agreement** (independent sources converge) ·
+**Disagreement** (name both sides; do not smooth over) · **Unverified / single-origin** · **Gaps**
+(paywalled primaries, missing large RCTs, empty/degraded channels — state them). Every claim links to
+the **primary you read**; dates on time-sensitive claims. **X/YouTube are `color`** (never cite as
+fact); **Reddit/HN are `lead_gen`** — cite the primary they point to, not the thread. Then, by verbosity:
+- **`verbosity: agent`** → return the **FULL bundle**, not a summary:
+  `python3 "$A/report.py" bundle --run "$RUN" --reads` — hand the whole pack (every node's findings +
+  evidence + sources + primaries read in full) back to the calling agent. Do not compress it.
+- **`verbosity: user`** (default) → deliver a **MULTI-PAGE summary (a few pages MINIMUM)**: a nuanced
+  synthesis with the mechanisms, the disagreements and *why* they exist, the decisive sources, the
+  numbers/caveats, and the honest gaps — the distilled equivalent of a day (or, at `max`, a week) of
+  manual searching. Use `report.py outline --run "$RUN"` to make sure every branch is represented so
+  nothing is silently dropped. If it reads like a five-minute Google, expand it.
+
+Accrete the brief into the `consilient-atlas` so surveys compound.
 
 ## Observability & resume
 `treestate.py tree --run "$RUN"` shows the whole tree (state/budget/findings). Every node has
@@ -161,4 +195,4 @@ and cite THAT, not the thread. Accrete into the `consilient-atlas` so surveys co
 Channel **classes**: `evidence` citable · `lead_gen` (search/HN/Reddit) → **find & cite the primary** ·
 `color` (X/YouTube) → never cite as fact. Variety, decisive-source hunt, chase-the-primary,
 independence-by-judgment, adversary, read-in-full, honest gaps, and completed verification are
-non-optional from `standard` up.
+non-optional from `standard` up — and therefore always at the `unlimited` default and `max`.

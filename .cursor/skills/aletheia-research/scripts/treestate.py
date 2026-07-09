@@ -16,15 +16,16 @@ Budget model (conserved split, contestedness-weighted):
   (max_depth/max_children/max_nodes) bound fan-out.
 
 Layout:
-  runs/deep/<ts>-<slug>/
+  runs/aletheia-research/<ts>-<slug>/
     run.json  portfolio.md  brief.md  verify.jsonl
     index/sources.jsonl                      (global dedup / independence)
     tree/root/{spec.md,status.json,decisions.jsonl,questions.jsonl,answers.jsonl,
                sources.jsonl,notes/,findings.md,children/<qid>/...}
 
 CLI (used by the orchestrator skill + subagents):
-  treestate.py init "<topic>" [--slug s] [--budget 32] [--unit 4] [--max-depth 3]
-               [--max-children 5] [--max-nodes 40]
+  treestate.py init "<topic>" [--slug s] [--thoroughness quick|standard|deep|exhaustive|unlimited|max]
+               [--verbosity user|agent] [--budget N (explicit = custom bounded run)]
+               # default (no tier, no budget) = `unlimited`: unbounded depth/budget, stop on saturation
   treestate.py split  --node DIR --children '[["q1","question one"],["q2","..."]]'
   treestate.py decide --node DIR --actor NAME --why "..." "<decision>"
   treestate.py status --node DIR [--set state] [--field k=v ...]
@@ -114,28 +115,46 @@ def log_decision(node: str, actor: str, decision: str, why: str = "") -> None:
 # ---------------------------------------------------------------- run + tree
 # Thoroughness dial (callable/scaled from any session; scales effort to the question). It sets the
 # tree's budget/caps — deeper tiers spend more and split wider. `auto` = the agent picks it in SCOPE.
+#: Tiers. `unlimited` is the DEFAULT: budget/depth are effectively unbounded so the stop is no longer
+#: budget-exhaustion but AGENT-PACED CONVERGENCE — the orchestrator keeps splitting/deepening until a
+#: branch is saturated (no new distinct origins/claims). A high `max_nodes` remains as the one safety
+#: backstop (Anthropic's 50-subagent failure) — raise it, don't rely on it. The bounded tiers stay for
+#: when speed matters. `max` is the "proper flag": the same unbounded caps but run maximally (more
+#: framings, more redundancy, deeper verification) — the ~week-of-searching target vs unlimited's ~day.
+_BIG = 1_000_000.0
 THOROUGHNESS = {
     "quick":      dict(budget=8.0,  unit=4.0, max_depth=1, max_children=3, max_nodes=8),
     "standard":   dict(budget=16.0, unit=4.0, max_depth=2, max_children=3, max_nodes=16),
     "deep":       dict(budget=32.0, unit=4.0, max_depth=3, max_children=4, max_nodes=40),
     "exhaustive": dict(budget=64.0, unit=4.0, max_depth=3, max_children=5, max_nodes=64),
+    "unlimited":  dict(budget=_BIG, unit=4.0, max_depth=99, max_children=6, max_nodes=512),
+    "max":        dict(budget=_BIG, unit=4.0, max_depth=99, max_children=8, max_nodes=2048),
 }
 
 
-def init_run(topic: str, slug: str = "", budget: float = 32.0, unit: float = 4.0,
+def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: float = 4.0,
              max_depth: int = 3, max_children: int = 5, max_nodes: int = 40,
-             base: str = "runs/aletheia-research", thoroughness: str = "") -> str:
-    tier = thoroughness if thoroughness in THOROUGHNESS else ""
-    if tier:  # tier overrides the budget/caps
+             base: str = "runs/aletheia-research", thoroughness: str = "",
+             verbosity: str = "user") -> str:
+    # Resolution: a named tier wins; else an EXPLICIT budget means custom (honored, for bounded/
+    # programmatic runs); else — nothing specified — default to `unlimited` (the new default).
+    if thoroughness in THOROUGHNESS:
+        tier = thoroughness
+    elif budget is None:
+        tier = "unlimited"
+    else:
+        tier = thoroughness or "custom"
+    if tier in THOROUGHNESS:              # tier overrides budget/caps
         t = THOROUGHNESS[tier]
         budget, unit = t["budget"], t["unit"]
         max_depth, max_children, max_nodes = t["max_depth"], t["max_children"], t["max_nodes"]
+    verbosity = verbosity if verbosity in ("user", "agent") else "user"
     ts = dt.datetime.now().strftime("%Y-%m-%d-%H%M")
     run = os.path.join(base, "%s-%s" % (ts, _slugify(slug or topic)))
     os.makedirs(os.path.join(run, "index"), exist_ok=True)
     _write_json(os.path.join(run, "run.json"), {
-        "topic": topic, "created": _now(), "version": "aletheia-research 0.3.3",
-        "thoroughness": tier or (thoroughness or "custom"),
+        "topic": topic, "created": _now(), "version": "aletheia-research 0.4.0",
+        "thoroughness": tier, "verbosity": verbosity,
         "budget": budget, "unit": unit, "max_depth": max_depth,
         "max_children": max_children, "max_nodes": max_nodes, "state": "framing",
     })
@@ -381,11 +400,15 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("init"); p.add_argument("topic")
-    p.add_argument("--slug", default=""); p.add_argument("--budget", type=float, default=32.0)
+    p.add_argument("--slug", default=""); p.add_argument("--budget", type=float, default=None,
+                   help="explicit budget = a CUSTOM bounded run; omit for the `unlimited` default")
     p.add_argument("--unit", type=float, default=4.0); p.add_argument("--max-depth", type=int, default=3)
     p.add_argument("--max-children", type=int, default=5); p.add_argument("--max-nodes", type=int, default=40)
     p.add_argument("--base", default="runs/aletheia-research")
-    p.add_argument("--thoroughness", default="", help="quick|standard|deep|exhaustive (overrides budget/caps)")
+    p.add_argument("--thoroughness", default="",
+                   help="quick|standard|deep|exhaustive|unlimited(default)|max (overrides budget/caps)")
+    p.add_argument("--verbosity", default="user", choices=["user", "agent"],
+                   help="agent = emit the FULL bundle for a calling agent; user = a multi-page summary")
 
     p = sub.add_parser("split"); p.add_argument("--node", required=True)
     p.add_argument("--children", required=True, help='JSON: [["qid","question"],...]')
@@ -431,7 +454,8 @@ def main(argv=None) -> int:
 
     if args.cmd == "init":
         run = init_run(args.topic, args.slug, args.budget, args.unit, args.max_depth,
-                       args.max_children, args.max_nodes, args.base, args.thoroughness)
+                       args.max_children, args.max_nodes, args.base, args.thoroughness,
+                       args.verbosity)
         print(run)
     elif args.cmd == "cansplit":
         print(json.dumps(can_split(args.node), indent=2))

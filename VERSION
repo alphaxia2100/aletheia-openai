@@ -1,4 +1,4 @@
-aletheia-research: 0.3.3
+aletheia-research: 0.4.0
 deep-aletheia: 0.2.0 (frozen — direct ancestor of aletheia-research 0.3; eval baseline)
 surveyor: 0.1.0 (retired 2026-07-08 — eval baseline; superseded by aletheia-research 0.3)
 aletheia: 1.0.0 (retired — original single-agent loop; the deep-tree flagship is now `aletheia-research`)

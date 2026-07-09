@@ -452,20 +452,72 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     """aletheia 0.3's thoroughness dial sets the tree budget/caps and tags version 0.3.0.
     Run via subprocess to avoid a module-name clash with the frozen deep-aletheia `treestate`."""
 
+    T = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "treestate.py")
+
     def _init(self, tier, base):
-        t = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "treestate.py")
         run = subprocess.check_output(
-            [sys.executable, t, "init", "test topic", "--thoroughness", tier, "--base", base],
+            [sys.executable, self.T, "init", "test topic", "--thoroughness", tier, "--base", base],
             text=True).strip()
         return json.load(open(os.path.join(run, "run.json"), encoding="utf-8"))
 
     def test_tiers_scale_and_version(self):
         base = tempfile.mkdtemp()
         q, dp = self._init("quick", base), self._init("deep", base)
-        self.assertEqual(q["version"], "aletheia-research 0.3.3")
+        self.assertEqual(q["version"], "aletheia-research 0.4.0")
         self.assertEqual(q["thoroughness"], "quick")
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
+
+    def test_default_is_unlimited(self):
+        # 0.4.0: no --thoroughness and no --budget -> the unlimited default (unbounded depth/budget)
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "test topic", "--base", tempfile.mkdtemp()],
+            text=True).strip()
+        c = json.load(open(os.path.join(run, "run.json"), encoding="utf-8"))
+        self.assertEqual(c["thoroughness"], "unlimited")
+        self.assertGreaterEqual(c["budget"], 1_000_000)
+        self.assertGreaterEqual(c["max_depth"], 99)
+        self.assertEqual(c["verbosity"], "user")              # default audience
+
+    def test_explicit_budget_stays_custom(self):
+        # an explicit --budget is a bounded CUSTOM run, NOT overridden by the unlimited default
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "t", "--budget", "32", "--base", tempfile.mkdtemp()],
+            text=True).strip()
+        c = json.load(open(os.path.join(run, "run.json"), encoding="utf-8"))
+        self.assertEqual(c["thoroughness"], "custom")
+        self.assertEqual(c["budget"], 32.0)
+
+    def test_verbosity_agent_recorded_and_bundle_has_full_files(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "bundle topic", "--verbosity", "agent", "--base", base],
+            text=True).strip()
+        self.assertEqual(json.load(open(os.path.join(run, "run.json")))["verbosity"], "agent")
+        subprocess.check_call([sys.executable, self.T, "findings", "--node",
+                               os.path.join(run, "tree", "root"), "--text",
+                               "UNIQUE_FINDING_MARKER with a [primary](https://x)"], stdout=subprocess.DEVNULL)
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        out = subprocess.check_output([sys.executable, rep, "bundle", "--run", run], text=True)
+        self.assertIn("FULL BUNDLE", out)
+        self.assertIn("UNIQUE_FINDING_MARKER", out)           # the actual file content is included verbatim
+
+    def test_bundle_survives_corrupt_artifacts(self):
+        # review hardening: a non-UTF-8 byte or a non-dict sources line must NOT abort the whole
+        # bundle into an empty result — it must degrade gracefully and still return every artifact.
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "corrupt topic", "--base", base], text=True).strip()
+        subprocess.check_call([sys.executable, self.T, "findings", "--node",
+                               os.path.join(run, "tree", "root"), "--text", "SURVIVOR_MARKER"],
+                              stdout=subprocess.DEVNULL)
+        with open(os.path.join(run, "portfolio.md"), "wb") as fh:
+            fh.write(b"valid text \xff\xfe then more")        # invalid UTF-8
+        with open(os.path.join(run, "tree", "root", "sources.jsonl"), "w") as fh:
+            fh.write("123\n" + json.dumps({"url": "https://x", "title": "ok"}) + "\n")  # non-dict line
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        out = subprocess.check_output([sys.executable, rep, "bundle", "--run", run], text=True)
+        self.assertIn("SURVIVOR_MARKER", out)                 # content survived the corrupt neighbors
 
 
 class TestAletheiaResearch031(unittest.TestCase):
