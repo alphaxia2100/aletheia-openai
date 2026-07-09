@@ -71,21 +71,45 @@ _KW_STOP = set(
     "study studies research paper papers review overview guide intro introduction survey".split())
 
 
+_ACRONYM_RE = re.compile(r"\b[A-Z][A-Z0-9]{1,5}\b")        # RAG, LLM, GPT, USA, 10K — short but salient
+_PROPER_RE = re.compile(r"\b[A-Z][A-Za-z0-9]{2,}\b")       # Claude, Tavily, PyTorch — proper nouns
+
+
 def keywordize(query: str, n: int = 6) -> str:
-    """Reduce a long natural-language query to its salient keywords for KEYWORD-matching APIs
-    (HN Algolia, Stack Exchange, GitHub, Marginalia), which return NOTHING when a long sentence
-    over-constrains them. Short queries pass through unchanged; quoted phrases are preserved."""
+    """Reduce a long natural-language query to n keywords for KEYWORD-matching APIs (HN Algolia,
+    Stack Exchange, GitHub, Marginalia, and any index that ANDs terms), which return NOTHING when a
+    long sentence over-constrains them. Selection priority: (1) quoted phrases; (2) ENTITY terms —
+    acronyms / proper nouns / identifiers, which are the distinctive terms REGARDLESS of position
+    (the audited recall bug was dropping late proper nouns like Exa/Tavily); (3) the remaining terms
+    in DISCOVERY order (natural queries front-load the topic — length is NOT used, as it rewards long
+    generic filler like 'significantly' over short distinctive terms like 'acid rain'). Total output
+    is capped at n units. Short queries and quoted phrases pass through/are preserved."""
     if not query or len(query.split()) <= n:
         return query
     phrases = re.findall(r'"([^"]+)"', query)
+    acronyms = set(_ACRONYM_RE.findall(query))
+    caps = {w.lower() for w in _PROPER_RE.findall(query)}   # proper nouns (from original casing)
+    in_phrases = " ".join(phrases).lower()
     kept, seen = [], set()
     for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9+.#_-]{1,}", query.lower()):
-        if len(w) < 3 or w in _KW_STOP or w in seen:
+        if w in seen or (in_phrases and w in in_phrases) or w in _KW_STOP:
+            continue
+        if len(w) < 3 and w.upper() not in acronyms:       # keep short ALL-CAPS acronyms (AI/ML/RAG)
             continue
         seen.add(w)
         kept.append(w)
-    terms = phrases + [w for w in kept if w not in " ".join(phrases).lower()]
-    return " ".join(terms[:n]) or query
+
+    def _is_entity(w: str) -> bool:                         # distinctive regardless of position
+        return (w.upper() in acronyms or w in caps
+                or any(c.isdigit() or c in "+#._-" for c in w))
+
+    slots = max(0, n - len(phrases))
+    # stable sort: entities first (keeping discovery order among them), then the rest in discovery
+    # order; take the first `slots` by this priority, then EMIT in original discovery order.
+    priority = sorted(range(len(kept)), key=lambda i: (0 if _is_entity(kept[i]) else 1, i))
+    chosen = set(priority[:slots])
+    selected = [kept[i] for i in range(len(kept)) if i in chosen]
+    return " ".join((phrases + selected)[:n]) or query     # cap TOTAL units at n (phrases can't overflow)
 
 
 def get_bytes(url: str, timeout: float = 10.0, headers: Optional[Dict[str, str]] = None,

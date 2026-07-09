@@ -134,7 +134,7 @@ def init_run(topic: str, slug: str = "", budget: float = 32.0, unit: float = 4.0
     run = os.path.join(base, "%s-%s" % (ts, _slugify(slug or topic)))
     os.makedirs(os.path.join(run, "index"), exist_ok=True)
     _write_json(os.path.join(run, "run.json"), {
-        "topic": topic, "created": _now(), "version": "aletheia-research 0.3.2",
+        "topic": topic, "created": _now(), "version": "aletheia-research 0.3.3",
         "thoroughness": tier or (thoroughness or "custom"),
         "budget": budget, "unit": unit, "max_depth": max_depth,
         "max_children": max_children, "max_nodes": max_nodes, "state": "framing",

@@ -99,7 +99,7 @@ def _simple(name: str, group: str, url: str, t: float, headers=None, warn_note="
     return (name, group, "ok" if ok else "down", name if ok else "-", note if ok else (warn_note or note))
 
 
-def p_search(name: str, group: str, modname: str, t: float, q: str = "climate change") -> Tuple[str, ...]:
+def p_search(name: str, group: str, modname: str, t: float, q: str = "climate change effects") -> Tuple[str, ...]:
     """FUNCTIONAL probe: actually call the client's search() and count results, so a channel that is
     HTTP-200 but returns NOTHING (e.g. a dead scrape endpoint or an API change) shows as `warn`,
     not a false `ok`. This is what lets Aletheia surface silently-broken channels."""
@@ -295,6 +295,13 @@ def main() -> int:
     print("\n%d/%d %s channels live." % (live_ok, len(rows), scope))
     if hidden:
         print("%d channels hidden (disabled). Run with --all to see them, or `channels.py enable <name>`." % hidden)
+    # Honest caveat: these probes are SEQUENTIAL single requests. They confirm a channel is REACHABLE,
+    # not that it survives concurrent fan-out — deep/exhaustive spawn many workers that hit arXiv /
+    # OpenAlex / Semantic Scholar in parallel and may still 429 (the keyless pools rate-limit under
+    # load). 'ok' = reachable now; watch each run's per-channel `error`/`relaxed_to` for live degradation.
+    print("\nNote: sequential single-request probes — 'ok' means REACHABLE, not concurrency-proof. "
+          "Under parallel fan-out (deep/exhaustive) the keyless academic pools (arXiv/OpenAlex/"
+          "Semantic Scholar) may still rate-limit; check per-channel errors in the run's evidence.md.")
     return 0
 
 

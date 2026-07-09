@@ -37,6 +37,7 @@ import router  # noqa: E402
 import rank as rankmod  # noqa: E402
 import dedupe  # noqa: E402
 import read as readmod  # noqa: E402
+import _http  # noqa: E402  (keywordize, for 0-result relaxation)
 
 MAX_READ_CHARS = 40000   #: read cap; a read that hits it is flagged `_truncated` (no silent cut-off)
 _ARXIV = re.compile(r"arxiv\.org/(?:abs|html|pdf)/([0-9]{4}\.[0-9]{4,5})", re.I)
@@ -159,18 +160,34 @@ def retrieve(query: str, channels: List[str], limit: int, timeout: float):
 
     def one(ch):
         start = time.time()
+        used = query
         try:
             out = DISPATCH[ch](query, limit, timeout) or []
+            # 0-result relaxation: many free indexes AND their terms, so a long compound query returns
+            # NOTHING (the audited AND-cliff). On a TRUE zero, retry with progressively fewer MOST-
+            # SALIENT terms until non-empty — capped at 2 retries, and never when the query already
+            # returned results (so it can't broaden a working query into noise).
+            if not out and len(query.split()) > 3:
+                for k in (3, 2):
+                    relaxed = _http.keywordize(query, k)
+                    if len(relaxed.split()) >= len(used.split()):
+                        continue
+                    used = relaxed
+                    out = DISPATCH[ch](relaxed, limit, timeout) or []
+                    if out:
+                        break
             for r in out:
                 r.setdefault("_channel", ch)
-            return ch, out, time.time() - start, None
+            return ch, out, time.time() - start, None, used
         except Exception as e:  # noqa: BLE001
-            return ch, [], time.time() - start, "%s: %s" % (type(e).__name__, str(e)[:80])
+            return ch, [], time.time() - start, "%s: %s" % (type(e).__name__, str(e)[:80]), query
 
     with ThreadPoolExecutor(max_workers=max(len(channels), 1)) as ex:
         for f in as_completed([ex.submit(one, c) for c in channels]):
-            ch, out, dt, err = f.result()
+            ch, out, dt, err, used = f.result()
             per[ch] = {"n": len(out), "latency_s": round(dt, 2), "error": err}
+            if used != query:                      # surface that this channel needed relaxation
+                per[ch]["relaxed_to"] = used
             recs += out
     for r in recs:
         meta = idx.get(r.get("index_of_origin") or r.get("_channel"), {})

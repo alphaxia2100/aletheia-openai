@@ -1,6 +1,6 @@
 # Aletheia 0.3 — design
 
-**Status:** built (aletheia-research 0.3.2). Built **off deep-aletheia 0.2** (its direct ancestor).
+**Status:** built (aletheia-research 0.3.3). Built **off deep-aletheia 0.2** (its direct ancestor).
 Supersedes `surveyor`; the `aletheia` name is rebased from the retired v1 onto the deep-tree line.
 
 ## Why 0.3 is built on deep-aletheia 0.2
@@ -106,6 +106,17 @@ that stripped domain primaries from narrow queries) — both corrected. See CHAN
 The audit's *architectural* verdicts (weighting still static not adaptive; keyword-recall the dominant
 weakness; thresholds uncalibrated; the whole promotion still N=1) are **design-level, not bugs** — they
 remain open and are the honest agenda below, not something a patch closes.
+
+## 0.3.3 — keyword-recall (the audit's #1 systemic weakness) (2026-07-09)
+The deep audit ranked keyword-recall, not the tree, as the dominant systemic weakness: the free
+indexes AND their terms, so a long compound query returns nothing — it degraded both self-audits live.
+0.3.3 adds **0-result relaxation** (retry with fewer keywords on a true zero, all channels, capped,
+rank-gated), **salience-aware keywordize** (phrases → entity terms → discovery order, capped at n; the
+review rejected a length-based first attempt that regressed front-loaded queries), and an honest
+**doctor caveat** (sequential probes can't detect concurrency rate-limits). This is a prerequisite for
+a *valid* single-agent-vs-tree head-to-head: that experiment can now run on a non-degraded toolkit
+rather than being confounded by the recall gap, as the audits were. Keyword recall remains
+fundamentally capped without a neural retriever (Exa as the first paid upgrade) — deferred.
 
 ## Honestly unresolved after 0.3.1
 - The budget verdict rests on LLM-reasoning test-time-compute papers (tokens/samples), not a direct

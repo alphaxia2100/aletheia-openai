@@ -18,9 +18,11 @@ ROOT = os.path.join(HERE, "..")
 sys.path.insert(0, os.path.join(ROOT, ".cursor", "skills", "provenance-audit", "scripts"))
 sys.path.insert(0, os.path.join(ROOT, ".cursor", "skills", "defensibility-judge", "scripts"))
 sys.path.insert(0, os.path.join(ROOT, ".cursor", "skills", "deep-aletheia", "scripts"))
+sys.path.insert(0, os.path.join(ROOT, ".cursor", "skills", "channel-retrieval", "scripts"))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "eval"))
 
 import provenance_graph as pg  # noqa: E402
+import _http  # noqa: E402  (shared channel helpers: keywordize)
 import dedupe  # noqa: E402
 import rubric  # noqa: E402
 import verify  # noqa: E402  (deep-aletheia citation gate)
@@ -460,7 +462,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     def test_tiers_scale_and_version(self):
         base = tempfile.mkdtemp()
         q, dp = self._init("quick", base), self._init("deep", base)
-        self.assertEqual(q["version"], "aletheia-research 0.3.2")
+        self.assertEqual(q["version"], "aletheia-research 0.3.3")
         self.assertEqual(q["thoroughness"], "quick")
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
@@ -574,6 +576,39 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertIn("keto", inv._anchor("efficacy over time", "keto epilepsy children"))
         self.assertIn("json", inv._anchor("validation errors", "json schema validation rules"))
 
+    def test_zero_result_relaxation_retries_shorter(self):
+        # 0.3.3: a channel that ANDs terms (returns [] on a long query) is retried with fewer
+        # most-salient terms until non-empty; the relaxation is recorded in the per-channel report.
+        inv = self._load("ar_investigate", "investigate.py")
+        calls = []
+
+        def stub(q, n, t):
+            calls.append(q)
+            return ([{"url": "https://x/1", "title": "hit", "index_of_origin": "stub"}]
+                    if len(q.split()) <= 2 else [])          # simulate the AND-cliff
+        inv.DISPATCH["stub"] = stub
+        inv._cfg_classes = lambda: {"stub": {"class": "evidence", "index_group": "stub"}}
+        recs, per = inv.retrieve("how do transformer attention mechanisms scale in large language models",
+                                 ["stub"], 5, 5.0)
+        self.assertTrue(recs)                                # relaxation recovered results
+        self.assertIn("relaxed_to", per["stub"])            # and recorded which shorter query worked
+        self.assertGreater(len(calls), 1)                   # it actually retried
+
+    def test_relaxation_not_triggered_when_first_query_hits(self):
+        # never broaden a query that already returned results
+        inv = self._load("ar_investigate", "investigate.py")
+        calls = []
+
+        def stub(q, n, t):
+            calls.append(q)
+            return [{"url": "https://y/1", "title": "hit", "index_of_origin": "stub"}]
+        inv.DISPATCH["stub"] = stub
+        inv._cfg_classes = lambda: {"stub": {"class": "evidence", "index_group": "stub"}}
+        recs, per = inv.retrieve("a fairly long query with several distinct content terms here", ["stub"], 5, 5.0)
+        self.assertEqual(len(calls), 1)                      # one call, no relaxation
+        self.assertNotIn("relaxed_to", per["stub"])
+
+
     def test_biomed_and_regulatory_venues_rank_primary(self):
         rk = self._load("ar_rank", "rank.py")
         for u in ("https://www.thelancet.com/x", "https://www.nejm.org/x", "https://www.bmj.com/x",
@@ -594,6 +629,55 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertEqual(s["citation_precision"], 0.5)       # 1 supported / 2 finally judged
         self.assertEqual(s["citation_denominator"], 2)       # stated denominator = claims judged
         self.assertEqual(s["citation_coverage"], round(2 / 3, 3))
+
+
+class TestKeywordizeRecall(unittest.TestCase):
+    """0.3.3 salience-aware keywordize: keep the n MOST salient terms (rare/acronym/identifier), not
+    the first n — the audited recall bug that dropped distinctive rare terms appearing later."""
+
+    def test_short_query_passthrough(self):
+        self.assertEqual(_http.keywordize("intermittent fasting", 6), "intermittent fasting")
+
+    def test_keeps_acronyms_drops_stopwords(self):
+        o = _http.keywordize("what is the best RAG pipeline for retrieval augmented generation with LLM agents", 5)
+        self.assertIn("rag", o)
+        self.assertIn("llm", o)
+        self.assertNotIn("best", o)
+        self.assertNotIn("what", o)
+
+    def test_central_terms_beat_peripheral_length(self):
+        # length is capped, so the front-loaded central pair is kept, not a longer peripheral word
+        self.assertEqual(
+            _http.keywordize("how do transformer attention mechanisms scale in large language models", 2),
+            "transformer attention")
+
+    def test_keeps_version_identifier_and_acronym(self):
+        o = _http.keywordize("does GPT-4 beat Claude on the MMLU benchmark suite released this year", 4)
+        self.assertIn("gpt-4", o)   # digit/symbol bonus keeps the identifier
+        self.assertIn("mmlu", o)    # all-caps acronym bonus keeps it despite being short
+
+    def test_front_loaded_topic_not_lost_to_generic_filler(self):
+        # review regression: length ranking dropped 'acid rain' for the longer adverb 'significantly'
+        self.assertEqual(
+            _http.keywordize("acid rain damages forest ecosystems significantly worldwide", 2),
+            "acid rain")
+        self.assertEqual(
+            _http.keywordize("why does aspirin reduce heart attack risk in older adults reliably", 3),
+            "aspirin reduce heart")
+
+    def test_late_proper_noun_entity_is_rescued(self):
+        # the audit's ACTUAL complaint: a distinctive proper noun appearing LATE (Exa/Tavily/Claude)
+        # must survive, which pure first-n dropped and length mis-ranked
+        self.assertIn("claude", _http.keywordize(
+            "does GPT-4 beat Claude on the MMLU benchmark released this year", 4))
+        self.assertIn("exa", _http.keywordize(
+            "compare neural search api deep retrieval quality of Exa and Tavily", 4))
+
+    def test_multiple_phrases_do_not_overflow_n(self):
+        # review regression: quoted phrases used to bypass the n cap and over-constrain AND APIs
+        out = _http.keywordize('find "alpha one" "beta two" "gamma three" "delta four" now', 2)
+        self.assertLessEqual(out.count('"') // 2 + len([w for w in out.split()]), 4)  # <= 2 phrase-units
+        self.assertIn("alpha", out)
 
 
 if __name__ == "__main__":

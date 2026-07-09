@@ -27,6 +27,34 @@ Versioning is [SemVer](https://semver.org/); each notable change bumps minor/pat
 
 ---
 
+## aletheia-research 0.3.3 — 2026-07-09 (keyword-recall — the audit's #1 systemic weakness)
+
+Closes the recall gap the deep audit ranked as the dominant systemic weakness — the free indexes AND
+their terms, so a long compound query returns NOTHING (it degraded both self-audits live). Designed,
+then adversarially reviewed by a workflow that RAN the code; the review caught a real regression in the
+first keywordize attempt and it was corrected before shipping. Tests 65 → 74.
+
+- **0-result relaxation (`investigate.retrieve`):** the core fix — when a channel returns [] on a
+  >3-word query, retry with progressively fewer keywords (keywordize → 3 → 2), first non-empty wins;
+  capped at 2 retries, never broadens a query that already returned results, applies to ALL channels
+  (incl. openalex/arxiv), and records `relaxed_to` in the per-channel report. Off-topic broadening is
+  bounded by `rank`'s multiplicative relevance gate against the ORIGINAL query.
+- **Salience-aware `keywordize` (`_http`):** keeps the n keywords that matter — quoted phrases, then
+  ENTITY terms (acronyms / proper nouns / identifiers, distinctive regardless of position — the
+  audit's actual complaint was dropping late proper nouns like Exa/Tavily), then the rest in discovery
+  order (natural queries front-load the topic); total capped at n. *Review-caught & fixed:* the first
+  attempt ranked by word length, which regressed common front-loaded queries (dropped "acid rain" for
+  "significantly", "Claude" for "released") and let quoted phrases overflow n — length was replaced by
+  the entity+position scheme, a strict improvement over the old first-n.
+- **`doctor`:** probe query made realistic (`climate change effects`) and an honest caveat added —
+  sequential single-request probes confirm a channel is REACHABLE, not concurrency-proof; parallel
+  fan-out can still 429 the keyless academic pools (the real reason doctor false-greened under the
+  audit's 12-worker fan-out).
+
+Still open (design-level, not this release): keyword recall is fundamentally capped without a neural
+retriever (add Exa as the first paid upgrade); the equal-token-budget single-agent-vs-tree head-to-head
+that would settle the N=1 promotion — now runnable on a non-degraded toolkit.
+
 ## aletheia-research 0.3.2 — 2026-07-09 (deep-audit bug fixes)
 
 Fixes the 6 code bugs the deeper per-component/per-step self-audit
