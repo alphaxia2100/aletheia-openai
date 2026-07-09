@@ -93,6 +93,12 @@ DISPATCH = {
     "stackexchange": lambda q, n, t: _search("stackexchange", q, n, t),
     "github": lambda q, n, t: _search("github", q, n, t),
     "reddit": lambda q, n, t: importlib.import_module("reddit").search(q, n, t),
+    "europepmc": lambda q, n, t: _search("europepmc", q, n, t),          # biomed/clinical primary
+    "wikipedia": lambda q, n, t: _search("wikipedia", q, n, t),          # orientation / humanities
+    "crossref": lambda q, n, t: _search("crossref", q, n, t),            # DOI metadata / references
+    "semanticscholar": lambda q, n, t: _search("semanticscholar", q, n, t),  # CS/ML citation graph
+    "googlebooks": lambda q, n, t: _search("googlebooks", q, n, t),      # books / history / humanities
+    "gutenberg": lambda q, n, t: _search("gutendex", q, n, t),           # public-domain full texts
     "youtube": lambda q, n, t: [{"index_of_origin": "youtube",
                                  "url": "https://www.youtube.com/watch?v=" + v, "title": ""}
                                 for v in importlib.import_module("youtube").yt_search(q, n, t)],

@@ -1,143 +1,150 @@
 #!/usr/bin/env python3
-"""Deep Aletheia — channel router. Executes channels.json:selection_guidance instead of
-leaving it a comment. Given a topic (+ optional framing), pick a SMALL, well-matched channel
-set that always covers the three roles (independent web / a primary source / an un-laundered
-community channel) and excludes off-topic indexes (the fix for "10 arXiv papers on a camera
-topic"). The agent can override with --category or --channels.
+"""Aletheia Research — SCOPE-AWARE channel router.
 
-Usage:
-  router.py "topic" [--framing "..."] [--category NAME] [--json]
-Prints the chosen channels (one per line), or full JSON with --json.
+Each run should fire only the channels the QUESTION needs — not all of them. Given a topic (+ optional
+framing/angle), this classifies the question into one or two DOMAINS and returns a SMALL set that
+covers the three roles (independent web / a domain-appropriate primary / an un-laundered community)
+and EXCLUDES off-topic indexes (no arXiv on a nutrition question, no PubMed on a camera question, no
+GitHub on a history question). The worker may override with --category or --channels.
+
+Usage:  router.py "topic" [--framing "..."] [--category NAME] [--max N] [--json]
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from typing import Dict, List
 
-# channels that actually have a runnable search client (keep in sync with investigate.py)
-AVAILABLE = {"brave", "marginalia", "duckduckgo", "openalex", "arxiv",
-             "hackernews", "stackexchange", "github", "reddit", "youtube"}
+# channels with a runnable search client (keep in sync with investigate.py DISPATCH)
+AVAILABLE = {"brave", "duckduckgo", "marginalia", "openalex", "arxiv", "hackernews", "stackexchange",
+             "github", "reddit", "youtube", "europepmc", "wikipedia", "crossref", "semanticscholar",
+             "googlebooks", "gutenberg"}
+WEB = ["brave", "duckduckgo", "marginalia"]          # independent-web role (always ≥1)
 
-KEYWORDS: Dict[str, List[str]] = {
-    "software_technical_howto": [
-        "code", "coding", "api", "programming", "program", "library", "framework", "python",
-        "javascript", "typescript", "rust", "golang", " go ", "java", "c++", "docker",
-        "kubernetes", "bug", "error", "exception", "install", "compiler", "algorithm",
-        "software", "git", "database", "sql", "backend", "frontend", "devops", "linux",
-        "regex", "runtime", "package", "sdk", "cli", "server", "latency"],
-    "science_medicine_quantitative": [
-        "study", "studies", "trial", "clinical", "drug", "dose", "gene", "protein", "gwas",
-        "disease", "physics", "chemistry", "biology", "quantum", "statistical", "statistics",
-        "dataset", "medicine", "medical", "health", "cancer", "neuron", "neural network",
-        "experiment", "molecule", "enzyme", "vaccine", "epidemi", "meta-analysis", "rct",
-        "biomarker", "cohort", "peer-reviewed", "efficacy"],
-    "humanities_history_theory": [
-        "history", "historical", "philosophy", "philosoph", "theory", "literature", "literary",
-        "art", "culture", "cultural", "war", "ancient", "medieval", "century", "ethics",
-        "moral", "religion", "religious", "political theory", "sociolog", "anthropolog",
-        "rhetoric", "classic", "poetry", "novel", "empire", "revolution"],
-    "products_consumer_lived_experience": [
-        "best", "buy", "buying", "review", "camera", "laptop", "phone", "headphone", "monitor",
-        "keyboard", "recommend", "worth it", "budget", "cheap", "price", "vs ", "versus",
-        "product", "gear", "which", "beginner", "setup", "gaming", "car", "mattress", "brand",
-        "quality", "durable", "reliable"],
-    "current_trends_people": [
-        "latest", "2026", "2025", "news", "trend", "who is", "startup", "launch", "release",
-        "funding", "ceo", "recent", "today", "announced", "acquisition", "ipo", "layoff",
-        "roadmap", "just released", "controversy", "drama"],
+# Domain taxonomy: signals -> the domain-appropriate primary/community/color channels, and channels
+# to keep OUT. Only channels that exist as clients are listed. 'general' is the fallback.
+DOMAINS: Dict[str, Dict[str, List[str]]] = {
+    "biomed": dict(
+        signals=["clinical", "health", "disease", "drug", "dose", "patient", "trial", "rct", "cohort",
+                 "diet", "dietary", "nutrition", "fasting", "caloric", "calorie", "metabolic", "insulin",
+                 "glucose", "obesity", "cancer", "cardiovascular", "cholesterol", "vaccine", "gene",
+                 "protein", "biomarker", "supplement", "cognition", "therapy", "efficacy", "medicine", "medical"],
+        primary=["europepmc", "openalex"], community=["reddit"], color=[],
+        exclude=["arxiv", "github", "stackexchange", "gutenberg"]),
+    "cs_software": dict(
+        signals=["code", "coding", "api", "programming", "library", "framework", "python", "javascript",
+                 "typescript", "rust", "golang", "compiler", "algorithm", "software", "docker", "kubernetes",
+                 "database", "sql", "backend", "frontend", "devops", "sdk", "cli", "server", "latency",
+                 "machine learning", "deep learning", "neural", "transformer", "llm", "model", "embedding", "agent"],
+        primary=["arxiv", "semanticscholar", "openalex"], community=["stackexchange", "github", "hackernews"],
+        color=[], exclude=["europepmc", "googlebooks", "gutenberg"]),
+    "science_physical": dict(
+        signals=["physics", "chemistry", "chemical", "math", "mathematics", "quantum", "astronomy",
+                 "astrophysics", "materials", "geology", "climate model", "particle", "theorem", "equation"],
+        primary=["arxiv", "openalex"], community=["stackexchange"], color=[],
+        exclude=["europepmc", "github", "gutenberg"]),
+    "humanities_history": dict(
+        signals=["history", "historical", "philosophy", "philosoph", "literature", "literary", "ancient",
+                 "medieval", "century", "empire", "revolution", "war", "religion", "religious", "art",
+                 "culture", "rhetoric", "classic", "poetry", "novel", "dynasty", "renaissance"],
+        primary=["wikipedia", "googlebooks", "openalex"], community=["reddit"], color=[],
+        exclude=["arxiv", "github", "stackexchange", "europepmc"]),
+    "products_consumer": dict(
+        signals=["best", "buy", "buying", "review", "camera", "laptop", "phone", "headphone", "monitor",
+                 "keyboard", "recommend", "worth it", "budget", "cheap", "price", " vs ", "versus", "gear",
+                 "which", "beginner", "gaming", "car", "mattress", "brand", "durable", "reliable"],
+        primary=[], community=["reddit", "hackernews"], color=["youtube"],
+        exclude=["arxiv", "openalex", "europepmc", "github", "gutenberg", "crossref", "semanticscholar"]),
+    "finance_business": dict(
+        signals=["stock", "shares", "earnings", "revenue", "valuation", "market cap", "ipo", "acquisition",
+                 "10-k", "10-q", "sec filing", "balance sheet", "profit", "investor", "hedge fund", "startup funding"],
+        primary=["openalex"], community=["reddit", "hackernews"], color=[],
+        exclude=["arxiv", "europepmc", "github", "gutenberg"]),  # SEC EDGAR client: see docs/channel-proposals.md
+    "legal": dict(
+        signals=["court", "lawsuit", "ruling", "statute", "plaintiff", "defendant", "liability", "copyright",
+                 "patent case", "supreme court", "appeal", "jurisdiction", "precedent", "litigation"],
+        primary=["openalex"], community=["reddit"], color=[],
+        exclude=["arxiv", "github", "europepmc", "gutenberg"]),  # CourtListener client: see channel-proposals
+    "policy_econ": dict(
+        signals=["policy", "economic", "economy", "gdp", "inflation", "unemployment", "regulation", "tax",
+                 "labor", "welfare", "subsidy", "trade", "productivity", "carbon", "emissions", "governance"],
+        primary=["openalex", "crossref"], community=["reddit", "hackernews"], color=[],
+        exclude=["github", "gutenberg", "europepmc"]),
+    "current_events": dict(
+        signals=["latest", "2026", "2025", "news", "trend", "who is", "launch", "released", "announced",
+                 "recent", "today", "ceo", "layoff", "controversy", "just released", "roadmap"],
+        primary=[], community=["reddit", "hackernews"], color=["youtube"],
+        exclude=["arxiv", "europepmc", "gutenberg", "googlebooks"]),
+    "general": dict(signals=[], primary=["openalex", "wikipedia"], community=["reddit"], color=[], exclude=[]),
 }
-FRAMING_BOOST = {
-    "an_un_laundered_channel": ["practitioner", "field report", "lived", "community",
-                                "people who", "hands-on", "anecdot", "forum", "reddit",
-                                "disconfirm", "criticism", "complaint", "failure"],
-    "a_primary_source": ["primary", "paper", "papers", "academic", "peer", "study",
-                         "evidence", "original", "dataset", "source code", "spec"],
-}
-# arXiv is CS/physics/math preprints — it has ~no biomedical/clinical/nutrition content, so on
-# clearly-biomed topics it returns keyword-matched CS papers (e.g. "Head Gesture" for a nutrition
-# query). Drop it there; openalex + web (which surfaces PubMed/Nature) carry the primaries.
-BIOMED = ["clinical", "fasting", "diet", "dietary", "caloric", "calorie", "metabolic",
-          "insulin", "glucose", "obesity", "weight loss", "patient", "disease", "drug",
-          "dose", "nutrition", "cardiovascular", "cholesterol", "lipid", "cancer", "therapy",
-          "trial", "medicine", "medical", "health", "blood", "hormone", "vitamin", "gut"]
+# a practitioner/field-report/adversary framing pulls in an extra un-laundered community voice
+_COMMUNITY_FRAMING = ["practitioner", "field report", "lived", "hands-on", "forum", "review", "complaint",
+                      "anecdot", "people who", "disconfirm", "criticism", "adversary", "real-world"]
 
 
-def _cfg() -> dict:
-    here = os.path.dirname(os.path.realpath(__file__))
-    path = os.path.join(here, "..", "..", "channel-retrieval", "channels.json")
-    with open(os.path.abspath(path), encoding="utf-8") as fh:
-        return json.load(fh)
+def _domains_for(text: str) -> List[str]:
+    scores = {d: sum(1 for kw in cfg["signals"] if kw in text) for d, cfg in DOMAINS.items() if cfg["signals"]}
+    ranked = sorted((d for d, s in scores.items() if s > 0), key=lambda d: -scores[d])
+    if not ranked:
+        return ["general"]
+    picks = [ranked[0]]
+    if len(ranked) > 1 and scores[ranked[1]] >= 2:      # a second domain only if clearly present
+        picks.append(ranked[1])
+    return picks
 
 
 def classify(topic: str, framing: str = "") -> str:
+    return _domains_for((topic + " " + framing).lower())[0]
+
+
+def route(topic: str, framing: str = "", category: str = "", enabled_only: bool = True,
+          max_channels: int = 6) -> dict:
     text = (topic + " " + framing).lower()
-    # clinical/nutrition topics ("best diet for fat loss") hit product words (best/which/vs) and
-    # were misfiled as consumer-trends -> firing off-domain channels. BIOMED signal wins outright.
-    if sum(1 for kw in BIOMED if kw in text) >= 2:
-        return "science_medicine_quantitative"
-    scores = {cat: sum(1 for kw in kws if kw in text) for cat, kws in KEYWORDS.items()}
-    best = max(scores, key=lambda c: scores[c])
-    return best if scores[best] > 0 else "current_trends_people"
+    doms = [category] if category in DOMAINS else _domains_for(text)
+    exclude = set().union(*[set(DOMAINS[d]["exclude"]) for d in doms])
 
+    picks: List[str] = ["brave"]                                    # web role (always)
+    if max_channels >= 5:
+        picks.append("duckduckgo")                                 # a 2nd independent web index for breadth
+    for d in doms:                                                  # domain primary + community + color
+        picks += DOMAINS[d]["primary"] + DOMAINS[d]["community"] + DOMAINS[d]["color"]
+    if any(b in text for b in _COMMUNITY_FRAMING) and "reddit" not in picks:
+        picks.append("reddit")                                     # framing wants an un-laundered voice
 
-def route(topic: str, framing: str = "", category: str = "",
-          enabled_only: bool = True) -> dict:
-    cfg = _cfg()
-    guide = cfg["selection_guidance"]
-    enabled = set(cfg.get("enabled", [])) if enabled_only else set(cfg["indexes"])
-    usable = AVAILABLE & (enabled | {"duckduckgo", "marginalia"})  # keyless web always usable
-    cat = category or classify(topic, framing)
-    base = [c for c in guide["by_topic"].get(cat, []) if c in usable]
-
-    roles = guide["always"]
-    text = (topic + " " + framing).lower()
-    chosen_roles: Dict[str, str] = {}
-    for role, members in roles.items():
-        present = [c for c in members if c in base]
-        if present:
-            chosen_roles[role] = present[0]
-            continue
-        # add the best available member of this role (respect framing boosts)
-        boost = any(b in text for b in FRAMING_BOOST.get(role, []))
-        pool = [c for c in members if c in usable]
-        if pool:
-            pick = pool[0]
-            base.append(pick)
-            chosen_roles[role] = pick
-        if boost and pool and len(pool) > 1 and pool[1] not in base:
-            base.append(pool[1])  # framing asked for extra depth in this role
-
-    # dedupe, keep order
     seen, channels = set(), []
-    for c in base:
-        if c in usable and c not in seen:
+    for c in picks:
+        if c in AVAILABLE and c not in seen:
             seen.add(c); channels.append(c)
-    # biomed topics: arXiv is off-domain noise -> drop it (keep openalex + web)
-    biomed = sum(1 for kw in BIOMED if kw in text) >= 2
-    if biomed and "arxiv" in channels:
-        channels = [c for c in channels if c != "arxiv"]
-    return {"topic": topic, "framing": framing, "category": cat, "biomed": biomed,
-            "channels": channels, "roles": chosen_roles}
+    # role guarantees (in case a domain left one empty)
+    if not any(c in WEB for c in channels):
+        channels.insert(0, "brave")
+    if not any(c in ("reddit", "hackernews", "stackexchange") for c in channels):
+        channels.append("reddit")
+    if doms[0] not in ("products_consumer", "current_events") and \
+       not any(c in ("openalex", "europepmc", "arxiv", "semanticscholar", "crossref", "wikipedia", "googlebooks") for c in channels):
+        channels.append("openalex")
+    channels = channels[:max_channels]
+    excluded = sorted(c for c in AVAILABLE if c in exclude and c not in channels)
+    return {"topic": topic, "framing": framing, "domains": doms, "category": doms[0],
+            "channels": channels, "excluded": excluded}
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Deep Aletheia channel router.")
+    ap = argparse.ArgumentParser(description="Aletheia Research scope-aware channel router.")
     ap.add_argument("topic")
     ap.add_argument("--framing", default="")
     ap.add_argument("--category", default="")
-    ap.add_argument("--all", action="store_true", help="consider all channels, not just enabled")
+    ap.add_argument("--max", type=int, default=6)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
-    r = route(args.topic, args.framing, args.category, enabled_only=not args.all)
+    r = route(args.topic, args.framing, args.category, max_channels=args.max)
     if args.json:
         print(json.dumps(r, indent=2))
     else:
         for c in r["channels"]:
             print(c)
-        sys.stderr.write("category=%s roles=%s\n" % (r["category"], r["roles"]))
+        sys.stderr.write("domains=%s  excluded=%s\n" % (r["domains"], r["excluded"]))
     return 0
 
 

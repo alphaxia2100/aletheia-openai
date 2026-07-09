@@ -326,6 +326,37 @@ class TestScoreRunDepth(unittest.TestCase):
         self.assertIn("reads_by_depth", d)
 
 
+class TestRouterScoping(unittest.TestCase):
+    """aletheia-research's router scopes channels to the question's domain and EXCLUDES off-topic
+    ones (subprocess: avoids a module-name clash with the frozen deep-aletheia `router`)."""
+
+    def _route(self, q):
+        r = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "router.py")
+        out = subprocess.check_output([sys.executable, r, q, "--json", "--max", "6"], text=True)
+        return json.loads(out)
+
+    def test_biomed_routes_to_europepmc_not_arxiv(self):
+        c = self._route("does intermittent fasting improve metabolic health and cognition")["channels"]
+        self.assertIn("europepmc", c)
+        self.assertNotIn("arxiv", c)          # arXiv has ~no clinical content
+
+    def test_cs_routes_to_arxiv_not_europepmc(self):
+        c = self._route("how do transformer attention mechanisms scale in large language models")["channels"]
+        self.assertIn("arxiv", c)
+        self.assertNotIn("europepmc", c)
+
+    def test_products_excludes_academic(self):
+        c = self._route("best budget mirrorless camera for a beginner 2026")["channels"]
+        self.assertFalse({"arxiv", "openalex", "europepmc"} & set(c))  # no academic on a buying question
+        self.assertTrue({"reddit", "hackernews"} & set(c))            # but community IS in scope
+
+    def test_every_route_covers_web_and_is_small(self):
+        for q in ("roman empire history", "tesla stock 10-k valuation", "what is consilience"):
+            r = self._route(q)
+            self.assertTrue(any(w in r["channels"] for w in ("brave", "duckduckgo", "marginalia")))
+            self.assertLessEqual(len(r["channels"]), 6)   # scoped, not "all channels"
+
+
 class TestAletheia03Thoroughness(unittest.TestCase):
     """aletheia 0.3's thoroughness dial sets the tree budget/caps and tags version 0.3.0.
     Run via subprocess to avoid a module-name clash with the frozen deep-aletheia `treestate`."""

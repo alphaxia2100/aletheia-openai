@@ -83,6 +83,13 @@ run the leaf engine, which reads primaries in full and **accumulates across roun
 ```bash
 python3 "$A/investigate.py" --node "<NODE_DIR>"     # round 1; repeat with --query "<gap>" to deepen
 ```
+**Scoped channels (each run fires only what the question needs).** `investigate.py` calls `router.py`
+to pick a SMALL, domain-appropriate set — biomed→europepmc/openalex (not arXiv), CS→arxiv/semanticscholar/
+github, history→wikipedia/googlebooks, products/current→community+web — always covering web·primary·
+community and **excluding off-topic indexes**. Preview it: `python3 "$A/router.py" "<q>" --framing "<angle>" --json`.
+The classifier is keyword-based, so if it mis-scopes (e.g. a title with no domain word), **override**:
+`investigate.py --node <N> --channels europepmc,openalex,brave,reddit`. Different framings warrant
+different channels (practitioner→community/forums; consensus→primaries).
 At `deep`/`exhaustive`, spawn one **READ-ONLY worker subagent per leaf, in parallel** (Task tool),
 each given the topic + its framing + why it exists. Each worker: reads `evidence.md`+`notes/`;
 **pulls a variety of distinct sources**; **hunts the decisive source** for its sub-question; **chases
