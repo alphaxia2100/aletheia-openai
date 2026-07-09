@@ -22,7 +22,20 @@ not a rewrite.
 - Filesystem-as-blackboard; resumable; auditable. Engine reused verbatim, copied into
   `.cursor/skills/aletheia/scripts/` (deep-aletheia 0.2 left frozen as an eval baseline).
 
-## What 0.3 adds (anchored by the judge + the self-audit + an anchoring survey run with the skill)
+## Anchoring (both skills were run on the design question)
+Decisions were anchored by running **both** skills on "how to architect a survey agent for
+complete/grounded/varied briefs": a `surveyor` pass (86 sources) and — richer — a **deep-aletheia 0.2**
+pass (122 distinct works, echo_ratio 0.238, verification 0.917; it caught an overclaim, flipping
+"LangChain ships multi-agent" to *unsupported* because that version is deprecated to `legacy/`). The
+deep-0.2 anchor **confirmed** this design: its "single-agent-invisible" recommendations (verification
+gate, independence/echo checking, adversary pass) are exactly what 0.3 keeps from 0.2, and its other
+recs map onto 0.3's four additions. It reframed the real lever as **diverse perspectives + shared
+context/tokens, not agent count** (token usage ≈ 80% of BrowseComp variance) and added two sharpenings
+now folded into the SKILL: **filter for relevance before spending the read budget**, and
+**health-check + broaden channels** (that run lost GitHub/HN/StackExchange/Marginalia to 0 results).
+Run: `runs/deep/2026-07-08-1922-survey-agent-arch/`.
+
+## What 0.3 adds (anchored by the judge + the self-audit + surveys run with BOTH skills)
 1. **Hunt the decisive source.** The single-agent design's *only* win was finding the authoritative,
    question-settling source (the EFSA regulator opinion) that 0.2 missed. 0.3 makes "find the
    regulator opinion / landmark SR-MA / largest RCT" an explicit step, not an accident of retrieval.

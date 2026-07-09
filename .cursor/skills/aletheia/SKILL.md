@@ -43,8 +43,11 @@ Stack Exchange/GitHub/YouTube + real-browser reads) that reach current, diverse,
    official standard, the largest RCT). This is the one thing the single-agent design beat 0.2 on.
 2. **Chase the primary, never cite the secondary.** If a load-bearing claim rests on a blog/summary
    (Examine/Healthline/press), find and read the primary before citing; if you can't, mark it Unverified.
-3. **Wide source variety by design.** Cover the 3 classes AND multiple index-groups per framing
-   (independent web · academic · community · code/QA where relevant) so distinct origins surface.
+3. **Wide source variety by design.** `doctor.py` first and **health-check the channels** (route
+   around dead ones); cover the 3 classes AND multiple index-groups per framing (academic ·
+   independent web · community · code/QA · video where relevant) so distinct origins surface — and
+   **filter for relevance BEFORE spending the read budget** (rank first; don't read off-topic hits —
+   over-retrieval injects noise). Note any channels that returned nothing as a gap.
 4. **Verification runs to completion** — every load-bearing claim gets a final supported/contradicted/
    unsupported verdict and a real `citation_accuracy` (never left null). Callable via `thoroughness`.
 
