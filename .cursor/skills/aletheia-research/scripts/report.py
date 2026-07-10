@@ -74,6 +74,35 @@ def _jsonl_dicts(path: str) -> List[Dict[str, Any]]:
     return rows
 
 
+def _runtime_telemetry(run: str) -> Dict[str, Any]:
+    """Aggregate selection-path activation and cost counters emitted by investigate.py."""
+    events = []
+    for node in _nodes_depth_first(run):
+        events.extend(_jsonl_dicts(os.path.join(node, "telemetry.jsonl")))
+    rounds = [e for e in events if e.get("event") == "investigation_round"]
+    modes = Counter(str(e.get("selection_mode") or "unknown") for e in rounds)
+
+    def total(field: str) -> int:
+        return sum(int(e.get(field, 0) or 0) for e in rounds)
+
+    return {
+        "rounds": len(rounds),
+        "rounds_by_selection_mode": dict(sorted(modes.items())),
+        "retrieved": total("retrieved"),
+        "unique": total("unique"),
+        "eligible": total("eligible"),
+        "selected": total("selected"),
+        "read_attempts": total("read_attempts"),
+        "reads_ok": total("reads_ok"),
+        "read_failures": total("read_failures"),
+        "zero_selection_rounds": sum(1 for e in rounds if int(e.get("selected", 0) or 0) == 0),
+        "zero_success_rounds": sum(1 for e in rounds if int(e.get("reads_ok", 0) or 0) == 0),
+        "floor_engagements": sum(1 for e in rounds if e.get("floor_engaged") is True),
+        "triage_requeries": sum(1 for e in events if e.get("event") == "triage_requery"),
+        "read_seconds": round(sum(float(e.get("read_seconds", 0) or 0) for e in rounds), 1),
+    }
+
+
 def _note_files(notes_dir: str):
     """Yield nested read artifacts deterministically (workers may store full/decisive rereads)."""
     if not os.path.isdir(notes_dir):
@@ -129,6 +158,10 @@ def bundle(run: str, reads: bool = False, max_chars: int = 0) -> str:
         if evidence.strip():
             L.append("### evidence.md")
             L.append(evidence)
+        telemetry = _read(os.path.join(node, "telemetry.jsonl"))
+        if telemetry.strip():
+            L.append("### telemetry.jsonl")
+            L.append(telemetry)
         srcs = [l for l in _read(os.path.join(node, "sources.jsonl")).splitlines() if l.strip()]
         if srcs:
             L.append("### sources.jsonl (%d)" % len(srcs))
@@ -270,6 +303,9 @@ def score(run: str) -> Dict[str, Any]:
         "origin_echo_ratio": round(1 - origins / len(cited), 3) if cited else 0,
         "retrieved_sources": len(idx), "retrieved_independent_origins": retrieved_origins,
         "retrieved_origin_echo_ratio": round(1 - retrieved_origins / len(idx), 3) if idx else 0,
+        # Behavioral activation evidence: proves which selector ran and separates retrieval,
+        # selection, attempted reads, and successful reads for matched-budget evaluations.
+        "runtime": _runtime_telemetry(run),
     }
 
 

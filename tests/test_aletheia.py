@@ -669,12 +669,21 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         with open(os.path.join(run, "verify.jsonl"), "w") as fh:
             for v in ("supported", "supported", "off_topic", "relevant"):
                 fh.write(json.dumps({"verdict": v}) + "\n")
+        with open(os.path.join(run, "tree", "root", "telemetry.jsonl"), "w") as fh:
+            fh.write(json.dumps({"event": "investigation_round", "selection_mode": "agent",
+                                 "retrieved": 8, "unique": 7, "eligible": 6, "selected": 3,
+                                 "read_attempts": 3, "reads_ok": 2, "read_failures": 1,
+                                 "floor_engaged": False, "read_seconds": 1.5}) + "\n")
+            fh.write(json.dumps({"event": "triage_requery", "selection_mode": "agent"}) + "\n")
         rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
         s = json.loads(subprocess.check_output([sys.executable, rep, "score", "--run", run], text=True))
         self.assertEqual(s["citation_precision"], round(2 / 3, 3))   # off_topic counts in denominator
         self.assertEqual(s["citation_denominator"], 3)
         self.assertFalse(s["citation_complete"])                     # 1 claim still awaiting
         self.assertIsNone(s["citation_accuracy"])
+        self.assertEqual(s["runtime"]["rounds_by_selection_mode"], {"agent": 1})
+        self.assertEqual(s["runtime"]["reads_ok"], 2)
+        self.assertEqual(s["runtime"]["triage_requeries"], 1)
 
     def test_report_score_can_persist_machine_readable_artifact(self):
         base = tempfile.mkdtemp()
@@ -1211,7 +1220,8 @@ class TestAletheiaResearch031(unittest.TestCase):
         ar_rank = self._load("ar_rank_floor", "rank.py")        # AR rank (fresh instance; avoids the
         inv.rankmod = ar_rank                                   # cached deep-aletheia `rank` + no leak)
         ts = self._load("ar_ts_floor", "treestate.py")
-        run = ts.init_run("even realities smart glasses review", budget=8, unit=4, base=tempfile.mkdtemp())
+        run = ts.init_run("portable appliance long term review", budget=8, unit=4,
+                          base=tempfile.mkdtemp())
         node = os.path.join(run, "tree", "root")
         cands = [{"url": "https://site%d.example/x" % i, "title": "hands-on review %d" % i,
                   "index_of_origin": "stub", "_class": "evidence",
@@ -1222,12 +1232,14 @@ class TestAletheiaResearch031(unittest.TestCase):
         inv._cfg_classes = lambda: {"stub": {"class": "evidence", "index_group": "stub"}}
         res = inv.investigate(node, channels=["stub"], reads=3)
         self.assertGreater(res["reads_ok"], 0)                  # floor engaged, not a silent zero-read
+        self.assertEqual(res["telemetry"]["selection_mode"], "deterministic")
+        self.assertTrue(res["telemetry"]["floor_engaged"])
 
     def test_read_floor_does_not_read_low_relevance_noise(self):
         inv = self._load("ar_inv_floor_abstain", "investigate.py")
         inv.rankmod = self._load("ar_rank_floor_abstain", "rank.py")
         ts = self._load("ar_ts_floor_abstain", "treestate.py")
-        run = ts.init_run("even realities smart glasses review", budget=8, unit=4,
+        run = ts.init_run("portable appliance long term review", budget=8, unit=4,
                           base=tempfile.mkdtemp())
         node = os.path.join(run, "tree", "root")
         raw = [{"url": "https://noise.example/unrelated", "title": "unrelated source",
@@ -1237,7 +1249,10 @@ class TestAletheiaResearch031(unittest.TestCase):
         inv.rankmod.select_reads = lambda _pool, _k: []
         inv._read_source = lambda *_a, **_k: self.fail("low-relevance noise must not be read")
         inv._cfg_classes = lambda: {"stub": {"class": "evidence", "index_group": "stub"}}
-        self.assertEqual(inv.investigate(node, channels=["stub"], reads=3)["reads_ok"], 0)
+        res = inv.investigate(node, channels=["stub"], reads=3)
+        self.assertEqual(res["reads_ok"], 0)
+        self.assertEqual(res["telemetry"]["selected"], 0)
+        self.assertFalse(res["telemetry"]["floor_engaged"])
 
     def _triage_fixture(self):
         # shared setup for the agent-triage path (0.5 brick 2): a fresh AR rank instance (avoids the
@@ -1246,7 +1261,8 @@ class TestAletheiaResearch031(unittest.TestCase):
         inv = self._load("ar_inv_triage", "investigate.py")
         inv.rankmod = self._load("ar_rank_triage", "rank.py")
         ts = self._load("ar_ts_triage", "treestate.py")
-        run = ts.init_run("even realities smart glasses review", budget=8, unit=4, base=tempfile.mkdtemp())
+        run = ts.init_run("portable appliance long term review", budget=8, unit=4,
+                          base=tempfile.mkdtemp())
         node = os.path.join(run, "tree", "root")
         cands = [{"url": "https://site%d.example/x" % i, "title": "hands-on review %d" % i,
                   "index_of_origin": "stub", "_class": "evidence", "_index_group": "stub",
@@ -1275,6 +1291,8 @@ class TestAletheiaResearch031(unittest.TestCase):
         res = inv.read_picks(node, picks=["https://site0.example/x", "https://site2.example/x"])
         self.assertEqual(res["reads_ok"], 2)                    # only the two picks were read
         self.assertEqual(res["round"], 1)                       # round bumped once
+        self.assertEqual(res["telemetry"]["selection_mode"], "agent")
+        self.assertFalse(res["telemetry"]["floor_engaged"])
         self.assertFalse(os.path.exists(inv._triage_path(node)))  # manifest consumed after read
 
     def test_read_picks_rejects_empty_selection_without_consuming_round(self):
@@ -1292,6 +1310,17 @@ class TestAletheiaResearch031(unittest.TestCase):
         inv.gather_candidates(node, channels=["stub"])
         res = inv.read_picks(node, picks=["https://site%d.example/x" % i for i in range(6)])
         self.assertEqual(res["reads_ok"], 4)                   # unit=4 => at most four reads
+
+    def test_agent_requery_is_observable_without_consuming_the_round(self):
+        inv, node = self._triage_fixture()
+        inv.gather_candidates(node, channels=["stub"])
+        inv.gather_candidates(node, query="specific pump failure evidence", channels=["stub"])
+        with open(inv._telemetry_path(node), encoding="utf-8") as fh:
+            events = [json.loads(line) for line in fh if line.strip()]
+        self.assertEqual([e["event"] for e in events], ["triage_requery"])
+        self.assertGreater(events[0]["rejected_candidates"], 0)
+        st = inv.treestate._read_json(os.path.join(node, "status.json"), {})
+        self.assertEqual(st.get("rounds", 0), 0)
 
     def test_runtime_dispatch_covers_enabled_specialty_channels(self):
         inv = self._load("ar_investigate_dispatch_compat", "investigate.py")

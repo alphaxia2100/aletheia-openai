@@ -163,6 +163,9 @@ The one-shot `investigate.py --node "<NODE_DIR>"` (deterministic authority/class
 **headless fallback** for non-agent invocation; when you are in the loop, use candidates→judge→read.
 A relevance-gated read floor protects only the deterministic path from false zero-read rounds without
 forcing the agent path to ingest a source it judged unsuitable.
+Each completed round appends `telemetry.jsonl` (selector used, retrieved/eligible/selected counts,
+read attempts/successes/failures, floor use, and requeries); `report.py score` aggregates it under
+`runtime`. Use these counters to prove the intended path executed and to enforce cost parity in A/Bs.
 Repeat only while the bounded node has scrutiny rounds remaining; `unlimited`/`max` continue to
 convergence. If evidence marks a load-bearing read `TRUNCATED`, re-read it without the cap:
 `python3 "$AL/channel-retrieval/scripts/read.py" URL --outdir "<NODE_DIR>/notes/full" --max-chars 0`.
