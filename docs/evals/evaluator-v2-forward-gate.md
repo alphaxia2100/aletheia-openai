@@ -106,6 +106,30 @@ These are additional reasons for the NO-GO. They were recorded rather than patch
 freeze because safe fixes require authenticated audit provenance, evaluator-owned claim extraction,
 tie-aware inference, and orchestrator-owned copy/topic-set enforcement.
 
+### Continuation hardening (v2.1 experimental)
+
+The five executable P0 reproductions were subsequently converted into regressions and code-level
+gates without changing the NO-GO release decision:
+
+- `601f4f2` requires at least 50% decisive topics before directional pairwise inference; the
+  25-win/5-loss/100-tie case is now inconclusive and exposes all-topic/tie diagnostics.
+- `7c3124f` requires Brier ≤0.20, exact-bin ECE ≤0.10, and AUROC ≥0.70; an inverted 30-case predictor
+  now fails. Equal-confidence groups enter selective-risk curves atomically, making AURC invariant to
+  row order.
+- `29c3678` independently reconciles claim/audit/verdict counts and exact claim+URL multisets, and
+  requires a SHA-pinned exact topic/version/canonical-brief matrix for release judge persistence.
+- `be5b9f6` makes release gating the persistence default; legacy diagnostics are explicit and can
+  never set `release_gate_passed`.
+
+Combined evidence: 183/183 tests pass; all 14 new adversarial tests pass; Node syntax and
+`git diff --check` pass. The defect meta-eval still exits 1 and calibration fixtures remain
+release-untrusted, as intended.
+
+Residual trust gaps remain release-blocking: external matrices and calibration labels are SHA-pinned
+but unsigned; auditor independence and semantic claim completeness are procedural; exact-bin ECE and
+the provisional thresholds lack external calibration; canonical version strings are not signed run
+identities; and local persistence cannot authenticate the bytes/model executed by a remote judge.
+
 ## Decisions and rejected alternatives
 
 - **Delegate, do not reimplement, canonical citation scoring.** Three divergent formulas had already
