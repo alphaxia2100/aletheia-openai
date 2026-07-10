@@ -883,6 +883,41 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertEqual(budgets, [10.0, 6.0])
         self.assertEqual(read_json(os.path.join(root, "proposal.json"))["weights"], [3, 1])
 
+    def test_dynamic_split_conserves_only_budget_unspent_after_scout(self):
+        run = self._tinit(tempfile.mkdtemp(), 16, 4)
+        root = os.path.join(run, "tree", "root")
+        t = os.path.join(self.AR, "treestate.py")
+        subprocess.check_call([sys.executable, t, "status", "--node", root,
+                               "--set", "active", "--field", "rounds=1"], stdout=subprocess.DEVNULL)
+        check = json.loads(subprocess.check_output(
+            [sys.executable, t, "cansplit", "--node", root], text=True))
+        self.assertEqual(check["total_budget"], 16.0)
+        self.assertEqual(check["spent_budget"], 4.0)
+        self.assertEqual(check["budget"], 12.0)
+        subprocess.check_call(
+            [sys.executable, t, "propose", "--node", root, "--children",
+             json.dumps([["high_value", "hard unresolved question"],
+                         ["lower_value", "narrow corroboration question"]]),
+             "--weights", "[3,1]", "--why", "scout exposed unequal uncertainty"],
+            stdout=subprocess.DEVNULL)
+        dirs = subprocess.check_output(
+            [sys.executable, t, "materialize", "--node", root], text=True).split()
+        budgets = [read_json(os.path.join(d, "status.json"))["budget"] for d in dirs]
+        self.assertEqual(budgets, [7.0, 5.0])
+        self.assertEqual(sum(budgets) + check["spent_budget"], check["total_budget"])
+
+    def test_scout_can_exhaust_split_capacity(self):
+        run = self._tinit(tempfile.mkdtemp(), 8, 4)
+        root = os.path.join(run, "tree", "root")
+        t = os.path.join(self.AR, "treestate.py")
+        subprocess.check_call([sys.executable, t, "status", "--node", root,
+                               "--set", "active", "--field", "rounds=1"], stdout=subprocess.DEVNULL)
+        check = json.loads(subprocess.check_output(
+            [sys.executable, t, "cansplit", "--node", root], text=True))
+        self.assertFalse(check["can_split"])
+        self.assertEqual(check["max_k"], 1)
+        self.assertIn("budget<2U (leaf: investigate)", check["reasons"])
+
     def test_resumable_frontier_repicks_crashed_active_node(self):
         run = self._tinit(tempfile.mkdtemp(), 12, 4)
         root = os.path.join(run, "tree", "root")

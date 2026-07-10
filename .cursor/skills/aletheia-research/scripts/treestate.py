@@ -207,8 +207,10 @@ def can_split(node: str) -> Dict[str, Any]:
     """Budget/cap check: may this node split, and into at most how many children?"""
     st = _read_json(os.path.join(node, "status.json"), {}) or {}
     cfg = _run_cfg(node)
-    budget = float(st.get("budget", 0)); depth = int(st.get("depth", 0))
+    total_budget = float(st.get("budget", 0)); depth = int(st.get("depth", 0))
     U = float(cfg.get("unit", 4)); run = _find_run(node)
+    spent_budget = min(total_budget, max(0, int(st.get("rounds", 0) or 0)) * U)
+    budget = max(0.0, total_budget - spent_budget)
     reasons = []
     if depth >= int(cfg.get("max_depth", 3)):
         reasons.append("at max_depth")
@@ -220,7 +222,8 @@ def can_split(node: str) -> Dict[str, Any]:
     kmax = int(budget // U) if U > 0 else 0
     kmax = min(kmax, int(cfg.get("max_children", 5)), max(remaining, 0) if run else kmax)
     return {"can_split": not reasons, "max_k": max(kmax, 0), "reasons": reasons,
-            "budget": budget, "unit": U, "depth": depth}
+            "budget": budget, "total_budget": total_budget, "spent_budget": spent_budget,
+            "unit": U, "depth": depth}
 
 
 def _find_run(node: str) -> str:
@@ -236,7 +239,7 @@ def _find_run(node: str) -> str:
 
 def split_node(node: str, children: List[List[str]], actor: str = "orchestrator",
                weights: Optional[List[float]] = None) -> List[str]:
-    """children = [[qid, question], ...]. Budget is CONSERVED (sum of children = parent budget).
+    """children = [[qid, question], ...]. Budget is CONSERVED (sum of children = unspent budget).
 
     Allocation: uniform by default (child = budget/K). If `weights` is given (one per child), use a
     two-phase scheme — floor every child to the scrutiny `unit`, then distribute the REMAINDER by
@@ -258,7 +261,7 @@ def split_node(node: str, children: List[List[str]], actor: str = "orchestrator"
     if k > chk["max_k"]:
         raise SystemExit("K=%d exceeds max viable %d (would starve children below the scrutiny "
                          "unit). Propose fewer, broader children." % (k, chk["max_k"]))
-    B = float(st.get("budget", 0))
+    B = float(chk.get("budget", 0))
     U = float(chk.get("unit", 4) or 4)
     if weights is not None and len(weights) != k:
         raise SystemExit("weights must contain exactly one value per child")
@@ -297,7 +300,9 @@ def split_node(node: str, children: List[List[str]], actor: str = "orchestrator"
     if run and os.path.abspath(node) == os.path.abspath(os.path.join(run, "tree", "root")):
         set_run_state(run, "investigating")
     log_decision(node, actor, "split into %d children (%s)" % (k, how),
-                 "budget %.2f -> %s (conserved); depth %d" % (B, [b for b in budgets], depth))
+                 "budget %.2f total - %.2f spent -> %s (unspent budget conserved); depth %d"
+                 % (float(chk.get("total_budget", B)), float(chk.get("spent_budget", 0)),
+                    [b for b in budgets], depth))
     return made
 
 

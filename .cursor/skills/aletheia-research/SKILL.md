@@ -152,10 +152,12 @@ The agent bundle includes nested `notes/full` and `notes/decisive` artifacts.
 `evidence.md` and full notes, then choose exactly one next action and log why:
 
 - **DECOMPOSE** when the evidence reveals separable subquestions that need different sources and the
-  node can split: call `treestate.py propose --node <N> --children '[["q1","…"],["q2","…"]]'
+  node can split (`treestate.py cansplit --node <N>` checks the budget remaining after the scout):
+  call `treestate.py propose --node <N> --children '[["q1","…"],["q2","…"]]'
   --weights '[2,1]' --why "<evidence that exposed the split>"`; then stop work on that node. Weight
   the children by expected value/difficulty learned from the scout round; omit `--weights` only when
-  they genuinely warrant equal scrutiny.
+  they genuinely warrant equal scrutiny. Materialization distributes only the unspent budget; the
+  scout round is never double-funded in the children.
 - **DEEPEN** when the question remains atomic but one load-bearing gap remains: run the next permitted
   investigation round with `--query "<that gap>"`.
 - **COMMIT** when new searches no longer change the claims or independent origins: write findings and
