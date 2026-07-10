@@ -593,7 +593,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     def test_tiers_scale_and_version(self):
         base = tempfile.mkdtemp()
         q, dp = self._init("quick", base), self._init("deep", base)
-        self.assertEqual(q["version"], "aletheia-research 0.4.3")
+        self.assertEqual(q["version"], "aletheia-research 0.5.0-dev1")
         self.assertEqual(q["thoroughness"], "quick")
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
@@ -1202,6 +1202,27 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertTrue(recs)                                # relaxation recovered results
         self.assertIn("relaxed_to", per["stub"])            # and recorded which shorter query worked
         self.assertGreater(len(calls), 1)                   # it actually retried
+
+    def test_read_floor_never_reads_zero_when_candidates_exist(self):
+        # 0.5 brick 1: if the relevance/subject gate empties the selection (the audited reads_ok=0 bug
+        # on proper-noun/product topics), investigate must still read the top readable candidates, not
+        # emit a silent ungrounded round.
+        import tempfile
+        inv = self._load("ar_inv_floor", "investigate.py")
+        ar_rank = self._load("ar_rank_floor", "rank.py")        # AR rank (fresh instance; avoids the
+        inv.rankmod = ar_rank                                   # cached deep-aletheia `rank` + no leak)
+        ts = self._load("ar_ts_floor", "treestate.py")
+        run = ts.init_run("even realities smart glasses review", budget=8, unit=4, base=tempfile.mkdtemp())
+        node = os.path.join(run, "tree", "root")
+        cands = [{"url": "https://site%d.example/x" % i, "title": "hands-on review %d" % i,
+                  "index_of_origin": "stub", "_class": "evidence",
+                  "snippet": "real user impressions of the device " * 20} for i in range(4)]
+        inv.retrieve = lambda q, ch, lim, to: (list(cands), {"stub": {"n": len(cands)}})
+        ar_rank.select_reads = lambda pool, k: []               # force the relevance gate to zero
+        inv._read_source = lambda u, to: ("full read text " * 300, "stub", u)
+        inv._cfg_classes = lambda: {"stub": {"class": "evidence", "index_group": "stub"}}
+        res = inv.investigate(node, channels=["stub"], reads=3)
+        self.assertGreater(res["reads_ok"], 0)                  # floor engaged, not a silent zero-read
 
     def test_runtime_dispatch_covers_enabled_specialty_channels(self):
         inv = self._load("ar_investigate_dispatch_compat", "investigate.py")
