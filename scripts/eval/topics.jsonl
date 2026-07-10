@@ -7,3 +7,5 @@
 {"id":"berberine-hba1c","domain":"health","topic":"Does berberine meaningfully lower HbA1c in type 2 diabetes, and how does it compare to metformin?","frozen":false}
 {"id":"standing-desks","domain":"health","topic":"Do standing desks improve health outcomes, or mainly reduce discomfort without cardiometabolic benefit?","frozen":false}
 {"id":"seed-oils-cvd","domain":"science","topic":"Is dietary linoleic acid (seed oils) causally linked to cardiovascular harm in humans, or is that claim unsupported?","frozen":false}
+{"id":"even-glasses","domain":"consumer","topic":"Should a software developer buy the Even Realities G1 smart glasses in 2026, based on real-world daily use?","frozen":false,"note":"held-out consumer/lived-experience: signal lives in Reddit/X/YouTube owner reports, not sponsored blogs — the documented reads_ok=0 / reads-easy-sources failure brick 2 targets"}
+{"id":"robovac-pets","domain":"consumer","topic":"What is the best robot vacuum for a home with shedding pets in 2026, according to long-term owners?","frozen":false,"note":"held-out consumer/lived-experience: forums/video owners over listicles"}
