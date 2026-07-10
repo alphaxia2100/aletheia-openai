@@ -23,7 +23,10 @@ Run: `/tmp/aletheia-high-accuracy-design/2026-07-10-174547-high-accuracy-researc
 - 69 persisted read artifacts; 62 were direct/manual primary chases.
 - 168 retrieved sources reduce to 167 structural origins (`origin_echo_ratio=0.006`).
 - Brave was degraded; other web, academic, repository, and direct-primary paths were used.
-- Full brief and 16-claim independent verification are being finalized in the run directory.
+- Full brief completed. The writer initially extracted 16 claims; a fresh-context verifier found 17
+  additional load-bearing claims, producing 33/33 supported claims after correcting one monotonicity
+  overstatement and one percentage-point ambiguity. Final citation coverage/precision are 1.0/1.0;
+  the content-hashed claim audit is valid. The 4.96 MB full bundle is persisted as `bundle.md`.
 
 ## Evaluator finding
 

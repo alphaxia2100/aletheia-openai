@@ -121,3 +121,14 @@ Append entries; do not rewrite history. A reversal adds a new entry that names t
 - Replacement protocol: freeze evaluator and candidate commits first; have an external process/person
   create and retain a new topic set plus rubrics; reveal only opaque run IDs to the generation harness;
   unseal topics and labels once after all outputs and judge prompts are persisted.
+
+## D015 — treat claim extraction as a measured failure surface
+
+- Finding: the architecture research brief's writer extracted 16 claims; the independent whole-brief
+  verifier added 17, so 52% of the final 33-claim denominator was absent from the initial claim set.
+  It also caught one non-monotonicity overstatement and a percent-versus-percentage-point ambiguity.
+- Final result: after correction and a complete second pass, 33/33 claims are supported, coverage and
+  precision are both 1.0, and the exact artifacts have a valid content-hashed scope audit.
+- Decision: a claim ledger does not solve claim recall by existing. Require independent final-brief
+  extraction, compare writer/verifier claim sets, and report the added-claim rate as a first-class
+  metric. High addition rates are an architecture defect even when final precision is perfect.
