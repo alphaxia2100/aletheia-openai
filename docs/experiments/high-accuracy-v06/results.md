@@ -1,0 +1,60 @@
+# High-accuracy v0.6 experiment results
+
+Updated: 2026-07-10  
+Promotion status: **NO-GO pending independent evaluation**
+
+## Frozen artifacts
+
+| Artifact | Branch / commit | Evidence | Status |
+|---|---|---|---|
+| Stable Codex release | `codex/openai-aletheia-v05` / `addfaf6` | tagged, installed, clean | retained |
+| Evaluator v2 | `codex/exp-accuracy-eval-v2` / pending final commit | 164 tests; old 8/24 vs self-authored target 24/24 | harness only |
+| Runtime ledger | `codex/exp-runtime-ledger-v06` / `087a228` | 160 tests | plumbing candidate |
+| Claim/evidence ledger | `codex/exp-claim-evidence-ledger-v06` / `35fb82a` | 164 tests | architecture candidate |
+| High-accuracy integration/docs | `codex/high-accuracy-aletheia-v06` | architecture/research/eval logs | not installed |
+
+## Aletheia research run
+
+Run: `/tmp/aletheia-high-accuracy-design/2026-07-10-174547-high-accuracy-research-architecture`
+
+- Runtime pinned to checkpoint `addfaf6` with hashes in `run.json`.
+- 4 evidence framings, 6 completed agent rounds, 7 retrieval passes.
+- 222 retrieved records, 214 unique candidates, 20 engine read attempts, 19 successes.
+- 69 persisted read artifacts; 62 were direct/manual primary chases.
+- 168 retrieved sources reduce to 167 structural origins (`origin_echo_ratio=0.006`).
+- Brave was degraded; other web, academic, repository, and direct-primary paths were used.
+- Full brief and 16-claim independent verification are being finalized in the run directory.
+
+## Evaluator finding
+
+Legacy evaluation is not safe for optimization: it misses claim extraction, answer recall, source
+role/origin, order, verbosity, contradiction, and scope-audit defects. Evaluator v2 fixes metric
+semantics, mandatory scope audit, paired order handling, anchor sample/diversity requirements,
+calibration scoring, and artifact persistence. It deliberately reports truth/recall/source/time/
+contradiction dimensions as `null` without external labels.
+
+The known-defect improvement is **not** an efficacy estimate: v2's target judgments were authored by
+its developer against the fixture. A base-regression audit also caught and fixed evaluator-induced
+Python import contamination; untouched base had 156/156 tests passing and the corrected evaluator
+worktree has 164/164.
+
+## Candidate findings
+
+The runtime branch removes two confirmed defects: agent `--reads` is honored and browser
+`--max-chars 0` stays unlimited. It atomically reserves engine-managed searches/reads before I/O and
+decouples source reads from the tree scrutiny unit. It does not claim higher answer quality.
+
+The claim-ledger branch makes support fail closed unless an exact quote is present in a SHA-bound read
+artifact and an independent verdict completes required polarity/scope/numeric/temporal checks.
+Claim-specific origin requirements, disputed state, priority ordering, immutable history, and fresh
+challenge/confirmation stops pass targeted tests. It still relies on independent judgment for claim
+atomicity, complete claim extraction, correct origin keys, and cherry-pick resistance.
+
+## Selection decision
+
+Neither candidate is promoted. The original forward set is contaminated, the evaluator lacks
+independent labels, and no matched-read end-to-end comparison exists. The next valid action is to
+freeze evaluator/candidate commits, commission an externally held replacement set and rubrics, then
+test the claim ledger first. Passage reranking, citation chasing, and outline patching remain later
+orthogonal ablations.
+

@@ -106,3 +106,14 @@ Append entries; do not rewrite history. A reversal adds a new entry that names t
   explicitly unmeasured.
 - Decision: do not open the sealed topic set, merge a candidate, or update the installed Codex skill.
   A fresh model/human must supply topic rubrics and blind paired judgments first.
+
+## D014 — invalidate the original sealed forward set after accidental exposure
+
+- Incident: an evaluator-development `rg` for fixture hashes printed the plaintext rows in
+  `/tmp/aletheia-high-accuracy-design/sealed-topics.jsonl`. The evaluator author reported the exposure
+  immediately and did not tune to topic contents.
+- Decision: SHA-256 `c865e76aa07668669c6d26e798676028ea4af374ab4328d11bc08891ec2d4758`
+  is permanently invalid for this release decision. Do not run it or describe it as held out.
+- Replacement protocol: freeze evaluator and candidate commits first; have an external process/person
+  create and retain a new topic set plus rubrics; reveal only opaque run IDs to the generation harness;
+  unseal topics and labels once after all outputs and judge prompts are persisted.
