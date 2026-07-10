@@ -74,9 +74,14 @@ fi
 echo "  - Invoke it by name: \"use the aletheia-research skill to survey <topic>\"."
 echo "  - Keys load automatically from: $REPO_ROOT/.env"
 echo "  - Codex discovers skills from: $CODEX_SKILLS (start a new session after installing)"
-  echo "  - Utilities (global, by absolute path):"
+echo "  - Utilities (global, by absolute path):"
+if [ "$CODEX_ONLY" -eq 1 ]; then
+  echo "      python3 $SRC/channel-retrieval/scripts/doctor.py     # what's live"
+  echo "      python3 $SRC/channel-retrieval/scripts/channels.py list"
+else
   echo "      python3 ~/.cursor/skills/channel-retrieval/scripts/doctor.py     # what's live"
   echo "      python3 ~/.cursor/skills/channel-retrieval/scripts/channels.py list"
+fi
 if [ "$MODE" = "--copy" ] && [ "$CODEX_ONLY" -eq 0 ]; then
   echo "  - NOTE: --copy mode drifts from the repo; re-run after edits."
 fi

@@ -1721,15 +1721,18 @@ class TestInstall(unittest.TestCase):
             with open(marker, "w", encoding="utf-8") as fh:
                 fh.write("unchanged")
         env = dict(os.environ, HOME=home, CODEX_HOME=os.path.join(home, ".codex"))
-        subprocess.check_call(
+        output = subprocess.check_output(
             ["bash", os.path.join(ROOT, "scripts", "install.sh"), "--codex-only"],
-            env=env, stdout=subprocess.DEVNULL)
+            env=env, text=True)
         target = os.path.join(home, ".codex", "skills", "aletheia-research")
         self.assertTrue(os.path.islink(target))
         self.assertEqual(read_text(cursor_marker), "unchanged")
         self.assertEqual(read_text(claude_marker), "unchanged")
         self.assertEqual(os.listdir(os.path.dirname(cursor_marker)), ["KEEP"])
         self.assertEqual(os.listdir(os.path.dirname(claude_marker)), ["KEEP"])
+        self.assertIn(os.path.join(os.path.abspath(ROOT), ".cursor", "skills", "channel-retrieval",
+                                   "scripts", "doctor.py"), output)
+        self.assertNotIn("~/.cursor/skills/channel-retrieval", output)
 
     def test_copy_install_keeps_non_secret_repo_root_pointer(self):
         home = tempfile.mkdtemp()
