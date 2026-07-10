@@ -473,6 +473,23 @@ def _run_cfg(node: str) -> Dict[str, Any]:
     return (treestate._read_json(os.path.join(run, "run.json"), {}) or {}) if run else {}
 
 
+def _telemetry_path(node: str) -> str:
+    return os.path.join(node, "telemetry.jsonl")
+
+
+def _append_telemetry(node: str, event: Dict[str, Any]) -> None:
+    """Persist behavioral activation evidence for the selection mechanism.
+
+    Importability and prose claims do not prove that a runtime path executed. Keep a small, append-only
+    machine-readable trace beside the human decision log so evaluations can compare retrieval,
+    selection, and successful reads without scraping markdown.
+    """
+    row = {"schema_version": 1, "timestamp": int(time.time())}
+    row.update(event)
+    with open(_telemetry_path(node), "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, sort_keys=True) + "\n")
+
+
 def _round_cap(status: Dict[str, Any], cfg: Dict[str, Any]):
     """Bounded tiers spend one scrutiny unit per round; unlimited/max converge without a cap."""
     if cfg.get("thoroughness") in ("unlimited", "max"):
@@ -548,7 +565,8 @@ def _read_floor(node: str, read_pool: List[Dict[str, Any]], sel: List[Dict[str, 
 
 
 def _execute_reads(node: str, ctx: Dict[str, Any], sel: List[Dict[str, Any]],
-                   timeout: float = 30.0) -> dict:
+                   timeout: float = 30.0, selection_mode: str = "deterministic",
+                   floor_engaged: bool = False) -> dict:
     """Round FINISH shared by both paths: read the selected candidates in full, persist notes,
     dedup+append this node's sources, append the round to evidence.md, and bump status/round."""
     query, per, round_no = ctx["query"], ctx["per"], ctx["round_no"]
@@ -591,11 +609,28 @@ def _execute_reads(node: str, ctx: Dict[str, Any], sel: List[Dict[str, Any]],
     treestate.add_sources(node, new_for_node)
     _write_evidence(node, query, ranked, sel, per, read_meta, round_no)
     this_ok = sum(1 for m in read_meta if m.get("ok"))
+    telemetry = {
+        "event": "investigation_round",
+        "round": round_no,
+        "selection_mode": selection_mode,
+        "query": query,
+        "channels": list(ctx["chans"]),
+        "retrieved": len(recs),
+        "unique": len(uniq),
+        "eligible": len(ctx.get("read_pool", [])),
+        "selected": len(sel),
+        "read_attempts": len(read_meta),
+        "reads_ok": this_ok,
+        "read_failures": len(read_meta) - this_ok,
+        "floor_engaged": bool(floor_engaged),
+        "read_seconds": round(sum(float(m.get("t", 0) or 0) for m in read_meta), 1),
+    }
+    _append_telemetry(node, telemetry)
     treestate.set_status(node, state="investigated", n_sources=len(_dedupe_records(_existing_records(node))),
                          n_read=prev_read + this_ok, rounds=round_no)
     return {"node": node, "round": round_no, "query": query, "channels": ctx["chans"],
             "unique": len(uniq), "reads_ok": this_ok, "reads_total": prev_read + this_ok,
-            "per_channel": per}
+            "per_channel": per, "telemetry": telemetry}
 
 
 def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
@@ -609,8 +644,10 @@ def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
     ctx = _gather(node, query, channels, limit, timeout, reads)
     sel = [r for r in rankmod.select_reads(ctx["read_pool"], ctx["reads"])
            if not _note_exists(node, r.get("url", ""))]
+    before_floor = len(sel)
     sel = _read_floor(node, ctx["read_pool"], sel, ctx["reads"])
-    return _execute_reads(node, ctx, sel, timeout)
+    return _execute_reads(node, ctx, sel, timeout, selection_mode="deterministic",
+                          floor_engaged=(before_floor == 0 and bool(sel)))
 
 
 # --- agent-in-the-loop triage (0.5 brick 2) -------------------------------------------------------
@@ -625,9 +662,9 @@ def _triage_path(node: str) -> str:
 
 
 def _snippet(r: Dict[str, Any]) -> str:
-    # UNTRUSTED text (from open web / forums): collapse whitespace + cap so an injected "ignore your
-    # instructions" line in a snippet is a short inert quote, not a prominent directive. The agent is
-    # separately told (SKILL.md) to quote snippets, never obey them.
+    # UNTRUSTED text (from open web / forums): collapse whitespace + cap to reduce exposure. This does
+    # NOT neutralize prompt injection; the agent is separately required to treat the result as quoted
+    # data and never obey instructions inside it.
     s = " ".join(str(r.get("snippet") or r.get("abstract") or r.get("summary") or "").split())
     return s[:280]
 
@@ -649,7 +686,21 @@ def gather_candidates(node: str, query: str = "", channels: List[str] = None,
     """Agent-triage step 1: retrieve+rank and RETURN the candidate manifest for the agent to judge
     topic-relatively — instead of a hardcoded gate deciding which to read. Persists the round context
     so `read --pick` can execute the agent's selection. Reads nothing; does not bump the round."""
+    prior = treestate._read_json(_triage_path(node), None)
     ctx = _gather(node, query, channels, limit, timeout)
+    if prior:
+        _append_telemetry(node, {
+            "event": "triage_requery",
+            "round": int(prior.get("round_no", ctx["round_no"])),
+            "selection_mode": "agent",
+            "rejected_candidates": len(prior.get("read_pool", [])),
+            "previous_query": prior.get("query", ""),
+            "query": ctx["query"],
+        })
+        treestate.log_decision(node, "agent-triage",
+                               "round %d: rejected prior manifest and gathered a tighter query" %
+                               ctx["round_no"],
+                               "no prior candidate was worth the fixed read budget")
     treestate._write_json(_triage_path(node), {
         "round_no": ctx["round_no"], "query": ctx["query"], "chans": ctx["chans"], "per": ctx["per"],
         "reads": ctx["reads"], "recs": ctx["recs"], "uniq": ctx["uniq"], "ranked": ctx["ranked"],
@@ -698,7 +749,7 @@ def read_picks(node: str, picks: List[str] = None, pick_idx: List[int] = None,
     treestate.log_decision(node, "agent-triage",
                            "round %d: agent selected %d source(s)" % (ctx["round_no"], len(sel)),
                            why or "topic-relative source judgment")
-    res = _execute_reads(node, ctx, sel, timeout)
+    res = _execute_reads(node, ctx, sel, timeout, selection_mode="agent")
     try:
         os.remove(_triage_path(node))   # one manifest per round; consumed on read
     except OSError:
