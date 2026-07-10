@@ -143,7 +143,7 @@ def _expected_matrix(path: Optional[str], trusted_sha256: str
     return mapping, meta, reasons
 
 
-def persist(payload: Dict[str, Any], out: str, release_mode: bool = False,
+def persist(payload: Dict[str, Any], out: str, release_mode: bool = True,
             expected_matrix: Optional[str] = None,
             expected_matrix_sha256: str = "") -> Dict[str, Any]:
     out = os.path.realpath(out)

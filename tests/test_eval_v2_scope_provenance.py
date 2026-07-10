@@ -124,6 +124,13 @@ class JudgeProvenanceGateTests(unittest.TestCase):
         self.assertFalse(manifest["release_gate_passed"])
         self.assertIn("expected_matrix_not_trusted", manifest["release_invalid_reasons"])
 
+    def test_explicit_legacy_diagnostic_keeps_structural_pair_result_but_is_not_release(self):
+        tmp, payload, _ = self._fixture()
+        manifest = persist_judges.persist(payload, os.path.join(tmp, "out"), release_mode=False)
+        self.assertTrue(manifest["paired_schema_valid"])
+        self.assertFalse(manifest["release_gate_passed"])
+        self.assertIn("diagnostic_mode_not_release", manifest["release_invalid_reasons"])
+
     def test_release_binds_every_blind_input_to_canonical_brief_hash(self):
         tmp, payload, matrix = self._fixture(alter_candidate=True)
         manifest = persist_judges.persist(
