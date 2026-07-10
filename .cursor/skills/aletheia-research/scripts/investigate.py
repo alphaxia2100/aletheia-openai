@@ -522,6 +522,20 @@ def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
     # Don't spend read slots re-reading the same work under another domain/title variant.
     read_pool = _dedupe_records(ranked, already_read)
     sel = [r for r in rankmod.select_reads(read_pool, reads) if not _note_exists(node, r.get("url", ""))]
+    if not sel and read_pool:
+        # READ-FLOOR INVARIANT (0.5 brick 1): never read ZERO when readable candidates exist. The
+        # relevance/subject gate can wrongly empty the selection (e.g. a proper-noun/product topic whose
+        # subject signature collapsed to generic words -> the audited reads_ok=0 bug). Fall back to the
+        # top-ranked readable, not-yet-read candidates instead of emitting a silent ungrounded round.
+        # (Judgment over WHICH sources moves to the agent in 0.5; this is the deterministic safety floor.)
+        sel = [r for r in read_pool
+               if str(r.get("url", "")).lower().startswith(("http://", "https://"))
+               and not _note_exists(node, r.get("url", ""))][:max(1, reads)]
+        if sel:
+            treestate.log_decision(node, "investigate",
+                                   "read-floor engaged: relevance gate returned 0; reading top %d by "
+                                   "score instead of reading nothing" % len(sel),
+                                   "0.5 backstop against silent zero-reads")
     treestate.log_decision(node, "investigate",
                            "round %d: retrieved %d -> %d unique; reading %d new" % (
                                round_no, len(recs), len(uniq), len(sel)),

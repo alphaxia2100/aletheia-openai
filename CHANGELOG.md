@@ -27,6 +27,24 @@ Versioning is [SemVer](https://semver.org/); each notable change bumps minor/pat
 
 ---
 
+## aletheia-research 0.5.0-dev1 — 2026-07-10 (bilevel intelligence-in-the-loop — EXPERIMENT branch)
+
+Experimental line on branch `aletheia-0.5-bilevel` (stable stays 0.4.3). Design:
+`docs/aletheia-0.5-bilevel-design.md` — replace hardcoded judgment heuristics (subject regex, CLASS_W,
+REL_READ, authority lists, keywordize, shingle threshold) with **batched, topic-relative LLM judgment**;
+add a **VOC/EVOI metacognitive controller** (deepen / decompose / spawn-sub-Aletheia / commit, gated on
+calibrated uncertainty, bounded by a repurposed monotonic budget); and a **human-gated meta-autoresearch
+outer loop** measured on the held-out, κ-calibrated eval. Grounded in deep-aletheia + a max fan-out
+(ADAS/DGM/Promptbreeder; Russell & Wefald VOC; RankGPT/UMBRELA/Self-RAG; reward-hacking guardrails).
+
+- **Brick 1 — read-floor invariant.** `investigate` never reads ZERO when readable candidates exist: if
+  the relevance/subject gate empties the selection (the audited `reads_ok=0` bug on proper-noun/product
+  topics, e.g. smart glasses), it falls back to the top-ranked readable candidates instead of a silent
+  ungrounded round — the deterministic backstop the design keeps *underneath* agent judgment.
+- Next bricks (not yet in): agent-judged topic-relative source triage (retrieve→judge→read split +
+  untrusted-social handling), the EVOI controller, then the outer meta-loop — each MEASURED vs 0.4.3 on
+  the held-out eval before the next; nothing ships past a step that didn't measurably win.
+
 ## aletheia-research 0.4.3 — 2026-07-09 (efficacy + compatibility audit)
 
 Two clean-context Codex trials (cybersecurity and economic history) plus an isolated install matrix
