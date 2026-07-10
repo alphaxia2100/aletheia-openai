@@ -527,21 +527,23 @@ def _gather(node: str, query: str = "", channels: List[str] = None, limit: int =
 
 def _read_floor(node: str, read_pool: List[Dict[str, Any]], sel: List[Dict[str, Any]],
                 reads: int) -> List[Dict[str, Any]]:
-    """READ-FLOOR INVARIANT (0.5 brick 1): never read ZERO when readable candidates exist. Both the
-    deterministic gate (select_reads) and agent judgment can wrongly empty the selection (e.g. a
-    proper-noun/product topic whose subject signature collapsed to generic words -> the audited
-    reads_ok=0 bug; or an agent that picked only unreadable/off-list URLs). Fall back to the
-    top-ranked readable, not-yet-read candidates instead of emitting a silent ungrounded round."""
+    """Recover a deterministic zero-read false negative without reading an irrelevant result set.
+
+    The observed product failure had highly relevant candidates that the subject/entity gate rejected.
+    Bypass that gate only for candidates that still passed the lexical relevance floor; an actually
+    off-topic pool must remain an abstention instead of injecting noise into the evidence pack.
+    """
     if sel or not read_pool:
-        return sel
+        return sel[:reads]
     sel = [r for r in read_pool
-           if str(r.get("url", "")).lower().startswith(("http://", "https://"))
+           if float(r.get("_relnorm", 0) or 0) >= rankmod.REL_READ
+           and str(r.get("url", "")).lower().startswith(("http://", "https://"))
            and not _note_exists(node, r.get("url", ""))][:max(1, reads)]
     if sel:
         treestate.log_decision(node, "investigate",
-                               "read-floor engaged: selection returned 0; reading top %d by score "
-                               "instead of reading nothing" % len(sel),
-                               "0.5 backstop against silent zero-reads")
+                               "safe read-floor engaged: subject/entity gate returned 0; reading %d "
+                               "candidates that passed lexical relevance" % len(sel),
+                               "recover grounding without spending reads on an irrelevant pool")
     return sel
 
 
@@ -635,6 +637,8 @@ def _manifest(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for i, r in enumerate(records):
         out.append({"idx": i, "url": r.get("url", ""), "title": (r.get("title") or "")[:140],
                     "class": r.get("_class", "?"), "index_group": r.get("_index_group", ""),
+                    "primary": bool(r.get("primary")), "published": r.get("published", ""),
+                    "cited_by_count": int(r.get("cited_by_count", 0) or 0),
                     "score": r.get("score", 0), "relnorm": r.get("_relnorm", 0),
                     "subject_hits": r.get("_subject_hits"), "snippet": _snippet(r)})
     return out
@@ -663,10 +667,11 @@ def gather_candidates(node: str, query: str = "", channels: List[str] = None,
 
 
 def read_picks(node: str, picks: List[str] = None, pick_idx: List[int] = None,
-               timeout: float = 30.0) -> dict:
+               timeout: float = 30.0, why: str = "") -> dict:
     """Agent-triage step 2: read exactly the candidates the agent chose (by URL and/or manifest idx)
-    from the persisted round, then finish the round. Read-floor still applies — if the agent's picks
-    resolve to nothing readable, fall back to top-ranked rather than emit a silent zero-read round."""
+    from the persisted round, then finish the round. Invalid or empty picks fail without consuming
+    the manifest: agent judgment may abstain and re-query, but must never silently become a fixed-table
+    fallback. The suggested scrutiny budget remains a hard per-round cap."""
     payload = treestate._read_json(_triage_path(node), None)
     if not payload:
         raise SystemExit("no pending candidates for %s; run `investigate.py candidates --node <N>` "
@@ -686,7 +691,13 @@ def read_picks(node: str, picks: List[str] = None, pick_idx: List[int] = None,
             r = payload["ranked"][i]
             if r.get("url") in by_url and r.get("url") not in seen:
                 seen.add(r.get("url")); sel.append(r)
-    sel = _read_floor(node, payload["read_pool"], sel, ctx["reads"])
+    if not sel:
+        raise SystemExit("no valid candidate selected; inspect the pending manifest and choose at least "
+                         "one candidate, or gather a more targeted query (round not consumed)")
+    sel = sel[:ctx["reads"]]
+    treestate.log_decision(node, "agent-triage",
+                           "round %d: agent selected %d source(s)" % (ctx["round_no"], len(sel)),
+                           why or "topic-relative source judgment")
     res = _execute_reads(node, ctx, sel, timeout)
     try:
         os.remove(_triage_path(node))   # one manifest per round; consumed on read
@@ -753,6 +764,7 @@ def main(argv=None) -> int:
     ap.add_argument("--timeout", type=float, default=30.0)
     ap.add_argument("--pick", default="", help="read: comma/space-separated candidate URLs to read")
     ap.add_argument("--pick-idx", default="", help="read: comma-separated candidate indices to read")
+    ap.add_argument("--why", default="", help="read: short rationale for the topic-relative selection")
     args = ap.parse_args(argv)
     chans = [c.strip() for c in args.channels.split(",") if c.strip()] or None
     if verb == "candidates":
@@ -760,7 +772,7 @@ def main(argv=None) -> int:
     elif verb == "read":
         picks = [p for p in re.split(r"[,\s]+", args.pick) if p.strip()]
         idxs = [int(x) for x in re.split(r"[,\s]+", args.pick_idx) if x.strip().lstrip("-").isdigit()]
-        res = read_picks(args.node, picks, idxs, args.timeout)
+        res = read_picks(args.node, picks, idxs, args.timeout, args.why)
     else:
         res = investigate(args.node, args.query, args.reads, args.limit, chans, args.timeout)
     print(json.dumps(res, indent=2))

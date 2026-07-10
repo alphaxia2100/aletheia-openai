@@ -1203,10 +1203,9 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertIn("relaxed_to", per["stub"])            # and recorded which shorter query worked
         self.assertGreater(len(calls), 1)                   # it actually retried
 
-    def test_read_floor_never_reads_zero_when_candidates_exist(self):
-        # 0.5 brick 1: if the relevance/subject gate empties the selection (the audited reads_ok=0 bug
-        # on proper-noun/product topics), investigate must still read the top readable candidates, not
-        # emit a silent ungrounded round.
+    def test_read_floor_recovers_relevant_subject_gate_false_negative(self):
+        # If the subject gate empties a lexically relevant pool (the audited product bug), recover;
+        # the separate abstention regression below ensures this does not authorize arbitrary noise.
         import tempfile
         inv = self._load("ar_inv_floor", "investigate.py")
         ar_rank = self._load("ar_rank_floor", "rank.py")        # AR rank (fresh instance; avoids the
@@ -1224,6 +1223,22 @@ class TestAletheiaResearch031(unittest.TestCase):
         res = inv.investigate(node, channels=["stub"], reads=3)
         self.assertGreater(res["reads_ok"], 0)                  # floor engaged, not a silent zero-read
 
+    def test_read_floor_does_not_read_low_relevance_noise(self):
+        inv = self._load("ar_inv_floor_abstain", "investigate.py")
+        inv.rankmod = self._load("ar_rank_floor_abstain", "rank.py")
+        ts = self._load("ar_ts_floor_abstain", "treestate.py")
+        run = ts.init_run("even realities smart glasses review", budget=8, unit=4,
+                          base=tempfile.mkdtemp())
+        node = os.path.join(run, "tree", "root")
+        raw = [{"url": "https://noise.example/unrelated", "title": "unrelated source",
+                "index_of_origin": "stub", "_class": "evidence"}]
+        inv.retrieve = lambda *_a, **_k: (list(raw), {"stub": {"n": 1}})
+        inv.rankmod.rank = lambda *_a, **_k: [dict(raw[0], _relnorm=0.1, score=0.9)]
+        inv.rankmod.select_reads = lambda _pool, _k: []
+        inv._read_source = lambda *_a, **_k: self.fail("low-relevance noise must not be read")
+        inv._cfg_classes = lambda: {"stub": {"class": "evidence", "index_group": "stub"}}
+        self.assertEqual(inv.investigate(node, channels=["stub"], reads=3)["reads_ok"], 0)
+
     def _triage_fixture(self):
         # shared setup for the agent-triage path (0.5 brick 2): a fresh AR rank instance (avoids the
         # cached deep-aletheia `rank` collision), stubbed retrieve/read, 4 readable candidates.
@@ -1235,7 +1250,7 @@ class TestAletheiaResearch031(unittest.TestCase):
         node = os.path.join(run, "tree", "root")
         cands = [{"url": "https://site%d.example/x" % i, "title": "hands-on review %d" % i,
                   "index_of_origin": "stub", "_class": "evidence", "_index_group": "stub",
-                  "snippet": "real user impressions of the device " * 20} for i in range(4)]
+                  "snippet": "real user impressions of the device " * 20} for i in range(6)]
         inv.retrieve = lambda q, ch, lim, to: (list(cands), {"stub": {"n": len(cands)}})
         inv._read_source = lambda u, to: ("full read text " * 300, "stub", u)
         inv._cfg_classes = lambda: {"stub": {"class": "evidence", "index_group": "stub"}}
@@ -1247,7 +1262,8 @@ class TestAletheiaResearch031(unittest.TestCase):
         inv, node = self._triage_fixture()
         out = inv.gather_candidates(node, channels=["stub"])
         self.assertTrue(out["candidates"])                       # a manifest was produced
-        self.assertTrue(all("url" in c and "class" in c and "snippet" in c for c in out["candidates"]))
+        self.assertTrue(all("url" in c and "class" in c and "snippet" in c and "primary" in c
+                            and "published" in c for c in out["candidates"]))
         self.assertTrue(os.path.exists(inv._triage_path(node)))  # round context persisted for `read`
         self.assertFalse(os.path.isdir(os.path.join(node, "notes")) and
                          os.listdir(os.path.join(node, "notes")))  # nothing read yet
@@ -1261,13 +1277,21 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertEqual(res["round"], 1)                       # round bumped once
         self.assertFalse(os.path.exists(inv._triage_path(node)))  # manifest consumed after read
 
-    def test_read_picks_read_floor_when_agent_picks_nothing(self):
-        # the read-floor invariant holds in the agent path too: empty/invalid picks must not silently
-        # produce a zero-read round when readable candidates exist.
+    def test_read_picks_rejects_empty_selection_without_consuming_round(self):
+        # An abstaining agent must not silently turn back into the fixed-table selector.
         inv, node = self._triage_fixture()
         inv.gather_candidates(node, channels=["stub"])
-        res = inv.read_picks(node, picks=["https://not-a-candidate.example/z"])
-        self.assertGreater(res["reads_ok"], 0)                 # floor engaged instead of zero-read
+        with self.assertRaises(SystemExit):
+            inv.read_picks(node, picks=["https://not-a-candidate.example/z"])
+        self.assertTrue(os.path.exists(inv._triage_path(node)))  # agent can correct the selection
+        st = inv.treestate._read_json(os.path.join(node, "status.json"), {})
+        self.assertEqual(st.get("rounds", 0), 0)
+
+    def test_read_picks_caps_agent_selection_to_round_budget(self):
+        inv, node = self._triage_fixture()
+        inv.gather_candidates(node, channels=["stub"])
+        res = inv.read_picks(node, picks=["https://site%d.example/x" % i for i in range(6)])
+        self.assertEqual(res["reads_ok"], 4)                   # unit=4 => at most four reads
 
     def test_runtime_dispatch_covers_enabled_specialty_channels(self):
         inv = self._load("ar_investigate_dispatch_compat", "investigate.py")
