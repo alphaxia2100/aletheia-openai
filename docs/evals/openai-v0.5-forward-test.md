@@ -52,9 +52,15 @@ Topic: sodium-ion versus LFP for a U.S. four-hour utility project entering servi
 - Cost audit failed: baseline persisted 41 read artifacts (6 engine-tracked, 35 direct/manual); candidate
   persisted 97 (13 engine-tracked, 84 direct/manual). The candidate therefore used 2.37× the observed
   read artifacts despite equal configured rounds.
+- A fresh verifier repaired both final briefs and checked every atomic claim. Baseline finished with
+  39/39 supported claims from 17 cited origins; candidate finished with 43/43 from 23 cited origins.
+- Two blind judges saw reversed A/B order and both preferred the dynamic candidate (confidence 0.84
+  and 0.73), chiefly for evidence breadth, calibration, and bankability analysis. Both preferred the
+  baseline for concision, and one preferred its decision presentation. This is an uncalibrated, small-N
+  quality diagnostic—not evidence of an efficient win.
 
-The dynamic mechanism may improve structure and quality, but this run cannot establish an efficient
-win. It stays experimental until linked-primary reads are enforceably budgeted and a new blind,
+The dynamic mechanism likely improved this brief's quality, but did so with 2.37× the observed read
+cost. It stays experimental until linked-primary reads are enforceably budgeted and a new blind,
 cost-matched trial passes. The release adds artifact-level read accounting so this failure cannot hide
 behind round telemetry again.
 
