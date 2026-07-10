@@ -29,6 +29,11 @@ MIN_ANCHORS_PER_SIDE = 5 # require both candidate and baseline examples, not one
 MIN_BALANCED_ACCURACY = 0.70
 MIN_MACRO_F1 = 0.70
 MIN_AGREEMENT_CI_LO = 0.55
+# Release comparisons need directional evidence on at least half of the randomized
+# topics.  Without this preregistered coverage floor, a small, unusually easy
+# decisive subset can dominate inference while an arbitrarily large tied majority
+# silently disappears from the denominator.
+MIN_DECISIVE_TOPIC_RATE = 0.50
 CATS = ("candidate", "baseline", "tie")
 
 
@@ -217,6 +222,29 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
     ties = sum(1 for w in topic_major.values() if w == "tie")
     decisive = wins + losses
     ci = _wilson(wins, decisive)
+    n_topics = len(topic_major)
+    decisive_rate = decisive / n_topics if n_topics else 0.0
+    tie_rate = ties / n_topics if n_topics else 0.0
+    inference_reasons = []
+    if not n_topics:
+        inference_reasons.append("no_topics")
+    if decisive_rate < MIN_DECISIVE_TOPIC_RATE:
+        inference_reasons.append("decisive_topic_rate_below_threshold")
+    directional_release_valid = not inference_reasons
+    release_inference = {
+        "n_topics": n_topics,
+        "decisive_topics": decisive,
+        "decisive_topic_rate": round(decisive_rate, 3),
+        "tie_topics": ties,
+        "tie_topic_rate": round(tie_rate, 3),
+        # Useful all-topic diagnostic: a tie contributes 0.5 rather than vanishing.
+        "candidate_score_over_all_topics": (
+            round((wins + 0.5 * ties) / n_topics, 3) if n_topics else None
+        ),
+        "minimum_decisive_topic_rate": MIN_DECISIVE_TOPIC_RATE,
+        "valid_for_directional_release": directional_release_valid,
+        "reasons": inference_reasons,
+    }
 
     # objective sub-metric deltas (candidate - baseline), averaged over topics present in both
     obj = results.get("objective", {})
@@ -300,6 +328,11 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
     # verdict: candidate better ONLY if the CI clears 0.5 AND the judge is calibrated
     if decisive == 0:
         verdict = "inconclusive: no decisive topics (all ties) — need harder/more topics"
+    elif not directional_release_valid:
+        verdict = ("inconclusive: decisive-topic rate %.1f%% is below preregistered %.1f%% minimum "
+                   "(%d/%d topics; %d ties)"
+                   % (100 * decisive_rate, 100 * MIN_DECISIVE_TOPIC_RATE,
+                      decisive, n_topics, ties))
     elif human and not judge_trusted:
         verdict = ("inconclusive: JUDGE NOT TRUSTED (%s) — repair calibration/order protocol before "
                    "believing the win-rate" % ",".join(trust_reasons))
@@ -315,8 +348,9 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         verdict = "inconclusive: CI spans 0.5 (need more topics for power)"
 
     return {
-        "n_topics": len(topic_major), "wins": wins, "losses": losses, "ties": ties,
+        "n_topics": n_topics, "wins": wins, "losses": losses, "ties": ties,
         "win_rate_over_decisive": ci, "per_topic": topic_major,
+        "release_inference": release_inference,
         "judge_self_consistency": topic_consistency,
         "order_protocol": order_protocol,
         "objective_delta_candidate_minus_baseline": obj_delta,
