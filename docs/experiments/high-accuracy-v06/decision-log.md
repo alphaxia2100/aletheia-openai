@@ -106,6 +106,10 @@ Append entries; do not rewrite history. A reversal adds a new entry that names t
   explicitly unmeasured.
 - Decision: do not open the sealed topic set, merge a candidate, or update the installed Codex skill.
   A fresh model/human must supply topic rubrics and blind paired judgments first.
+- Frozen artifact: `codex/exp-accuracy-eval-v2` at `b7c57c8`; 169/169 tests pass on Python 3.9 and
+  3.12. An independent freeze review still found forgeable scope coverage, caller-controlled
+  calibration, order-dependent tied-confidence AURC, tie-heavy inference, silent topic omission,
+  agent-owned blind-copy risk, and incomplete immutable provenance. Status remains NO-GO.
 
 ## D014 — invalidate the original sealed forward set after accidental exposure
 

@@ -8,7 +8,7 @@ Promotion status: **NO-GO pending independent evaluation**
 | Artifact | Branch / commit | Evidence | Status |
 |---|---|---|---|
 | Stable Codex release | `codex/openai-aletheia-v05` / `addfaf6` | tagged, installed, clean | retained |
-| Evaluator v2 | `codex/exp-accuracy-eval-v2` / pending final commit | 164 tests; old 8/24 vs self-authored target 24/24 | harness only |
+| Evaluator v2 | `codex/exp-accuracy-eval-v2` / `b7c57c8` | 169 tests; old 8/24 vs self-authored target 24/24 | harness only |
 | Runtime ledger | `codex/exp-runtime-ledger-v06` / `087a228` | 160 tests | plumbing candidate |
 | Claim/evidence ledger | `codex/exp-claim-evidence-ledger-v06` / `35fb82a` | 164 tests | architecture candidate |
 | High-accuracy integration/docs | `codex/high-accuracy-aletheia-v06` | architecture/research/eval logs | not installed |
@@ -36,7 +36,13 @@ contradiction dimensions as `null` without external labels.
 The known-defect improvement is **not** an efficacy estimate: v2's target judgments were authored by
 its developer against the fixture. A base-regression audit also caught and fixed evaluator-induced
 Python import contamination; untouched base had 156/156 tests passing and the corrected evaluator
-worktree has 164/164.
+worktree has 169/169 on Python 3.9 and 3.12.
+
+An independent freeze review found additional P0s: scope coverage remains self-attested and forgeable;
+calibration attestation is caller-controlled and lacks quality thresholds; tied-confidence AURC is
+order-dependent; tie-heavy results can discard most topics yet claim a win; the workflow still permits
+agent-owned blind copies and silent topic omission; and complete run/judge bundles are not immutable.
+These are documented on the evaluator branch in `docs/evals/evaluator-v2-forward-gate.md`.
 
 ## Candidate findings
 
@@ -57,4 +63,3 @@ independent labels, and no matched-read end-to-end comparison exists. The next v
 freeze evaluator/candidate commits, commission an externally held replacement set and rubrics, then
 test the claim ledger first. Passage reranking, citation chasing, and outline patching remain later
 orthogonal ablations.
-
