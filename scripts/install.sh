@@ -9,44 +9,50 @@
 # Scripts self-locate the repo via realpath, so your keys (.env), channels.json,
 # and the atlas keep working even when a skill is reached through the symlink.
 #
-# Usage:  bash scripts/install.sh            # link into ~/.cursor + ~/.claude + ~/.codex
-#         bash scripts/install.sh --copy     # copy Cursor/Claude skills; Codex stays symlinked
+# Usage:  bash scripts/install.sh               # link into ~/.cursor + ~/.claude + ~/.codex
+#         bash scripts/install.sh --copy        # copy Cursor/Claude skills; Codex stays symlinked
+#         bash scripts/install.sh --codex-only  # update Codex without touching Cursor/Claude
 if [ -z "${BASH_VERSION:-}" ]; then
   echo "install.sh requires Bash; run: bash scripts/install.sh [--copy]" >&2
   exit 2
 fi
 set -euo pipefail
 
-if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--copy" ]; }; then
-  echo "usage: bash scripts/install.sh [--copy]" >&2
-  exit 2
-fi
+MODE="symlink"
+CODEX_ONLY=0
+for arg in "$@"; do
+  case "$arg" in
+    --copy) MODE="--copy" ;;
+    --codex-only) CODEX_ONLY=1 ;;
+    *) echo "usage: bash scripts/install.sh [--copy] [--codex-only]" >&2; exit 2 ;;
+  esac
+done
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="$REPO_ROOT/.cursor/skills"
-MODE="${1:-symlink}"
-
 CODEX_SKILLS="${CODEX_HOME:-$HOME/.codex}/skills"
 
-for DEST in "$HOME/.cursor/skills" "$HOME/.claude/skills"; do
-  mkdir -p "$DEST"
-  n=0
-  for skill in "$SRC"/*/; do
-    name="$(basename "$skill")"
-    target="$DEST/$name"
-    rm -rf "$target"
-    if [ "$MODE" = "--copy" ]; then
-      cp -R "$skill" "$target"
-      if [ "$name" = "channel-retrieval" ]; then
-        printf '%s\n' "$REPO_ROOT" > "$target/.aletheia-root"
+if [ "$CODEX_ONLY" -eq 0 ]; then
+  for DEST in "$HOME/.cursor/skills" "$HOME/.claude/skills"; do
+    mkdir -p "$DEST"
+    n=0
+    for skill in "$SRC"/*/; do
+      name="$(basename "$skill")"
+      target="$DEST/$name"
+      rm -rf "$target"
+      if [ "$MODE" = "--copy" ]; then
+        cp -R "$skill" "$target"
+        if [ "$name" = "channel-retrieval" ]; then
+          printf '%s\n' "$REPO_ROOT" > "$target/.aletheia-root"
+        fi
+      else
+        ln -s "$skill" "$target"
       fi
-    else
-      ln -s "$skill" "$target"
-    fi
-    n=$((n + 1))
+      n=$((n + 1))
+    done
+    echo "$([ "$MODE" = "--copy" ] && echo copied || echo linked) $n skills -> $DEST"
   done
-  echo "$([ "$MODE" = "--copy" ] && echo copied || echo linked) $n skills -> $DEST"
-done
+fi
 
 # Codex gets the validated public entry point only. Supporting skills contain Cursor-specific
 # frontmatter and are runtime siblings, not separate Codex invocation surfaces. Because the target
@@ -60,13 +66,17 @@ ln -s "$SRC/aletheia-research" "$target"
 echo "linked 1 Codex skill -> $CODEX_SKILLS"
 
 echo
-echo "Done. Aletheia is now available in Cursor, Claude Code, and Codex."
+if [ "$CODEX_ONLY" -eq 1 ]; then
+  echo "Done. Aletheia's Codex entry point was updated; Cursor and Claude Code were untouched."
+else
+  echo "Done. Aletheia is now available in Cursor, Claude Code, and Codex."
+fi
 echo "  - Invoke it by name: \"use the aletheia-research skill to survey <topic>\"."
 echo "  - Keys load automatically from: $REPO_ROOT/.env"
 echo "  - Codex discovers skills from: $CODEX_SKILLS (start a new session after installing)"
   echo "  - Utilities (global, by absolute path):"
   echo "      python3 ~/.cursor/skills/channel-retrieval/scripts/doctor.py     # what's live"
   echo "      python3 ~/.cursor/skills/channel-retrieval/scripts/channels.py list"
-if [ "$MODE" = "--copy" ]; then
+if [ "$MODE" = "--copy" ] && [ "$CODEX_ONLY" -eq 0 ]; then
   echo "  - NOTE: --copy mode drifts from the repo; re-run after edits."
 fi

@@ -94,6 +94,7 @@ The agent uses only enabled channels (`channel-retrieval` enforces this). Hidden
 ```bash
 bash scripts/install.sh          # full suite to Cursor/Claude; validated flagship to Codex
 # bash scripts/install.sh --copy # copy Cursor/Claude skills; Codex stays symlinked for sibling runtime
+# bash scripts/install.sh --codex-only # update Codex while preserving a separate Cursor/Claude version
 ```
 Then invoke *"use the aletheia-research skill to survey \<topic\>."* In Codex, `$aletheia-research` is also available after starting a new session. The scripts self-locate this repo via realpath, so `.env`, channel settings, and the atlas work from anywhere. Codex resolves through `${CODEX_HOME:-$HOME/.codex}`; utilities also run by absolute path, e.g. `python3 ~/.cursor/skills/channel-retrieval/scripts/doctor.py`. (One source of truth: edits here show up in every client.)
 

@@ -1367,6 +1367,26 @@ class TestInstall(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0)
         self.assertFalse(os.path.exists(os.path.join(home, ".codex", "skills")))
 
+    def test_codex_only_install_leaves_cursor_and_claude_untouched(self):
+        home = tempfile.mkdtemp()
+        os.makedirs(os.path.join(home, ".cursor", "skills"))
+        os.makedirs(os.path.join(home, ".claude", "skills"))
+        cursor_marker = os.path.join(home, ".cursor", "skills", "KEEP")
+        claude_marker = os.path.join(home, ".claude", "skills", "KEEP")
+        for marker in (cursor_marker, claude_marker):
+            with open(marker, "w", encoding="utf-8") as fh:
+                fh.write("unchanged")
+        env = dict(os.environ, HOME=home, CODEX_HOME=os.path.join(home, ".codex"))
+        subprocess.check_call(
+            ["bash", os.path.join(ROOT, "scripts", "install.sh"), "--codex-only"],
+            env=env, stdout=subprocess.DEVNULL)
+        target = os.path.join(home, ".codex", "skills", "aletheia-research")
+        self.assertTrue(os.path.islink(target))
+        self.assertEqual(read_text(cursor_marker), "unchanged")
+        self.assertEqual(read_text(claude_marker), "unchanged")
+        self.assertEqual(os.listdir(os.path.dirname(cursor_marker)), ["KEEP"])
+        self.assertEqual(os.listdir(os.path.dirname(claude_marker)), ["KEEP"])
+
     def test_copy_install_keeps_non_secret_repo_root_pointer(self):
         home = tempfile.mkdtemp()
         env = dict(os.environ, HOME=home, CODEX_HOME=os.path.join(home, ".codex"))
