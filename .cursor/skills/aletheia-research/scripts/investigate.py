@@ -474,6 +474,18 @@ def _run_cfg(node: str) -> Dict[str, Any]:
     return (treestate._read_json(os.path.join(run, "run.json"), {}) or {}) if run else {}
 
 
+def _reserve_runtime(node: str, kind: str, amount: int, detail: str) -> dict:
+    """Use the co-located ledger even if an embedding preloaded a same-named module."""
+    fn = getattr(treestate, "reserve_runtime", None)
+    if fn is None:
+        path = os.path.join(os.path.dirname(__file__), "treestate.py")
+        spec = importlib.util.spec_from_file_location("aletheia_research_runtime_treestate", path)
+        local = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(local)
+        fn = local.reserve_runtime
+    return fn(node, kind, amount, detail)
+
+
 def _telemetry_path(node: str) -> str:
     return os.path.join(node, "telemetry.jsonl")
 
@@ -517,7 +529,12 @@ def _gather(node: str, query: str = "", channels: List[str] = None, limit: int =
     query = query or st.get("question", "")
     query = _anchor(query, cfg.get("topic", ""))   # keep the leaf tied to the root subject
     round_no = completed_rounds + 1
-    reads = reads or max(3, round(unit))           # ~one scrutiny unit per round, not the whole budget
+    limits = cfg.get("limits") or {}
+    per_round_cap = int(limits.get("max_reads_per_round") or max(3, round(unit)))
+    reads = reads or per_round_cap
+    if reads > per_round_cap:
+        raise SystemExit("requested %d reads exceeds the explicit per-round hard cap of %d" %
+                         (reads, per_round_cap))
     treestate.set_status(node, state="active")
 
     # router is only a DEFAULT; the worker may override channels after seeing round-1 evidence
@@ -525,6 +542,7 @@ def _gather(node: str, query: str = "", channels: List[str] = None, limit: int =
     treestate.log_decision(node, "investigate", "round %d channels=%s" % (round_no, ",".join(chans)),
                            "router category=%s (default; worker may override)" % router.classify(query))
 
+    _reserve_runtime(node, "search", 1, "round %d query=%s" % (round_no, query))
     recs, per = retrieve(query, chans, limit, timeout)
     # dedupe at the WORK level (arXiv id / DOI / canonical url) so versions don't duplicate
     uniq = _dedupe_records(recs)
@@ -579,6 +597,8 @@ def _execute_reads(node: str, ctx: Dict[str, Any], sel: List[Dict[str, Any]],
 
     # read selected in full
     read_meta = []
+    attempts = sum(1 for r in sel if str(r.get("url", "")).lower().startswith(("http://", "https://")))
+    _reserve_runtime(node, "read", attempts, "round %d" % round_no)
     for r in sel:
         u = r.get("url", "")
         if not u.lower().startswith(("http://", "https://")):
@@ -684,7 +704,7 @@ def _manifest(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def gather_candidates(node: str, query: str = "", channels: List[str] = None,
-                      limit: int = 8, timeout: float = 30.0) -> dict:
+                      limit: int = 8, timeout: float = 30.0, reads: int = 0) -> dict:
     """Agent-triage step 1: retrieve+rank and RETURN the candidate manifest for the agent to judge
     topic-relatively — instead of a hardcoded gate deciding which to read. Persists the round context
     so `read --pick` can execute the agent's selection. Reads nothing; does not bump the round."""
@@ -694,7 +714,7 @@ def gather_candidates(node: str, query: str = "", channels: List[str] = None,
         raise SystemExit("triage retrieval cap reached for this round (%d manifests); choose from the "
                          "pending manifest or run `investigate.py reject --node <N> --why <reason>` "
                          "to consume an honest zero-read round" % MAX_TRIAGE_GATHERS)
-    ctx = _gather(node, query, channels, limit, timeout)
+    ctx = _gather(node, query, channels, limit, timeout, reads)
     _append_telemetry(node, {
         "event": "candidate_gather",
         "round": ctx["round_no"],
@@ -863,7 +883,7 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     chans = [c.strip() for c in args.channels.split(",") if c.strip()] or None
     if verb == "candidates":
-        res = gather_candidates(args.node, args.query, chans, args.limit, args.timeout)
+        res = gather_candidates(args.node, args.query, chans, args.limit, args.timeout, args.reads)
     elif verb == "read":
         picks = [p for p in re.split(r"[,\s]+", args.pick) if p.strip()]
         idxs = [int(x) for x in re.split(r"[,\s]+", args.pick_idx) if x.strip().lstrip("-").isdigit()]

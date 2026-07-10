@@ -40,12 +40,14 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 from typing import Any, Dict, List, Optional
 
 NODE_FILES = ("decisions.jsonl", "questions.jsonl", "answers.jsonl", "sources.jsonl")
@@ -200,7 +202,9 @@ THOROUGHNESS = {
 def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: float = 4.0,
              max_depth: int = 3, max_children: int = 5, max_nodes: int = 40,
              base: str = "runs/aletheia-research", thoroughness: str = "",
-             verbosity: str = "user") -> str:
+             verbosity: str = "user", reads_per_round: Optional[int] = None,
+             max_read_attempts: Optional[int] = None,
+             max_seconds: Optional[float] = None) -> str:
     if not str(topic).strip():
         raise ValueError("topic must not be empty")
     if thoroughness and thoroughness not in THOROUGHNESS:
@@ -209,6 +213,12 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
         raise ValueError("budget must be positive")
     if unit <= 0:
         raise ValueError("unit must be positive")
+    if reads_per_round is not None and reads_per_round <= 0:
+        raise ValueError("reads_per_round must be positive")
+    if max_read_attempts is not None and max_read_attempts <= 0:
+        raise ValueError("max_read_attempts must be positive")
+    if max_seconds is not None and max_seconds <= 0:
+        raise ValueError("max_seconds must be positive")
     # Resolution: a named tier wins; else an EXPLICIT budget means custom (honored, for bounded/
     # programmatic runs); else — nothing specified — default to `unlimited` (the new default).
     if thoroughness in THOROUGHNESS:
@@ -221,6 +231,7 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
         t = THOROUGHNESS[tier]
         budget, unit = t["budget"], t["unit"]
         max_depth, max_children, max_nodes = t["max_depth"], t["max_children"], t["max_nodes"]
+    reads_per_round = int(reads_per_round or max(3, round(unit)))
     verbosity = verbosity if verbosity in ("user", "agent") else "user"
     ts = dt.datetime.now().strftime("%Y-%m-%d-%H%M%S")
     stem = os.path.join(base, "%s-%s" % (ts, _slugify(slug or topic)))
@@ -233,12 +244,21 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
         except FileExistsError:
             suffix += 1
     os.makedirs(os.path.join(run, "index"))
+    started_epoch = time.time()
     _write_json(os.path.join(run, "run.json"), {
         "topic": topic, "created": _now(), "version": "aletheia-research 0.5.0-openai.1",
         "implementation": _implementation_metadata(),
         "thoroughness": tier, "verbosity": verbosity,
         "budget": budget, "unit": unit, "max_depth": max_depth,
         "max_children": max_children, "max_nodes": max_nodes, "state": "framing",
+        "started_epoch": started_epoch,
+        "limits": {"max_seconds": max_seconds,
+                   "max_reads_per_round": reads_per_round,
+                   "max_read_attempts": max_read_attempts},
+    })
+    _write_json(os.path.join(run, "runtime-ledger.json"), {
+        "schema_version": 1, "started_epoch": started_epoch,
+        "search_attempts": 0, "read_attempts_reserved": 0,
     })
     with open(os.path.join(run, "portfolio.md"), "w", encoding="utf-8") as fh:
         fh.write("# Hypothesis portfolio — %s\n\n_(orchestrator writes 4-6 competing "
@@ -246,6 +266,52 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
     open(os.path.join(run, "index", "sources.jsonl"), "a", encoding="utf-8").close()
     _init_node_dir(os.path.join(run, "tree", "root"), "root", topic, budget, 0, "root", None)
     return run
+
+
+def reserve_runtime(node: str, kind: str, amount: int = 1, detail: str = "") -> Dict[str, Any]:
+    """Atomically reserve a network action before it runs.
+
+    Reservations are never refunded: failures and crashed workers still consumed an attempt. A file
+    lock makes parallel leaves fail closed instead of racing beyond a run-wide hard ceiling.
+    """
+    if kind not in ("search", "read") or amount < 0:
+        raise ValueError("invalid runtime reservation")
+    run = _find_run(node)
+    if not run:
+        return {"enforced": False}
+    cfg = _read_json(os.path.join(run, "run.json"), {}) or {}
+    limits = cfg.get("limits") or {}
+    lock_path = os.path.join(run, ".runtime-ledger.lock")
+    ledger_path = os.path.join(run, "runtime-ledger.json")
+    events_path = os.path.join(run, "runtime-events.jsonl")
+    with open(lock_path, "a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        ledger = _read_json(ledger_path, {}) or {}
+        started = float(ledger.get("started_epoch") or cfg.get("started_epoch") or time.time())
+        elapsed = max(0.0, time.time() - started)
+        max_seconds = limits.get("max_seconds")
+        current_reads = int(ledger.get("read_attempts_reserved", 0) or 0)
+        max_reads = limits.get("max_read_attempts")
+        reason = ""
+        if max_seconds is not None and elapsed >= float(max_seconds):
+            reason = "wall_clock_limit"
+        elif kind == "read" and max_reads is not None and current_reads + amount > int(max_reads):
+            reason = "run_read_limit"
+        event = {"schema_version": 1, "timestamp": time.time(), "kind": kind,
+                 "amount": amount, "detail": detail, "elapsed_seconds": round(elapsed, 3),
+                 "allowed": not bool(reason), "reason": reason}
+        _append_jsonl(events_path, event)
+        if reason:
+            ledger["termination_reason"] = reason
+            ledger["terminated_epoch"] = time.time()
+            _write_json(ledger_path, ledger)
+            raise SystemExit("runtime hard cap reached (%s); stopped before network I/O" % reason)
+        key = "search_attempts" if kind == "search" else "read_attempts_reserved"
+        ledger[key] = int(ledger.get(key, 0) or 0) + amount
+        ledger["last_event_epoch"] = time.time()
+        _write_json(ledger_path, ledger)
+        return {"enforced": True, "kind": kind, "reserved": ledger[key],
+                "elapsed_seconds": round(elapsed, 3)}
 
 
 def _run_cfg(node: str) -> Dict[str, Any]:
@@ -515,6 +581,12 @@ def main(argv=None) -> int:
                    help="quick|standard|deep|exhaustive|unlimited(default)|max (overrides budget/caps)")
     p.add_argument("--verbosity", default="user", choices=["user", "agent"],
                    help="agent = emit the FULL bundle for a calling agent; user = a multi-page summary")
+    p.add_argument("--reads-per-round", type=int, default=None,
+                   help="decoupled per-round read ceiling (default derives from the scrutiny unit)")
+    p.add_argument("--max-read-attempts", type=int, default=None,
+                   help="run-wide hard ceiling; failed/crashed reserved attempts still count")
+    p.add_argument("--max-seconds", type=float, default=None,
+                   help="wall-clock hard ceiling checked before every search/read")
 
     p = sub.add_parser("split"); p.add_argument("--node", required=True)
     p.add_argument("--children", required=True, help='JSON: [["qid","question"],...]')
@@ -561,7 +633,8 @@ def main(argv=None) -> int:
     if args.cmd == "init":
         run = init_run(args.topic, args.slug, args.budget, args.unit, args.max_depth,
                        args.max_children, args.max_nodes, args.base, args.thoroughness,
-                       args.verbosity)
+                       args.verbosity, args.reads_per_round, args.max_read_attempts,
+                       args.max_seconds)
         print(run)
     elif args.cmd == "cansplit":
         print(json.dumps(can_split(args.node), indent=2))
