@@ -39,3 +39,23 @@ Append entries; do not rewrite history. A reversal adds a new entry that names t
   prose outline alone.
 - Adversary: extra planning/reads may amplify noise, context loss, echo, and evaluator gaming.
 
+## D006 — treat the existing read cap as an accidental coupling
+
+- Finding: `candidates --reads N` accepts the argument but the agent path never passes it into the
+  gather step; selected reads remain `max(3, round(unit))`, normally four.
+- Decision: do not increase `unit` to obtain more reads because that would also change round budgets.
+  Add explicit per-round and run-wide read fields if this mechanism is implemented.
+
+## D007 — do not call browser fallback rereads uncapped
+
+- Finding: the real-browser reader uses `max_chars or 40000`; passing zero restores a 40,000-character
+  cap even though the CLI describes zero as unlimited.
+- Decision: record actual completeness and fix zero semantics before using a long browser-read source
+  as decisive evidence.
+
+## D008 — preserve deterministic plumbing, replace prose-only epistemic state
+
+- Decision: retain fetch/dedup/provenance/hash machinery, but investigate a structured claim/evidence
+  ledger and evidence-directed controller rather than adding another fixed outline prompt.
+- Why: the current system cannot schedule work by claim risk or measure claim-specific corroboration.
+- Status: provisional pending external research and evaluator audit.
