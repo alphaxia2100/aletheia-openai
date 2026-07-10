@@ -4,7 +4,8 @@ Evaluator commit: `b7c57c88b80f15313f42d1dd28c08b7311955de8`
 Working directory: `/private/tmp/aletheia-exp-accuracy-eval-v2`
 
 These five adversarial cases extend rather than duplicate the original 24-case suite. They are why
-the frozen evaluator remains NO-GO despite 169 passing tests.
+the original frozen evaluator remained NO-GO despite 169 passing tests. All five executable cases now
+pass on experimental v2.1 (`a80a387`, 183 tests), but the broader provenance limitations remain.
 
 ## 1. Hash-correct but incomplete scope audit passes
 
@@ -125,4 +126,3 @@ labels/cardinality; preregister calibration thresholds; compute grouped/permutat
 selective risk; set a minimum decisive-topic rate and include ties in inference; and persist an
 immutable manifest binding canonical run hashes, expected topic IDs, blind copies, prompts, raw judge
 outputs, and aggregation code. Re-run the old and v2 evaluators after each change.
-

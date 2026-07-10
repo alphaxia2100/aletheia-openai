@@ -8,7 +8,7 @@ Promotion status: **NO-GO pending independent evaluation**
 | Artifact | Branch / commit | Evidence | Status |
 |---|---|---|---|
 | Stable Codex release | `codex/openai-aletheia-v05` / `addfaf6` | tagged, installed, clean | retained |
-| Evaluator v2 | `codex/exp-accuracy-eval-v2` / `b7c57c8` | 169 tests; old 8/24 vs self-authored target 24/24 | harness only |
+| Evaluator v2.1 | `codex/exp-accuracy-eval-v2` / `a80a387` | 183 tests; 14 new P0 regressions | harness only |
 | Runtime ledger | `codex/exp-runtime-ledger-v06` / `087a228` | 160 tests | plumbing candidate |
 | Claim/evidence ledger | `codex/exp-claim-evidence-ledger-v06` / `35fb82a` | 164 tests | architecture candidate |
 | High-accuracy integration/docs | `codex/high-accuracy-aletheia-v06` | architecture/research/eval logs | not installed |
@@ -46,6 +46,13 @@ calibration attestation is caller-controlled and lacks quality thresholds; tied-
 order-dependent; tie-heavy results can discard most topics yet claim a win; the workflow still permits
 agent-owned blind copies and silent topic omission; and complete run/judge bundles are not immutable.
 These are documented on the evaluator branch in `docs/evals/evaluator-v2-forward-gate.md`.
+
+Continuation hardening fixed the five executable reproductions: scope/cardinality and exact
+claim+URL reconciliation; SHA-pinned canonical brief/topic matrices; release-default persistence;
+calibration quality thresholds; grouped equal-confidence AURC; and a 50% decisive-topic floor. All
+183 tests and 14 P0 tests pass. Release remains NO-GO because pins/labels are unsigned, semantic claim
+completeness and auditor independence remain procedural, calibration gates lack external validation,
+and remote judge execution is unauthenticated.
 
 ## Candidate findings
 

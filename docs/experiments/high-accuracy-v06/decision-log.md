@@ -132,3 +132,13 @@ Append entries; do not rewrite history. A reversal adds a new entry that names t
 - Decision: a claim ledger does not solve claim recall by existing. Require independent final-brief
   extraction, compare writer/verifier claim sets, and report the added-claim rate as a first-class
   metric. High addition rates are an architecture defect even when final precision is perfect.
+
+## D016 — harden all five executable evaluator P0s without lifting the NO-GO
+
+- Commits: `601f4f2` (tie-heavy inference), `7c3124f` (calibration/AURC), `29c3678` and `be5b9f6`
+  (scope identity and canonical judge matrix), `a80a387` (frozen v2.1 record).
+- Evidence: 183/183 full tests and 14/14 new adversarial tests pass; the known-defect meta-eval still
+  exits 1 and calibration fixtures remain release-untrusted, as designed.
+- Decision: retain v2.1 as a materially stronger experimental harness, not a release selector.
+  Cryptographic/external provenance, semantic completeness, independently calibrated thresholds, and
+  authenticated remote judge execution remain necessary before a new held-out run.
