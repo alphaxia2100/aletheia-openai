@@ -86,7 +86,9 @@ DOMAINS: Dict[str, Dict[str, List[str]]] = {
         signals=["policy", "economic", "economy", "gdp", "inflation", "unemployment", "regulation", "tax",
                  "labor", "welfare", "subsidy", "trade", "productivity", "carbon", "emissions", "governance",
                  "city", "cities", "urban", "housing", "zoning", "parking", "transit", "land use",
-                 "social mobility", "energy", "electricity", "heat pump", "heat pumps"],
+                 "social mobility", "energy", "electricity", "heat pump", "heat pumps",
+                 "congestion pricing", "congestion charge", "road pricing", "road toll", "traffic",
+                 "transport", "transportation", "cordon", "vehicle kilometres", "vehicle kilometers"],
         primary=["openalex", "crossref"], community=["reddit", "hackernews"], color=[],
         exclude=["github", "gutenberg", "europepmc"]),
     "current_events": dict(

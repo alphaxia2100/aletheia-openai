@@ -520,6 +520,15 @@ class TestRouterScoping(unittest.TestCase):
         r = self._route("should cities abolish minimum parking requirements through zoning reform")
         self.assertEqual(r["category"], "policy_econ")
 
+    def test_transport_policy_with_health_outcome_stays_policy(self):
+        # A live forward test was misrouted to biomed because "trial" + "health" outscored the
+        # transport context.  Health can be an outcome without changing the question's domain.
+        r = self._route(
+            "Did Stockholm congestion pricing causally reduce traffic and emissions, and what "
+            "primary evidence shows durable effects on ambient air or health?")
+        self.assertEqual(r["category"], "policy_econ")
+        self.assertNotIn("europepmc", r["channels"])
+
     def test_enabled_core_reset_preserves_no_key_routes(self):
         cfg = read_json(os.path.join(ROOT, ".cursor", "skills", "channel-retrieval", "channels.json"))
         self.assertEqual(set(cfg["core_default"]), set(cfg["enabled"]))
