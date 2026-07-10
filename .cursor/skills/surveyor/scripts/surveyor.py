@@ -29,7 +29,7 @@ import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 CH = os.path.abspath(os.path.join(HERE, "..", "..", "channel-retrieval", "scripts"))
@@ -79,7 +79,7 @@ _ARXIV = re.compile(r"arxiv\.org/(?:abs|html|pdf)/([0-9]{4}\.[0-9]{4,5})", re.I)
 
 # ---------------------------------------------------------------- helpers
 def _now() -> str:
-    return dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _slug(s: str, n: int = 40) -> str:
@@ -95,7 +95,10 @@ def _read_json(p: str, d: Any = None) -> Any:
 
 
 def _jsonl(p: str) -> List[Dict[str, Any]]:
-    return [json.loads(l) for l in open(p, encoding="utf-8") if l.strip()] if os.path.exists(p) else []
+    if not os.path.exists(p):
+        return []
+    with open(p, encoding="utf-8") as fh:
+        return [json.loads(l) for l in fh if l.strip()]
 
 
 def _append_jsonl(p: str, obj: Dict[str, Any]) -> None:
@@ -393,7 +396,8 @@ def _source_text(url: str, run: str, timeout: float) -> str:
         p = _note_path(scope, url)
         if os.path.exists(p):
             try:
-                return open(p, encoding="utf-8").read()
+                with open(p, encoding="utf-8") as fh:
+                    return fh.read()
             except OSError:
                 pass
     try:
@@ -451,7 +455,11 @@ def cmd_score(a) -> int:
     angles = [d for d in os.listdir(angles_dir)] if os.path.isdir(angles_dir) else []
     reads = len([p for _d, _s, fs in os.walk(a.run) for p in fs if _d.endswith("notes")])
     brief = os.path.join(a.run, "brief.md")
-    bt = open(brief, encoding="utf-8").read().lower() if os.path.exists(brief) else ""
+    if os.path.exists(brief):
+        with open(brief, encoding="utf-8") as fh:
+            bt = fh.read().lower()
+    else:
+        bt = ""
     print(json.dumps({
         "topic": cfg.get("topic"), "version": cfg.get("version"), "tier": cfg.get("resolved_tier"),
         "citation_accuracy": cit_acc,

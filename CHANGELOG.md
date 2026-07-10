@@ -1,7 +1,7 @@
 # Changelog
 
 Current skill:
-- **aletheia-research 0.3** — deep, multi-perspective research surveyor (filesystem tree; parallel
+- **aletheia-research 0.4.3** — deep, multi-perspective research surveyor (filesystem tree; parallel
   read-only investigations; wide source variety; decisive-source hunt; completed verification). This is
   the one to use. (Renamed from `aletheia` so its purpose — the research tool to invoke — is explicit.)
 
@@ -24,6 +24,62 @@ Kept runnable ONLY as eval baselines (`scripts/eval/eval_compare.py`):
   deep-tree line at 0.3).
 
 Versioning is [SemVer](https://semver.org/); each notable change bumps minor/patch and is tagged `<skill>-vX.Y.Z`.
+
+---
+
+## aletheia-research 0.4.3 — 2026-07-09 (efficacy + compatibility audit)
+
+Two clean-context Codex trials (cybersecurity and economic history) plus an isolated install matrix
+reproduced gaps that unit-only testing missed. This patch closes them:
+
+- **Bounded means bounded:** quick/standard/deep/exhaustive leaves now enforce their scrutiny-round
+  budget. A quick trial had silently expanded to 14 rounds and 54 reads; quick now permits the one
+  round its four-unit leaf budget promises, while unlimited/max still run to convergence.
+- **Routing and channel parity:** security/passkeys, public libraries/history, and urban/energy policy
+  route correctly; missing Brave credentials automatically select DuckDuckGo + Marginalia. Wikipedia
+  and the new Open Library client join the no-key core. X is callable from the engine, and selected
+  YouTube records resolve to full captions rather than a generic video page.
+- **Read quality:** thin result sets no longer fill spare slots with off-topic material, and evidence /
+  lead-gen quotas can no longer be undone by a final score sort. Generic anchor verbs are removed;
+  named historical subjects survive the root-topic gate, and short YouTube transcripts cannot fall
+  through to a generic video page.
+- **Verification/report integrity:** root verification reuses reads in child nodes; broken citations
+  block completion; publisher URL variants count once; scores persist directly to `score.json`; agent
+  bundles include that score, verification, and nested full/decisive reads; synthesis tolerates corrupt
+  JSONL records.
+- **Compatibility:** Codex resolves runtime paths through `${CODEX_HOME}` (including `--copy` installs),
+  installer modes are validated and non-Bash invocation fails safely, same-second runs cannot collide,
+  node caps reserve room for a real split, root walking is platform-neutral, and deprecated UTC calls
+  are gone on Python 3.12/3.13.
+- Tests 103 -> 137, plus Python 3.9/3.12/3.13, live-channel, installed-skill, and isolated-path matrices.
+
+---
+
+## aletheia-research 0.4.2 — 2026-07-09 (Codex + dogfood correctness)
+
+An end-to-end Codex dogfood run passed the verification gate but exposed gaps between the skill's
+epistemic contract and its runtime behavior. This patch closes those gaps:
+
+- **Native Codex install:** `scripts/install.sh` now links the validated public flagship into
+  `${CODEX_HOME:-~/.codex}/skills` while retaining the full runtime suite under Cursor/Claude; the
+  flagship ships Codex UI metadata in `agents/openai.yaml`.
+- **Enabled means enabled:** `router.py` now enforces `channels.json -> enabled` (with client/config
+  aliases), so disabled Semantic Scholar is no longer silently routed and stalled on anonymous-pool
+  429s. Europe PMC joins the no-key core for biomedical routing.
+- **Long-query recovery:** OpenAlex compacts over-limit natural-language queries with the shared
+  salience-aware keywordizer before the API can return HTTP 400.
+- **Subject-safe adversaries:** leaf queries inherit distinctive root terms (including acronyms and
+  hyphenated entities such as `LLM`/`multi-agent`) without reintroducing coined-name/meta anchoring.
+- **Real full reads:** arXiv `/abs/` records resolve to full HTML, then PDF; an abstract/metadata page
+  can no longer pass the character threshold as a full primary read.
+- **Read-budget dedup:** conservative normalized titles collapse cross-domain copies when either copy
+  lacks a strong work identifier, while distinct DOI/arXiv/PMID records remain separate.
+- **Honest independence:** synthesis computes structural independence over successfully read sources,
+  not every search hit; `report.py score` reports cited-claim independence as the headline and keeps
+  retrieval breadth in explicit `retrieved_*` fields.
+- **Lifecycle + hygiene:** runs advance `framing -> investigating -> synthesized -> briefed/complete`;
+  file handles across the active stack, eval baselines, and tests are closed cleanly.
+- Tests 85 -> 103, including regressions reproduced from the live dogfood and Codex forward traces.
 
 ---
 

@@ -38,11 +38,15 @@ import provenance_graph as pg  # noqa: E402  (structural shared-origin independe
 
 
 def _jsonl(p):
-    return [json.loads(l) for l in open(p, encoding="utf-8") if l.strip()] if os.path.exists(p) else []
+    if not os.path.exists(p):
+        return []
+    with open(p, encoding="utf-8") as fh:
+        return [json.loads(l) for l in fh if l.strip()]
 
 
 def score(run: str) -> dict:
-    cfg = json.load(open(os.path.join(run, "run.json"), encoding="utf-8"))
+    with open(os.path.join(run, "run.json"), encoding="utf-8") as fh:
+        cfg = json.load(fh)
     idx = _jsonl(os.path.join(run, "index", "sources.jsonl"))
 
     # independence + source quality over the global index
@@ -72,7 +76,8 @@ def score(run: str) -> dict:
     for d, _s, fs in os.walk(os.path.join(run, "tree")):
         if "status.json" not in fs:
             continue
-        st = json.load(open(os.path.join(d, "status.json"), encoding="utf-8"))
+        with open(os.path.join(d, "status.json"), encoding="utf-8") as fh:
+            st = json.load(fh)
         depth = int(st.get("depth", 0))
         nodes += 1
         maxdepth = max(maxdepth, depth)
@@ -133,20 +138,24 @@ def score(run: str) -> dict:
     # off_topic is a READABLE source the lexical layer judged unrelated -> a FAILED citation, NOT a
     # non-event. It MUST stay in the precision denominator or a wrongly-dropped true claim vanishes
     # and biases precision up (the audited bug). broken = unreadable link (access failure), reported
-    # separately since support can't be judged without reading. (coverage != answer recall.)
+    # separately since support can't be judged without reading. A broken citation BLOCKS completion
+    # until it is replaced or the claim is removed. (coverage != answer recall.)
     judged = supported + contradicted + unsupported + off_topic   # the stated denominator
     precision = round(supported / judged, 3) if judged else None  # of judged citations, fraction that hold
-    coverage = round(judged / (judged + awaiting), 3) if (judged + awaiting) else None
-    complete = bool(judged and awaiting == 0)      # every on-topic claim has a final verdict
+    blocking = awaiting + broken
+    coverage = round(judged / (judged + blocking), 3) if (judged + blocking) else None
+    complete = bool(judged and blocking == 0)      # every claim is readable and has a final verdict
     # headline accuracy is only real once the pass is COMPLETE; None while claims still await checking
     cit_acc = precision if complete else None
-    llm_done = supported + contradicted + unsupported            # (kept for the depth/verdicts report)
-    relevant = awaiting                                          # back-compat alias for the report
     bad = off_topic + broken
     on_topic = round((len(ver) - bad) / len(ver), 3) if ver else None
 
     brief = os.path.join(run, "brief.md")
-    btext = open(brief, encoding="utf-8").read().lower() if os.path.exists(brief) else ""
+    if os.path.exists(brief):
+        with open(brief, encoding="utf-8") as fh:
+            btext = fh.read().lower()
+    else:
+        btext = ""
     sections = {s: (s in btext) for s in ("agreement", "disagreement", "unverified")}
 
     return {

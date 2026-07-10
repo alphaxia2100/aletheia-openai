@@ -152,12 +152,13 @@ def _existing_work_keys(node: str) -> set:
     keys = set()
     p = os.path.join(node, "sources.jsonl")
     if os.path.exists(p):
-        for line in open(p, encoding="utf-8"):
-            if line.strip():
-                try:
-                    keys.add(_work_key(json.loads(line)))
-                except ValueError:
-                    pass
+        with open(p, encoding="utf-8") as fh:
+            for line in fh:
+                if line.strip():
+                    try:
+                        keys.add(_work_key(json.loads(line)))
+                    except ValueError:
+                        pass
     return keys
 
 
@@ -254,7 +255,8 @@ def _write_evidence(node, query, ranked, sel, per, read_meta, round_no=1):
         excerpt = ""
         if r.get("_read_file"):
             try:
-                body = open(os.path.join(node, r["_read_file"]), encoding="utf-8").read()
+                with open(os.path.join(node, r["_read_file"]), encoding="utf-8") as fh:
+                    body = fh.read()
                 excerpt = " ".join(body.split()[:80])
             except OSError:
                 pass

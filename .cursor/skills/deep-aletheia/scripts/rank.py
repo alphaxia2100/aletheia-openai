@@ -128,8 +128,11 @@ def main(argv=None) -> int:
     ap.add_argument("--sources", help="JSONL (default stdin)")
     ap.add_argument("--select", type=int, default=0, help="also emit read-selection of size K")
     args = ap.parse_args(argv)
-    raw = open(args.sources, encoding="utf-8") if args.sources else sys.stdin
-    records = [json.loads(l) for l in raw if l.strip()]
+    if args.sources:
+        with open(args.sources, encoding="utf-8") as raw:
+            records = [json.loads(l) for l in raw if l.strip()]
+    else:
+        records = [json.loads(l) for l in sys.stdin if l.strip()]
     ranked = rank(args.query, records)
     if args.select:
         sel = set(id(r) for r in select_reads(ranked, args.select))

@@ -8,6 +8,7 @@ python3 arxiv.py "your query" --limit 8            > /tmp/a.jsonl
 python3 openalex.py "your query" --limit 8         >> /tmp/a.jsonl   # OPENALEX_API_KEY recommended (2026)
 python3 hn.py "your query"                          >> /tmp/a.jsonl
 python3 stackexchange.py "your query"              >> /tmp/a.jsonl   # SE_SITE env to change site
+python3 openlibrary.py "your query"                >> /tmp/a.jsonl
 python3 gutendex.py "your query"                   >> /tmp/a.jsonl
 python3 googlebooks.py "your query"                >> /tmp/a.jsonl   # GOOGLE_BOOKS_API_KEY recommended
 
@@ -34,6 +35,7 @@ non-zero without emitting partial garbage.
 | `reddit.py` | reddit | lead_gen | none (search: `site:reddit.com` via Brave/DDG -> PullPush -> Arctic -> opencli; `--thread`: opencli) |
 | `github.py` | github | evidence | none (GITHUB_TOKEN optional) |
 | `wikipedia.py` | wikipedia | lead_gen | none |
+| `openlibrary.py` | openlibrary | lead_gen | none |
 | `youtube.py` | youtube | color | none* (pip: youtube-transcript-api, yt-dlp; faster-whisper for --whisper) |
 | `web_ddg.py` | duckduckgo | lead_gen | none (Bing-derived, brittle HTML scrape) |
 | `web_marginalia.py` | marginalia | lead_gen | none (independent index, brittle HTML scrape) |

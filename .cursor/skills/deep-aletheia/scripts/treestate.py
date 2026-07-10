@@ -46,7 +46,7 @@ NODE_FILES = ("decisions.jsonl", "questions.jsonl", "answers.jsonl", "sources.js
 
 
 def _now() -> str:
-    return dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _slugify(s: str, n: int = 40) -> str:
@@ -130,10 +130,8 @@ def init_run(topic: str, slug: str = "", budget: float = 32.0, unit: float = 4.0
 
 def _run_cfg(node: str) -> Dict[str, Any]:
     # walk up to find run.json (…/<run>/tree/<path>)
-    d = os.path.abspath(node)
-    while d != "/" and not os.path.exists(os.path.join(d, "run.json")):
-        d = os.path.dirname(d)
-    return _read_json(os.path.join(d, "run.json"), {}) or {}
+    run = _find_run(node)
+    return (_read_json(os.path.join(run, "run.json"), {}) or {}) if run else {}
 
 
 def count_nodes(run: str) -> int:
@@ -162,9 +160,13 @@ def can_split(node: str) -> Dict[str, Any]:
 
 def _find_run(node: str) -> str:
     d = os.path.abspath(node)
-    while d != "/" and not os.path.exists(os.path.join(d, "run.json")):
-        d = os.path.dirname(d)
-    return d if os.path.exists(os.path.join(d, "run.json")) else ""
+    while True:
+        if os.path.exists(os.path.join(d, "run.json")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return ""
+        d = parent
 
 
 def split_node(node: str, children: List[List[str]], actor: str = "orchestrator") -> List[str]:
@@ -219,11 +221,12 @@ def add_sources(node: str, records: List[Dict[str, Any]]) -> int:
     idx_path = os.path.join(run, "index", "sources.jsonl") if run else ""
     seen = set()
     if idx_path and os.path.exists(idx_path):
-        for line in open(idx_path, encoding="utf-8"):
-            try:
-                seen.add(_canon(json.loads(line).get("url", "")))
-            except ValueError:
-                pass
+        with open(idx_path, encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    seen.add(_canon(json.loads(line).get("url", "")))
+                except ValueError:
+                    pass
     added = 0
     for r in records:
         _append_jsonl(os.path.join(node, "sources.jsonl"), r)
@@ -255,8 +258,8 @@ def write_findings(node: str, text: str) -> None:
 
 
 def ask(child_node: str, from_node: str, question: str) -> str:
-    qid = "q%d" % (sum(1 for _ in open(os.path.join(child_node, "questions.jsonl"),
-                                       encoding="utf-8")) + 1)
+    with open(os.path.join(child_node, "questions.jsonl"), encoding="utf-8") as fh:
+        qid = "q%d" % (sum(1 for _ in fh) + 1)
     _append_jsonl(os.path.join(child_node, "questions.jsonl"),
                   {"qid": qid, "t": _now(), "from": from_node, "question": question, "answered": False})
     set_status(child_node, state="needs_answer")
@@ -270,7 +273,8 @@ def answer(node: str, qid: str, text: str) -> None:
     # mark the matching question answered
     qpath = os.path.join(node, "questions.jsonl")
     if os.path.exists(qpath):
-        rows = [json.loads(l) for l in open(qpath, encoding="utf-8") if l.strip()]
+        with open(qpath, encoding="utf-8") as fh:
+            rows = [json.loads(l) for l in fh if l.strip()]
         for row in rows:
             if row.get("qid") == qid:
                 row["answered"] = True
@@ -387,7 +391,11 @@ def main(argv=None) -> int:
     elif args.cmd == "answer":
         answer(args.node, args.qid, args.a)
     elif args.cmd == "findings":
-        txt = open(args.file, encoding="utf-8").read() if args.file else args.text
+        if args.file:
+            with open(args.file, encoding="utf-8") as fh:
+                txt = fh.read()
+        else:
+            txt = args.text
         write_findings(args.node, txt)
     elif args.cmd == "frontier":
         for d in frontier(args.run, args.state, args.depth):

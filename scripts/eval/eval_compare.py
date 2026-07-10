@@ -30,11 +30,13 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(REPO, ".cursor", "skills", "surveyor", "scripts"))
 sys.path.insert(0, os.path.join(REPO, ".cursor", "skills", "provenance-audit", "scripts"))
 import surveyor  # noqa: E402  (authority + independence — the sound utilities)
-import dedupe  # noqa: E402
 
 
 def _jsonl(p):
-    return [json.loads(l) for l in open(p, encoding="utf-8") if l.strip()] if os.path.exists(p) else []
+    if not os.path.exists(p):
+        return []
+    with open(p, encoding="utf-8") as fh:
+        return [json.loads(l) for l in fh if l.strip()]
 
 
 def _index_path(run):
@@ -58,9 +60,15 @@ def score(run: str) -> dict:
     bt = ""
     bp = os.path.join(run, "brief.md")
     if os.path.exists(bp):
-        bt = open(bp, encoding="utf-8").read().lower()
+        with open(bp, encoding="utf-8") as fh:
+            bt = fh.read().lower()
     brief_complete = all(s in bt for s in ("agreement", "disagreement", "unverified"))
-    cfg = json.load(open(os.path.join(run, "run.json"), encoding="utf-8")) if os.path.exists(os.path.join(run, "run.json")) else {}
+    cfg_path = os.path.join(run, "run.json")
+    if os.path.exists(cfg_path):
+        with open(cfg_path, encoding="utf-8") as fh:
+            cfg = json.load(fh)
+    else:
+        cfg = {}
     return {"version": cfg.get("version", "?"), "citation_accuracy": cit,
             "source_quality": quality, "independence": round(1 - indep["echo_ratio"], 3),
             "sources": len(idx), "reads": reads, "voices": indep["voices"],

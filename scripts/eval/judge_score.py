@@ -19,7 +19,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import sys
 from collections import Counter
 from typing import Any, Dict, List, Optional
 
@@ -146,7 +145,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Aletheia eval measurement core (win-rate + judge trust).")
     ap.add_argument("results", help="JSON with pairwise/objective/human")
     args = ap.parse_args(argv)
-    print(json.dumps(summarize(json.load(open(args.results, encoding="utf-8"))), indent=2))
+    with open(args.results, encoding="utf-8") as fh:
+        results = json.load(fh)
+    print(json.dumps(summarize(results), indent=2))
     return 0
 
 

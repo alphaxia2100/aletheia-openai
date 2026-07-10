@@ -10,14 +10,22 @@ multi-label-suffix heuristic. Pure stdlib otherwise.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import urllib.parse
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 # Tracking params to drop when canonicalizing.
 _TRACKING_PREFIXES = ("utm_",)
 _TRACKING_KEYS = {"ref", "ref_src", "ref_url", "fbclid", "gclid", "mc_cid", "mc_eid",
                   "igshid", "source", "spm", "yclid", "_hsenc", "_hsmi"}
+
+# DOI links are frequently publisher URLs rather than doi.org links, for example
+# ``/doi/abs/10.1080/...`` and ``/articles/10.3389/.../full``.  Retrieval adapters do not all
+# populate a separate ``doi`` field, so URL extraction belongs in this shared identity helper.
+_DOI_PREFIX_RE = re.compile(r"^(?:https?://)?(?:www\.|dx\.)?doi\.org/|^doi:\s*", re.I)
+_DOI_IN_PATH_RE = re.compile(r"(?:^|/)(10\.\d{4,9}/[-._;()/:a-z0-9]+)", re.I)
+_DOI_VIEW_TAILS = ("/abstract", "/abs", "/epdf", "/full", "/html", "/pdf")
 
 # Curated multi-label public suffixes (heuristic; install tldextract for the full PSL).
 _MULTI_SUFFIXES = {
@@ -80,6 +88,45 @@ def canonical_url(url: str) -> str:
     return rebuilt
 
 
+def normalize_doi(raw: Any) -> str:
+    """Canonicalize a DOI value while tolerating the abbreviated IDs used in fixtures."""
+    value = urllib.parse.unquote(str(raw or "").strip())
+    value = _DOI_PREFIX_RE.sub("", value)
+    return value.split("#", 1)[0].split("?", 1)[0].rstrip("/").lower()
+
+
+def doi_from_record(record: Dict[str, Any]) -> str:
+    """Return a canonical DOI from a metadata field or a DOI embedded in a publisher URL."""
+    explicit = normalize_doi(record.get("doi"))
+    if explicit:
+        return explicit
+
+    raw_url = str(record.get("url") or "").strip()
+    if not raw_url:
+        return ""
+    try:
+        parsed = urllib.parse.urlparse(raw_url)
+    except Exception:  # noqa: BLE001
+        return ""
+    host = parsed.netloc.lower().split(":", 1)[0]
+    path = urllib.parse.unquote(parsed.path)
+    if host in {"doi.org", "dx.doi.org", "www.doi.org"}:
+        return normalize_doi(path.lstrip("/"))
+
+    match = _DOI_IN_PATH_RE.search(path)
+    if not match:
+        return ""
+    candidate = match.group(1).rstrip("/")
+    # Some journal platforms append a presentation route after the DOI.  These labels cannot be
+    # part of the work identity in that URL position and otherwise make /full and /abstract differ.
+    lower = candidate.lower()
+    for tail in _DOI_VIEW_TAILS:
+        if lower.endswith(tail):
+            candidate = candidate[:-len(tail)].rstrip("/")
+            break
+    return normalize_doi(candidate)
+
+
 def annotate(record: Dict[str, Any]) -> Dict[str, Any]:
     url = record.get("url", "") or ""
     record["canonical_url"] = canonical_url(url)
@@ -115,7 +162,7 @@ def voice_key(record: Dict[str, Any]) -> str:
     (canonical_url identity is handled separately in build_clusters, so literal
     duplicates still collapse regardless of this key.)
     """
-    doi = (record.get("doi") or "").strip().lower()
+    doi = doi_from_record(record)
     if doi:
         return "doi::" + doi
     author = _primary_author_key(record)

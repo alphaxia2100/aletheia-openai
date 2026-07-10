@@ -6,7 +6,7 @@
 2. **A narrow source diet** — living on one web index whose SEO/editorial bias dominates ranking.
 3. **Bias sources** — treating "40 blogs echoing 1 paper" as 40 independent confirmations.
 
-Aletheia is delivered as a **portable Skill + MCP suite** — no standalone app. It runs in Cursor and Claude Code (and any harness that reads `SKILL.md` + MCP configs).
+Aletheia is delivered as a **portable Skill + MCP suite** — no standalone app. It runs in Cursor, Claude Code, Codex, and any harness that reads `SKILL.md` + MCP configs.
 
 > What makes this better than a bare LLM: it **refuses to anchor** (holds 4-6 competing framings and commits to none), pulls **current, diverse, real sources** the model can't reach, **reads them in full**, **judges whether support is independent or just one origin echoed** (by reading what's cited — a judgment, not a graph), **attacks its own leading conclusion** before believing it, and answers with **every claim tied to a source**, disagreement kept visible.
 
@@ -37,7 +37,7 @@ flowchart TD
 
 ## Skills
 
-> **Current skill: `aletheia-research` 0.3.** The flagship is the deep, multi-perspective tree
+> **Current skill: `aletheia-research` 0.4.3.** The flagship is the deep, multi-perspective tree
 > surveyor — built off **deep-aletheia 0.2** (which won a blind LLM-judge on completeness, source
 > variety, and grounding), keeping its good parts and adding a decisive-source hunt, chase-the-primary
 > discipline, wider source variety, and a thoroughness dial. See `docs/aletheia-0.3-design.md` and the
@@ -45,7 +45,7 @@ flowchart TD
 
 | Skill | Role |
 |-------|------|
-| **`aletheia-research` 0.3** | **Current** deep surveyor (multi-perspective tree). `thoroughness: auto\|quick\|standard\|deep\|exhaustive`. |
+| **`aletheia-research` 0.4.3** | **Current** deep surveyor (multi-perspective tree). Defaults to unbounded convergence; `quick\|standard\|deep\|exhaustive` bound it and `max` expands it. |
 | `deep-aletheia` 0.2 | *Frozen — direct ancestor of aletheia-research 0.3; eval baseline.* |
 | `surveyor` 0.1 | *Retired 2026-07-08 — eval baseline (single-agent).* |
 | `aletheia` v1.0 | *Retired — original single-agent loop; superseded by `aletheia-research`.* |
@@ -70,7 +70,8 @@ This is a personal research project, so **the core runs with ZERO API keys.** On
 | Web search x2 (independent) | **Marginalia** (independent) + **DuckDuckGo** | none — add free **Brave** key or paid **Exa** to upgrade |
 | Latest video | **YouTube** — `youtube.py --latest` (yt-dlp `ytsearchdate` discovery) + `youtube-transcript-api` | none (pip install) |
 | Social pulse (color) | **X** via **agent-reach** (browser session) | none (paid GetXAPI/twitterapi optional) |
-| Primary / independence backbone | **OpenAlex** + **arXiv** | none — add free OpenAlex key for volume |
+| Primary / independence backbone | **OpenAlex** + **arXiv** + **Europe PMC** | none — add free OpenAlex key for volume |
+| History / books | **Wikipedia** + **Open Library** | none — enable Google Books when its keyless quota is healthy |
 | Un-laundered layer | **Reddit** (PullPush) + **Hacker News** | none |
 | Depth | **read.py** (Jina: pages + PDFs) | none |
 
@@ -89,14 +90,14 @@ The agent uses only enabled channels (`channel-retrieval` enforces this). Hidden
 
 **Cursor** (this repo): skills live in `.cursor/skills/` and load automatically. MCP servers load from `.cursor/mcp.json`.
 
-**Use it in ANY chat (global install).** Make the skills *personal* so every Cursor / Claude Code project can invoke them — not just this repo:
+**Use it in ANY chat (global install).** Make the skills personal so Cursor, Claude Code, and Codex can invoke them outside this repo:
 ```bash
-bash scripts/install.sh          # symlinks skills into ~/.cursor/skills/ AND ~/.claude/skills/
-# bash scripts/install.sh --copy # if your client doesn't follow symlinked skills
+bash scripts/install.sh          # full suite to Cursor/Claude; validated flagship to Codex
+# bash scripts/install.sh --copy # copy Cursor/Claude skills; Codex stays symlinked for sibling runtime
 ```
-Then in any chat: *"use the aletheia skill to survey \<topic\>."* The scripts self-locate this repo via realpath, so your `.env` keys, `channels.json`, and the atlas keep working from anywhere. Utilities run by absolute path, e.g. `python3 ~/.cursor/skills/channel-retrieval/scripts/doctor.py`. (One source of truth: edits here show up in every chat.)
+Then invoke *"use the aletheia-research skill to survey \<topic\>."* In Codex, `$aletheia-research` is also available after starting a new session. The scripts self-locate this repo via realpath, so `.env`, channel settings, and the atlas work from anywhere. Codex resolves through `${CODEX_HOME:-$HOME/.codex}`; utilities also run by absolute path, e.g. `python3 ~/.cursor/skills/channel-retrieval/scripts/doctor.py`. (One source of truth: edits here show up in every client.)
 
-**Keys**: `cp .env.example .env` and fill in only what you need. The free core needs almost nothing (the `fetch` MCP server + no-key REST APIs cover it). See `.cursor/mcp.reference.md` for the full connector catalog and which are free vs. paid. Run `python3 ~/.cursor/skills/channel-retrieval/scripts/doctor.py` any time to see which channels are live (~14 work with no API key, including Reddit, two no-key web-search indexes, no-key full-page/PDF reading via `read.py`, and YouTube transcripts via `youtube.py` after `pip install --user -r requirements-optional.txt`).
+**Keys**: `cp .env.example .env` and fill in only what you need. The free core needs almost nothing (the `fetch` MCP server + no-key REST APIs cover it). See `.cursor/mcp.reference.md` for the full connector catalog and which are free vs. paid. Run `python3 ~/.cursor/skills/channel-retrieval/scripts/doctor.py` any time to see which channels are live (~15 work with no API key, including Reddit, two no-key web-search indexes, Wikipedia/Open Library, no-key full-page/PDF reading via `read.py`, and YouTube transcripts via `youtube.py` after `pip install --user -r requirements-optional.txt`).
 
 ## Run a survey
 

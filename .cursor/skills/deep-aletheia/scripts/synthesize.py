@@ -29,7 +29,8 @@ import dedupe  # noqa: E402
 
 def _read_json(p, d=None):
     try:
-        return json.load(open(p, encoding="utf-8"))
+        with open(p, encoding="utf-8") as fh:
+            return json.load(fh)
     except (OSError, ValueError):
         return d
 
@@ -37,13 +38,17 @@ def _read_json(p, d=None):
 def _load_jsonl(p) -> List[Dict[str, Any]]:
     if not os.path.exists(p):
         return []
-    return [json.loads(l) for l in open(p, encoding="utf-8") if l.strip()]
+    with open(p, encoding="utf-8") as fh:
+        return [json.loads(l) for l in fh if l.strip()]
 
 
 def _answered(child: str) -> bool:
     """A child is 'resolved' once it has recorded at least one answer to a parent's question."""
     ap = os.path.join(child, "answers.jsonl")
-    return os.path.exists(ap) and any(l.strip() for l in open(ap, encoding="utf-8"))
+    if not os.path.exists(ap):
+        return False
+    with open(ap, encoding="utf-8") as fh:
+        return any(l.strip() for l in fh)
 
 
 def children(node: str) -> List[str]:
@@ -86,7 +91,11 @@ def synthesis_input(node: str) -> Dict[str, Any]:
         cst = _read_json(os.path.join(c, "status.json"), {}) or {}
         qid = cst.get("qid", os.path.basename(c))
         fpath = os.path.join(c, "findings.md")
-        ftext = open(fpath, encoding="utf-8").read().strip() if os.path.exists(fpath) else ""
+        if os.path.exists(fpath):
+            with open(fpath, encoding="utf-8") as fh:
+                ftext = fh.read().strip()
+        else:
+            ftext = ""
         child_blocks.append((qid, cst.get("question", ""), ftext))
         if len(ftext) < 120:
             thin.append(qid)

@@ -32,7 +32,8 @@ import provenance_graph as pg  # noqa: E402  (structural shared-origin clusterin
 
 def _read_json(p, d=None):
     try:
-        return json.load(open(p, encoding="utf-8"))
+        with open(p, encoding="utf-8") as fh:
+            return json.load(fh)
     except (OSError, ValueError):
         return d
 
@@ -40,13 +41,27 @@ def _read_json(p, d=None):
 def _load_jsonl(p) -> List[Dict[str, Any]]:
     if not os.path.exists(p):
         return []
-    return [json.loads(l) for l in open(p, encoding="utf-8") if l.strip()]
+    rows = []
+    with open(p, encoding="utf-8") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict):
+                rows.append(row)
+    return rows
 
 
 def _answered(child: str) -> bool:
     """A child is 'resolved' once it has recorded at least one answer to a parent's question."""
     ap = os.path.join(child, "answers.jsonl")
-    return os.path.exists(ap) and any(l.strip() for l in open(ap, encoding="utf-8"))
+    if not os.path.exists(ap):
+        return False
+    with open(ap, encoding="utf-8") as fh:
+        return any(l.strip() for l in fh)
 
 
 def children(node: str) -> List[str]:
@@ -79,7 +94,23 @@ def _origin_clusters(records: List[Dict[str, Any]]) -> int:
         return len({dedupe.voice_key(r) for r in records})
 
 
+def _unique_source_instances(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Count a source once when the same retrieved record appears in multiple tree branches."""
+    out, seen = [], set()
+    for record in records:
+        canon = dedupe.canonical_url(str(record.get("url") or ""))
+        sid = str(record.get("id") or "")
+        key = ("url", canon) if canon else (("id", sid) if sid else None)
+        if key is not None and key in seen:
+            continue
+        if key is not None:
+            seen.add(key)
+        out.append(record)
+    return out
+
+
 def independence(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    records = _unique_source_instances(records)
     if not records:
         return {"n": 0, "voices": 0, "echo_ratio": 0, "independent_origins": 0,
                 "origin_echo_ratio": 0, "domains": 0, "index_groups": 0,
@@ -109,13 +140,26 @@ def synthesis_input(node: str) -> Dict[str, Any]:
         cst = _read_json(os.path.join(c, "status.json"), {}) or {}
         qid = cst.get("qid", os.path.basename(c))
         fpath = os.path.join(c, "findings.md")
-        ftext = open(fpath, encoding="utf-8").read().strip() if os.path.exists(fpath) else ""
+        if os.path.exists(fpath):
+            with open(fpath, encoding="utf-8") as fh:
+                ftext = fh.read().strip()
+        else:
+            ftext = ""
         child_blocks.append((qid, cst.get("question", ""), ftext))
         if len(ftext) < 120:
             thin.append(qid)
             if not _answered(c):                 # thin AND never asked/answered -> gate blocks
                 unresolved.append(qid)
-    indep = independence(subtree_sources(node))
+    all_sources = subtree_sources(node)
+    read_sources = [r for r in all_sources if r.get("_read_ok")]
+    # Search hits are leads, not corroborating evidence. Base synthesis independence on what was
+    # actually read; retain retrieved_n for observability. Legacy/imported packs without read flags
+    # fall back to all records rather than reporting an empty evidence set.
+    basis = read_sources if read_sources else all_sources
+    indep = independence(basis)
+    indep["retrieved_n"] = len(all_sources)
+    indep["retrieved_unique_n"] = len(_unique_source_instances(all_sources))
+    indep["basis"] = "read_sources" if read_sources else "all_sources_no_read_flags"
 
     lines = ["# Synthesis input — %s" % st.get("qid", "node"), "",
              "**Question:** %s" % st.get("question", ""), "",

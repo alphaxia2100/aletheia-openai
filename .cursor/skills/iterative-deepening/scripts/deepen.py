@@ -24,7 +24,7 @@ import math
 import os
 import re
 import sys
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 def _norm(q: str) -> str:

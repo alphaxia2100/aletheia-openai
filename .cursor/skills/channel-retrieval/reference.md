@@ -121,7 +121,7 @@ Per-channel playbooks: raw endpoint, auth, rate limit, epistemic class, and how 
 ### Google Books — `index_of_origin: google_books` · class evidence
 - Client: `scripts/googlebooks.py`. Raw: `https://www.googleapis.com/books/v1/volumes?q=<q>&key=$GOOGLE_BOOKS_API_KEY`. Court-blessed snippet search across a huge corpus; metadata noisy (verify). Do not charge fees for a Books-API app (ToS).
 
-### Open Library / Internet Archive — `index_of_origin: openlibrary` / `internet_archive` · class evidence
+### Open Library / Internet Archive — `index_of_origin: openlibrary` / `internet_archive` · class lead_gen/evidence
 - Open Library: `https://openlibrary.org/search.json?q=<q>`; Search-Inside for scanned-book snippets. Internet Archive: advanced search + `https://archive.org/metadata/{id}`; **scholar.archive.org** for 25M+ OA papers. Metadata + full-text *search* + public-domain downloads only.
 - **Do NOT automate borrowing / Controlled Digital Lending** (*Hachette v. Internet Archive*, 2d Cir. 2024 — not fair use).
 

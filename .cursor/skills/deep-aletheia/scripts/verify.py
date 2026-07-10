@@ -78,7 +78,8 @@ def _source_text(url: str, node, reads_dir, timeout: float) -> str:
     p = _note_path(url, node, reads_dir)
     if p:
         try:
-            return open(p, encoding="utf-8").read()
+            with open(p, encoding="utf-8") as fh:
+                return fh.read()
         except OSError:
             pass
     try:  # fall back to a live read
@@ -157,7 +158,8 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default="")
     ap.add_argument("--timeout", type=float, default=30.0)
     args = ap.parse_args(argv)
-    claims = [json.loads(l) for l in open(args.claims, encoding="utf-8") if l.strip()]
+    with open(args.claims, encoding="utf-8") as fh:
+        claims = [json.loads(l) for l in fh if l.strip()]
     summary = run(claims, args.node or None, args.reads_dir or None, args.timeout)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:

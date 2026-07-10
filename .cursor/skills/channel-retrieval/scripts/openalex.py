@@ -15,9 +15,29 @@ from typing import Any, Dict, List
 sys.path.insert(0, os.path.dirname(__file__))
 import _http  # noqa: E402
 
+_SEARCH_LIMIT = 100  # OpenAlex returns HTTP 400 when `search` exceeds its accepted query length.
+
+
+def _search_query(query: str) -> str:
+    """Preserve natural-language search when accepted; compact only over-limit queries.
+
+    The leaf engine's zero-result relaxation cannot help an HTTP 400 because the request never
+    returns a result set. Salience-aware keywordization retains acronyms/entities such as LLM while
+    staying under OpenAlex's search limit.
+    """
+    query = (query or "").strip()
+    if len(query) <= _SEARCH_LIMIT:
+        return query
+    candidate = query
+    for n in (6, 5, 4, 3, 2):
+        candidate = _http.keywordize(query, n)
+        if len(candidate) <= _SEARCH_LIMIT:
+            return candidate
+    return candidate[:_SEARCH_LIMIT].rsplit(" ", 1)[0] or candidate[:_SEARCH_LIMIT]
+
 
 def search(query: str, limit: int, timeout: float) -> List[Dict[str, Any]]:
-    params = "per_page=%d&search=%s" % (min(limit, 25), _http.quote(query))
+    params = "per_page=%d&search=%s" % (min(limit, 25), _http.quote(_search_query(query)))
     key = os.environ.get("OPENALEX_API_KEY")
     mailto = os.environ.get("OPENALEX_MAILTO")
     if key:

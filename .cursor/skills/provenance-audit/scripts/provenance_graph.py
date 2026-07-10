@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import re
 import sys
@@ -44,16 +43,14 @@ def _shingles(text: str, k: int = _SHINGLE_K) -> Set[str]:
 # strong-identifier canonicalization — so the SAME work in different notations (arXiv: prefix vs
 # bare id, doi.org URL vs bare DOI, .pdf, vN) is recognized as one work, while genuinely DISTINCT
 # ids veto the near-duplicate text merge (rule 4). Fixes the audited false-merge of distinct DOIs.
-_ARXIV_RE = re.compile(r"arxiv\.org/(?:abs|pdf)/([a-z0-9][a-z0-9.\-]*(?:/\d+)?)", re.I)
-_DOI_PREFIX_RE = re.compile(r"^(?:https?://)?(?:www\.|dx\.)?doi\.org/|^doi:\s*", re.I)
+_ARXIV_RE = re.compile(r"arxiv\.org/(?:abs|html|pdf)/([a-z0-9][a-z0-9.\-]*(?:/\d+)?)", re.I)
 _ARXIV_PREFIX_RE = re.compile(r"^arxiv:\s*", re.I)
 
 
 def _norm_doi(raw: Any) -> str:
     # strip the doi.org/dx./www. prefix or a "doi:" label, then any ?query / #fragment / trailing
     # slash — so 10.1/x, https://doi.org/10.1/x/, www.doi.org/10.1/x?y=1 all canonicalize the same.
-    s = _DOI_PREFIX_RE.sub("", str(raw or "").strip().lower())
-    return s.split("#", 1)[0].split("?", 1)[0].rstrip("/")
+    return dedupe.normalize_doi(raw)
 
 
 def _arxiv_id(record: Dict[str, Any]) -> str:
@@ -76,7 +73,7 @@ def _pmid(record: Dict[str, Any]) -> str:
 
 def _work_identity(record: Dict[str, Any]) -> Dict[str, str]:
     ids: Dict[str, str] = {}
-    doi = _norm_doi(record.get("doi"))
+    doi = dedupe.doi_from_record(record)
     if doi:
         ids["doi"] = doi
     ax = _arxiv_id(record)
@@ -171,6 +168,7 @@ def build_clusters(sources: List[Dict[str, Any]]) -> Tuple[UnionFind, Dict[str, 
     by_id: Dict[str, Dict[str, Any]] = {}
     by_canon: Dict[str, str] = {}
     by_voice: Dict[str, str] = {}
+    by_work: Dict[str, str] = {}
 
     for i, s in enumerate(sources):
         dedupe.annotate(s)
@@ -183,6 +181,15 @@ def build_clusters(sources: List[Dict[str, Any]]) -> Tuple[UnionFind, Dict[str, 
         uf.add(sid)
 
     for sid, s in by_id.items():
+        # rule 0: a matching DOI/arXiv/PMID is direct work identity. Do not require shared snippets:
+        # claim verification often cites abs/html/pdf variants whose index records have different or
+        # empty text fields.
+        for kind, value in _work_identity(s).items():
+            key = "%s:%s" % (kind, value)
+            if key in by_work:
+                uf.union(sid, by_work[key])
+            else:
+                by_work[key] = sid
         # rule 1: same canonical url (literal duplicate)
         canon = s.get("canonical_url") or ""
         if canon:

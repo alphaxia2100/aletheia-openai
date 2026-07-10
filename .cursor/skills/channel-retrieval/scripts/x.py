@@ -22,6 +22,14 @@ import _http  # noqa: E402
 import _agentreach  # noqa: E402
 
 
+def search(query: str, limit: int, timeout: float):
+    """Programmatic adapter used by the Aletheia leaf engine."""
+    records, err = _agentreach.x_search(query, limit, False, "", "", timeout)
+    if err:
+        sys.stderr.write("x unavailable: %s\n" % err)
+    return records
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="X/Twitter via agent-reach (no paid API) -> records")
     ap.add_argument("query")

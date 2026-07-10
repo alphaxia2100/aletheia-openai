@@ -50,7 +50,7 @@ NODE_FILES = ("decisions.jsonl", "questions.jsonl", "answers.jsonl", "sources.js
 
 
 def _now() -> str:
-    return dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _slugify(s: str, n: int = 40) -> str:
@@ -107,6 +107,16 @@ def set_status(node: str, state: Optional[str] = None, **fields: Any) -> Dict[st
     return st
 
 
+def set_run_state(run: str, state: str) -> Dict[str, Any]:
+    """Persist the run lifecycle; node status alone is not enough for resume/observability."""
+    path = os.path.join(run, "run.json")
+    cfg = _read_json(path, {}) or {}
+    cfg["state"] = state
+    cfg["updated"] = _now()
+    _write_json(path, cfg)
+    return cfg
+
+
 def log_decision(node: str, actor: str, decision: str, why: str = "") -> None:
     _append_jsonl(os.path.join(node, "decisions.jsonl"),
                   {"t": _now(), "actor": actor, "decision": decision, "why": why})
@@ -136,6 +146,14 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
              max_depth: int = 3, max_children: int = 5, max_nodes: int = 40,
              base: str = "runs/aletheia-research", thoroughness: str = "",
              verbosity: str = "user") -> str:
+    if not str(topic).strip():
+        raise ValueError("topic must not be empty")
+    if thoroughness and thoroughness not in THOROUGHNESS:
+        raise ValueError("unknown thoroughness %r" % thoroughness)
+    if budget is not None and budget <= 0:
+        raise ValueError("budget must be positive")
+    if unit <= 0:
+        raise ValueError("unit must be positive")
     # Resolution: a named tier wins; else an EXPLICIT budget means custom (honored, for bounded/
     # programmatic runs); else — nothing specified — default to `unlimited` (the new default).
     if thoroughness in THOROUGHNESS:
@@ -149,11 +167,19 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
         budget, unit = t["budget"], t["unit"]
         max_depth, max_children, max_nodes = t["max_depth"], t["max_children"], t["max_nodes"]
     verbosity = verbosity if verbosity in ("user", "agent") else "user"
-    ts = dt.datetime.now().strftime("%Y-%m-%d-%H%M")
-    run = os.path.join(base, "%s-%s" % (ts, _slugify(slug or topic)))
-    os.makedirs(os.path.join(run, "index"), exist_ok=True)
+    ts = dt.datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    stem = os.path.join(base, "%s-%s" % (ts, _slugify(slug or topic)))
+    suffix = 1
+    while True:
+        run = stem if suffix == 1 else "%s-%d" % (stem, suffix)
+        try:
+            os.makedirs(run)
+            break
+        except FileExistsError:
+            suffix += 1
+    os.makedirs(os.path.join(run, "index"))
     _write_json(os.path.join(run, "run.json"), {
-        "topic": topic, "created": _now(), "version": "aletheia-research 0.4.1",
+        "topic": topic, "created": _now(), "version": "aletheia-research 0.4.3",
         "thoroughness": tier, "verbosity": verbosity,
         "budget": budget, "unit": unit, "max_depth": max_depth,
         "max_children": max_children, "max_nodes": max_nodes, "state": "framing",
@@ -168,10 +194,8 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
 
 def _run_cfg(node: str) -> Dict[str, Any]:
     # walk up to find run.json (…/<run>/tree/<path>)
-    d = os.path.abspath(node)
-    while d != "/" and not os.path.exists(os.path.join(d, "run.json")):
-        d = os.path.dirname(d)
-    return _read_json(os.path.join(d, "run.json"), {}) or {}
+    run = _find_run(node)
+    return _read_json(os.path.join(run, "run.json"), {}) or {} if run else {}
 
 
 def count_nodes(run: str) -> int:
@@ -190,19 +214,24 @@ def can_split(node: str) -> Dict[str, Any]:
         reasons.append("at max_depth")
     if budget < 2 * U:
         reasons.append("budget<2U (leaf: investigate)")
-    if run and count_nodes(run) >= int(cfg.get("max_nodes", 40)):
-        reasons.append("at max_nodes")
+    remaining = int(cfg.get("max_nodes", 40)) - count_nodes(run) if run else 0
+    if run and remaining < 2:
+        reasons.append("max_nodes leaves fewer than 2 child slots")
     kmax = int(budget // U) if U > 0 else 0
-    kmax = min(kmax, int(cfg.get("max_children", 5)))
+    kmax = min(kmax, int(cfg.get("max_children", 5)), max(remaining, 0) if run else kmax)
     return {"can_split": not reasons, "max_k": max(kmax, 0), "reasons": reasons,
             "budget": budget, "unit": U, "depth": depth}
 
 
 def _find_run(node: str) -> str:
     d = os.path.abspath(node)
-    while d != "/" and not os.path.exists(os.path.join(d, "run.json")):
-        d = os.path.dirname(d)
-    return d if os.path.exists(os.path.join(d, "run.json")) else ""
+    while True:
+        if os.path.exists(os.path.join(d, "run.json")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return ""
+        d = parent
 
 
 def split_node(node: str, children: List[List[str]], actor: str = "orchestrator",
@@ -217,8 +246,13 @@ def split_node(node: str, children: List[List[str]], actor: str = "orchestrator"
     st = _read_json(os.path.join(node, "status.json"), {}) or {}
     chk = can_split(node)
     k = len(children)
-    if k < 1:
-        raise SystemExit("split needs >=1 child")
+    if k < 2:
+        raise SystemExit("split needs >=2 children")
+    if any(not isinstance(child, (list, tuple)) or len(child) != 2 for child in children):
+        raise SystemExit("each child must be [qid, question]")
+    slugs = [_slugify(str(child[0]), 24) for child in children]
+    if len(set(slugs)) != len(slugs):
+        raise SystemExit("child qids collide after filesystem slug normalization")
     if not chk["can_split"]:
         raise SystemExit("cannot split (%s); make this a leaf and investigate" % ", ".join(chk["reasons"]))
     if k > chk["max_k"]:
@@ -226,7 +260,11 @@ def split_node(node: str, children: List[List[str]], actor: str = "orchestrator"
                          "unit). Propose fewer, broader children." % (k, chk["max_k"]))
     B = float(st.get("budget", 0))
     U = float(chk.get("unit", 4) or 4)
-    if weights and len(weights) == k and sum(w for w in weights if w > 0) > 0:
+    if weights is not None and len(weights) != k:
+        raise SystemExit("weights must contain exactly one value per child")
+    if weights is not None and sum(w for w in weights if w > 0) <= 0:
+        raise SystemExit("weights must include at least one positive value")
+    if weights is not None:
         floor = min(U, B / k)                          # guarantee ≥ floor each (no starvation)
         rem = max(0.0, B - floor * k)                  # remainder distributed by contestedness
         tot = sum(max(0.0, w) for w in weights)
@@ -255,6 +293,9 @@ def split_node(node: str, children: List[List[str]], actor: str = "orchestrator"
         _init_node_dir(cdir, qid, q, cb, depth, "worker", st.get("qid"))
         made.append(cdir)
     set_status(node, state="split", children=[c[0] for c in children])
+    run = _find_run(node)
+    if run and os.path.abspath(node) == os.path.abspath(os.path.join(run, "tree", "root")):
+        set_run_state(run, "investigating")
     log_decision(node, actor, "split into %d children (%s)" % (k, how),
                  "budget %.2f -> %s (conserved); depth %d" % (B, [b for b in budgets], depth))
     return made
@@ -287,11 +328,14 @@ def add_sources(node: str, records: List[Dict[str, Any]]) -> int:
     idx_path = os.path.join(run, "index", "sources.jsonl") if run else ""
     seen = set()
     if idx_path and os.path.exists(idx_path):
-        for line in open(idx_path, encoding="utf-8"):
-            try:
-                seen.add(_canon(json.loads(line).get("url", "")))
-            except ValueError:
-                pass
+        with open(idx_path, encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    row = json.loads(line)
+                    if isinstance(row, dict):
+                        seen.add(_canon(row.get("url", "")))
+                except ValueError:
+                    pass
     added = 0
     for r in records:
         _append_jsonl(os.path.join(node, "sources.jsonl"), r)
@@ -319,12 +363,16 @@ def _canon(url: str) -> str:
 def write_findings(node: str, text: str) -> None:
     with open(os.path.join(node, "findings.md"), "w", encoding="utf-8") as fh:
         fh.write(text.rstrip() + "\n")
-    set_status(node, state="investigated")
+    run = _find_run(node)
+    is_root = bool(run and os.path.abspath(node) == os.path.abspath(os.path.join(run, "tree", "root")))
+    set_status(node, state="synthesized" if is_root else "investigated")
+    if is_root:
+        set_run_state(run, "synthesized")
 
 
 def ask(child_node: str, from_node: str, question: str) -> str:
-    qid = "q%d" % (sum(1 for _ in open(os.path.join(child_node, "questions.jsonl"),
-                                       encoding="utf-8")) + 1)
+    with open(os.path.join(child_node, "questions.jsonl"), encoding="utf-8") as fh:
+        qid = "q%d" % (sum(1 for _ in fh) + 1)
     _append_jsonl(os.path.join(child_node, "questions.jsonl"),
                   {"qid": qid, "t": _now(), "from": from_node, "question": question, "answered": False})
     set_status(child_node, state="needs_answer")
@@ -338,7 +386,8 @@ def answer(node: str, qid: str, text: str) -> None:
     # mark the matching question answered
     qpath = os.path.join(node, "questions.jsonl")
     if os.path.exists(qpath):
-        rows = [json.loads(l) for l in open(qpath, encoding="utf-8") if l.strip()]
+        with open(qpath, encoding="utf-8") as fh:
+            rows = [json.loads(l) for l in fh if l.strip()]
         for row in rows:
             if row.get("qid") == qid:
                 row["answered"] = True
@@ -406,6 +455,7 @@ def main(argv=None) -> int:
     p.add_argument("--max-children", type=int, default=5); p.add_argument("--max-nodes", type=int, default=40)
     p.add_argument("--base", default="runs/aletheia-research")
     p.add_argument("--thoroughness", default="",
+                   choices=sorted(THOROUGHNESS),
                    help="quick|standard|deep|exhaustive|unlimited(default)|max (overrides budget/caps)")
     p.add_argument("--verbosity", default="user", choices=["user", "agent"],
                    help="agent = emit the FULL bundle for a calling agent; user = a multi-page summary")
@@ -478,7 +528,11 @@ def main(argv=None) -> int:
     elif args.cmd == "answer":
         answer(args.node, args.qid, args.a)
     elif args.cmd == "findings":
-        txt = open(args.file, encoding="utf-8").read() if args.file else args.text
+        if args.file:
+            with open(args.file, encoding="utf-8") as fh:
+                txt = fh.read()
+        else:
+            txt = args.text
         write_findings(args.node, txt)
     elif args.cmd == "frontier":
         for d in frontier(args.run, args.state, args.depth, args.resumable):

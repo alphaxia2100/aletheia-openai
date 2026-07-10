@@ -112,7 +112,8 @@ class TestVerify(unittest.TestCase):
         with open(cp, "w", encoding="utf-8") as fh:
             fh.write(json.dumps({"claim": claim, "url": url}) + "\n")
         surveyor.cmd_verify(_ns(run=self.run, claims=cp, out="", timeout=1))
-        return json.loads(open(os.path.join(self.run, "verify.jsonl"), encoding="utf-8").read())
+        with open(os.path.join(self.run, "verify.jsonl"), encoding="utf-8") as fh:
+            return json.load(fh)
 
     def test_relevant_never_supported(self):
         self._note("u://a", "intermittent fasting is not superior; it does not double fat loss. " * 8)

@@ -13,15 +13,24 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from typing import Dict, List
 
+HERE = os.path.dirname(os.path.realpath(__file__))
+CHANNEL_SCRIPTS = os.path.join(HERE, "..", "..", "channel-retrieval", "scripts")
+sys.path.insert(0, CHANNEL_SCRIPTS)
+import _http  # noqa: E402  (loads repo .env for configured-channel routing)
+_http.load_env()
+
 # channels with a runnable search client (keep in sync with investigate.py DISPATCH)
 AVAILABLE = {"brave", "duckduckgo", "marginalia", "openalex", "arxiv", "hackernews", "stackexchange",
-             "github", "reddit", "youtube", "europepmc", "wikipedia", "crossref", "semanticscholar",
-             "googlebooks", "gutenberg"}
-WEB = ["brave", "duckduckgo", "marginalia"]          # independent-web role (always ≥1)
+             "github", "reddit", "youtube", "x", "europepmc", "wikipedia", "openlibrary",
+             "crossref", "semanticscholar", "googlebooks", "gutenberg"}
+WEB = ["brave", "duckduckgo", "marginalia"]          # preference when Brave is configured
+# Runnable client names differ from channels.json identifiers in two cases.
+_CONFIG_NAME = {"semanticscholar": "semantic_scholar", "googlebooks": "google_books"}
 
 # Domain taxonomy: signals -> the domain-appropriate primary/community/color channels, and channels
 # to keep OUT. Only channels that exist as clients are listed. 'general' is the fallback.
@@ -30,14 +39,19 @@ DOMAINS: Dict[str, Dict[str, List[str]]] = {
         signals=["clinical", "health", "disease", "drug", "dose", "patient", "trial", "rct", "cohort",
                  "diet", "dietary", "nutrition", "fasting", "caloric", "calorie", "metabolic", "insulin",
                  "glucose", "obesity", "cancer", "cardiovascular", "cholesterol", "vaccine", "gene",
-                 "protein", "biomarker", "supplement", "cognition", "therapy", "efficacy", "medicine", "medical"],
+                 "protein", "biomarker", "supplement", "cognition", "sleep", "insomnia", "circadian",
+                 "melatonin", "therapy", "efficacy", "medicine", "medical"],
         primary=["europepmc", "openalex"], community=["reddit"], color=[],
         exclude=["arxiv", "github", "stackexchange", "gutenberg"]),
     "cs_software": dict(
-        signals=["code", "coding", "api", "programming", "library", "framework", "python", "javascript",
+        signals=["code", "coding", "api", "programming", "software library", "package", "dependency",
+                 "framework", "python", "javascript",
                  "typescript", "rust", "golang", "compiler", "algorithm", "software", "docker", "kubernetes",
                  "database", "sql", "backend", "frontend", "devops", "sdk", "cli", "server", "latency",
-                 "machine learning", "deep learning", "neural", "transformer", "llm", "model", "embedding", "agent"],
+                 "machine learning", "deep learning", "neural", "transformer", "llm", "model", "embedding", "agent",
+                 "security", "cybersecurity", "authentication", "passkey", "passkeys", "password", "passwords",
+                 "webauthn", "fido", "fido2", "totp", "phishing", "credential", "credentials", "encryption",
+                 "cryptography", "account takeover"],
         primary=["arxiv", "semanticscholar", "openalex"], community=["stackexchange", "github", "hackernews"],
         color=[], exclude=["europepmc", "googlebooks", "gutenberg"]),
     "science_physical": dict(
@@ -48,13 +62,14 @@ DOMAINS: Dict[str, Dict[str, List[str]]] = {
     "humanities_history": dict(
         signals=["history", "historical", "philosophy", "philosoph", "literature", "literary", "ancient",
                  "medieval", "century", "empire", "revolution", "war", "religion", "religious", "art",
-                 "culture", "rhetoric", "classic", "poetry", "novel", "dynasty", "renaissance"],
-        primary=["wikipedia", "googlebooks", "openalex"], community=["reddit"], color=[],
+                 "culture", "rhetoric", "classic", "poetry", "novel", "dynasty", "renaissance", "carnegie",
+                 "public library", "public libraries", "archive", "archives", "museum"],
+        primary=["wikipedia", "openlibrary", "googlebooks", "openalex"], community=["reddit"], color=[],
         exclude=["arxiv", "github", "stackexchange", "europepmc"]),
     "products_consumer": dict(
         signals=["best", "buy", "buying", "review", "camera", "laptop", "phone", "headphone", "monitor",
                  "keyboard", "recommend", "worth it", "budget", "cheap", "price", " vs ", "versus", "gear",
-                 "which", "beginner", "gaming", "car", "mattress", "brand", "durable", "reliable"],
+                 "beginner", "gaming", "car", "mattress", "brand", "durable", "reliable"],
         primary=[], community=["reddit", "hackernews"], color=["youtube"],
         exclude=["arxiv", "openalex", "europepmc", "github", "gutenberg", "crossref", "semanticscholar"]),
     "finance_business": dict(
@@ -69,13 +84,15 @@ DOMAINS: Dict[str, Dict[str, List[str]]] = {
         exclude=["arxiv", "github", "europepmc", "gutenberg"]),  # CourtListener client: see channel-proposals
     "policy_econ": dict(
         signals=["policy", "economic", "economy", "gdp", "inflation", "unemployment", "regulation", "tax",
-                 "labor", "welfare", "subsidy", "trade", "productivity", "carbon", "emissions", "governance"],
+                 "labor", "welfare", "subsidy", "trade", "productivity", "carbon", "emissions", "governance",
+                 "city", "cities", "urban", "housing", "zoning", "parking", "transit", "land use",
+                 "social mobility", "energy", "electricity", "heat pump", "heat pumps"],
         primary=["openalex", "crossref"], community=["reddit", "hackernews"], color=[],
         exclude=["github", "gutenberg", "europepmc"]),
     "current_events": dict(
         signals=["latest", "2026", "2025", "news", "trend", "who is", "launch", "released", "announced",
                  "recent", "today", "ceo", "layoff", "controversy", "just released", "roadmap"],
-        primary=[], community=["reddit", "hackernews"], color=["youtube"],
+        primary=[], community=["reddit", "hackernews"], color=["x", "youtube"],
         exclude=["arxiv", "europepmc", "gutenberg", "googlebooks"]),
     "general": dict(signals=[], primary=["openalex", "wikipedia"], community=["reddit"], color=[], exclude=[]),
 }
@@ -112,15 +129,41 @@ def classify(topic: str, framing: str = "") -> str:
     return _domains_for((topic + " " + framing).lower())[0]
 
 
+def _enabled_commands() -> set:
+    """Return runnable client names enabled in channels.json.
+
+    `enabled_only` existed before 0.4.2 but was never applied, so the router silently selected
+    hidden channels (notably anonymous-pool Semantic Scholar) that doctor had not health-checked.
+    Keep config-name/client-name translation in one place so `channels.py enable semantic_scholar`
+    makes the `semanticscholar.py` client routable.
+    """
+    path = os.path.join(HERE, "..", "..", "channel-retrieval", "channels.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            enabled = set(json.load(fh).get("enabled", []))
+    except (OSError, ValueError):
+        return set()                 # fail closed: explicit --channels remains available to workers
+    return {cmd for cmd in AVAILABLE if _CONFIG_NAME.get(cmd, cmd) in enabled}
+
+
+def _live_web(allowed: set) -> List[str]:
+    """Use keyless web fallbacks automatically when Brave is not configured."""
+    preferred = WEB if os.environ.get("BRAVE_API_KEY") else ["duckduckgo", "marginalia", "brave"]
+    return [channel for channel in preferred
+            if channel in allowed and (channel != "brave" or os.environ.get("BRAVE_API_KEY"))]
+
+
 def route(topic: str, framing: str = "", category: str = "", enabled_only: bool = True,
           max_channels: int = 6) -> dict:
     text = (topic + " " + framing).lower()
     doms = [category] if category in DOMAINS else _domains_for(text)
     exclude = set().union(*[set(DOMAINS[d]["exclude"]) for d in doms])
+    allowed = _enabled_commands() if enabled_only else set(AVAILABLE)
 
-    picks: List[str] = ["brave"]                                    # web role (always)
-    if max_channels >= 5:
-        picks.append("duckduckgo")                                 # a 2nd independent web index for breadth
+    live_web = _live_web(allowed)
+    picks: List[str] = live_web[:1]                                 # web role (when enabled)
+    if max_channels >= 5 and len(live_web) > 1:
+        picks.append(live_web[1])                                   # second independent web index
     for d in doms:                                                  # domain primary + community + color
         picks += DOMAINS[d]["primary"] + DOMAINS[d]["community"] + DOMAINS[d]["color"]
     if any(b in text for b in _COMMUNITY_FRAMING) and "reddit" not in picks:
@@ -128,20 +171,27 @@ def route(topic: str, framing: str = "", category: str = "", enabled_only: bool 
 
     seen, channels = set(), []
     for c in picks:
-        if c in AVAILABLE and c not in seen:
+        if c in allowed and c not in seen and c not in exclude:
             seen.add(c); channels.append(c)
-    # role guarantees (in case a domain left one empty)
-    if not any(c in WEB for c in channels):
-        channels.insert(0, "brave")
-    if not any(c in ("reddit", "hackernews", "stackexchange") for c in channels):
-        channels.append("reddit")
+    # Role guarantees use ENABLED same-role fallbacks only; never resurrect a hidden channel.
+    if not any(c in WEB for c in channels) and live_web:
+        channels.insert(0, live_web[0])
+    community = [c for c in ("reddit", "hackernews", "stackexchange")
+                 if c in allowed and c not in exclude]
+    if not any(c in community for c in channels) and community:
+        channels.append(community[0])
+    primary = [c for c in ("openalex", "europepmc", "arxiv", "semanticscholar", "crossref",
+                            "wikipedia", "openlibrary", "googlebooks") if c in allowed and c not in exclude]
     if doms[0] not in ("products_consumer", "current_events") and \
-       not any(c in ("openalex", "europepmc", "arxiv", "semanticscholar", "crossref", "wikipedia", "googlebooks") for c in channels):
-        channels.append("openalex")
+       not any(c in ("openalex", "europepmc", "arxiv", "semanticscholar", "crossref", "wikipedia",
+                     "openlibrary", "googlebooks") for c in channels):
+        if primary:
+            channels.append(primary[0])
     channels = channels[:max_channels]
     excluded = sorted(c for c in AVAILABLE if c in exclude and c not in channels)
+    disabled = sorted(c for c in AVAILABLE if c not in allowed)
     return {"topic": topic, "framing": framing, "domains": doms, "category": doms[0],
-            "channels": channels, "excluded": excluded}
+            "channels": channels, "excluded": excluded, "disabled": disabled}
 
 
 def main(argv=None) -> int:

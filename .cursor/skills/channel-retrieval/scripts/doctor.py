@@ -19,38 +19,16 @@ import subprocess
 import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 UA = "aletheia-doctor/0.1"
 
 
 def load_env() -> None:
-    """Populate os.environ from the nearest .env (walking up), without overriding real env."""
-    d = os.path.dirname(os.path.realpath(__file__))
-    for _ in range(8):
-        p = os.path.join(d, ".env")
-        if os.path.isfile(p):
-            try:
-                with open(p, "r", encoding="utf-8") as fh:
-                    for line in fh:
-                        line = line.strip()
-                        if not line or line.startswith("#") or "=" not in line:
-                            continue
-                        k, _, v = line.partition("=")
-                        k = k.strip()
-                        cut = v.find(" #")
-                        if cut != -1:
-                            v = v[:cut]
-                        v = v.strip().strip('"').strip("'")
-                        if k and v and k not in os.environ:
-                            os.environ[k] = v
-            except OSError:
-                pass
-            return
-        parent = os.path.dirname(d)
-        if parent == d:
-            break
-        d = parent
+    """Use the shared loader, including copy-install root pointers."""
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import _http
+    _http.load_env()
 
 
 def live(url: str, timeout: float, headers: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
@@ -59,8 +37,9 @@ def live(url: str, timeout: float, headers: Optional[Dict[str, str]] = None) -> 
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return (resp.status < 400, "HTTP %s" % resp.status)
     except urllib.error.HTTPError as e:
-        # a 4xx still means the endpoint is up (auth/quota, not down)
-        return (e.code < 500, "HTTP %s" % e.code)
+        # Reachable is not the same as usable. Authentication/quota failures must not false-green a
+        # configured channel; individual probes can downgrade known transient 429s to `warn`.
+        return (False, "HTTP %s" % e.code)
     except Exception as e:  # noqa: BLE001
         return (False, type(e).__name__)
 
@@ -91,6 +70,8 @@ def p_openalex(t: float) -> Tuple[str, ...]:
         return ("openalex", "openalex", "ok", "openalex", note)
     if ok:
         return ("openalex", "openalex", "warn", "openalex", "up but add OPENALEX_API_KEY (2026 free key; low quota without)")
+    if key("OPENALEX_API_KEY"):
+        return ("openalex", "openalex", "warn", "-", "configured key rejected/unusable: " + note)
     return ("openalex", "openalex", "down", "-", note)
 
 
@@ -295,12 +276,9 @@ def main() -> int:
     print("\n%d/%d %s channels live." % (live_ok, len(rows), scope))
     if hidden:
         print("%d channels hidden (disabled). Run with --all to see them, or `channels.py enable <name>`." % hidden)
-    # Honest caveat: these probes are SEQUENTIAL single requests. They confirm a channel is REACHABLE,
-    # not that it survives concurrent fan-out — deep/exhaustive spawn many workers that hit arXiv /
-    # OpenAlex / Semantic Scholar in parallel and may still 429 (the keyless pools rate-limit under
-    # load). 'ok' = reachable now; watch each run's per-channel `error`/`relaxed_to` for live degradation.
-    print("\nNote: sequential single-request probes — 'ok' means REACHABLE, not concurrency-proof. "
-          "Under parallel fan-out (deep/exhaustive) the keyless academic pools (arXiv/OpenAlex/"
+    # One functional request per channel runs concurrently, but this is not a same-backend load test.
+    print("\nNote: one functional request per channel — 'ok' means usable now, not load-proof. "
+          "Under repeated parallel fan-out (deep/exhaustive) the keyless academic pools (arXiv/OpenAlex/"
           "Semantic Scholar) may still rate-limit; check per-channel errors in the run's evidence.md.")
     return 0
 

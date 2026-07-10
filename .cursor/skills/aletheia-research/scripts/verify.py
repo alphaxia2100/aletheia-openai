@@ -66,11 +66,20 @@ def _stems(text: str) -> set:
 
 def _note_path(url: str, node: Optional[str], reads_dir: Optional[str]) -> Optional[str]:
     h = hashlib.sha1(url.encode()).hexdigest()[:10]
-    for base in (os.path.join(node, "notes") if node else None, reads_dir):
-        if base:
-            p = os.path.join(base, h + ".md")
-            if os.path.exists(p):
-                return p
+    filename = h + ".md"
+    bases = [node, reads_dir]
+    for base in bases:
+        if not base:
+            continue
+        direct = os.path.join(base, "notes", filename) if base == node else os.path.join(base, filename)
+        if os.path.exists(direct):
+            return direct
+        # The documented verify command points at the tree root while reads live under leaf
+        # nodes. Search the subtree before doing a fragile/redundant live refetch.
+        if os.path.isdir(base):
+            for directory, _subdirs, files in os.walk(base):
+                if filename in files:
+                    return os.path.join(directory, filename)
     return None
 
 
@@ -78,7 +87,8 @@ def _source_text(url: str, node, reads_dir, timeout: float) -> str:
     p = _note_path(url, node, reads_dir)
     if p:
         try:
-            return open(p, encoding="utf-8").read()
+            with open(p, encoding="utf-8") as fh:
+                return fh.read()
         except OSError:
             pass
     try:  # fall back to a live read
@@ -157,7 +167,8 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default="")
     ap.add_argument("--timeout", type=float, default=30.0)
     args = ap.parse_args(argv)
-    claims = [json.loads(l) for l in open(args.claims, encoding="utf-8") if l.strip()]
+    with open(args.claims, encoding="utf-8") as fh:
+        claims = [json.loads(l) for l in fh if l.strip()]
     summary = run(claims, args.node or None, args.reads_dir or None, args.timeout)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:

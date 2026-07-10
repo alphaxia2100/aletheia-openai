@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+import urllib.error
 from typing import Any, Dict, List
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -20,10 +21,21 @@ def search(query: str, limit: int, timeout: float) -> List[Dict[str, Any]]:
     if not key:
         sys.stderr.write("BRAVE_API_KEY not set (add to .env). Falling back: use marginalia.py / web_ddg.py.\n")
         return []
-    url = ("https://api.search.brave.com/res/v1/web/search?q=%s&count=%d"
-           % (_http.quote(query), min(limit, 20)))
-    data = _http.get_json(url, timeout, headers={
-        "X-Subscription-Token": key, "Accept": "application/json"})
+    def fetch(q: str):
+        url = ("https://api.search.brave.com/res/v1/web/search?q=%s&count=%d"
+               % (_http.quote(q), min(limit, 20)))
+        return url, _http.get_json(url, timeout, headers={
+            "X-Subscription-Token": key, "Accept": "application/json"})
+
+    try:
+        url, data = fetch(query)
+    except urllib.error.HTTPError as exc:
+        # Brave rejects some long/compound queries with 422. Retry once with the same salience-aware
+        # compaction used by the other keyword APIs instead of silently losing the web channel.
+        compact = _http.keywordize(query, 12)
+        if exc.code != 422 or compact == query:
+            raise
+        url, data = fetch(compact)
     out: List[Dict[str, Any]] = []
     for r in ((data.get("web") or {}).get("results") or []):
         out.append(_http.rec(

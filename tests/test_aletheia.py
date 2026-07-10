@@ -6,12 +6,16 @@ Run: python3 -m unittest discover -s tests   (or: python3 tests/test_aletheia.py
 These lock in the fixes for the independence-math bugs found in review — the
 differentiator must never silently return wrong numbers again.
 """
+import hashlib
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.error
+import urllib.parse
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
@@ -24,6 +28,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts", "eval"))
 import provenance_graph as pg  # noqa: E402
 import judge_score as js  # noqa: E402  (eval measurement core: win-rate + judge-trust gate)
 import _http  # noqa: E402  (shared channel helpers: keywordize)
+import doctor  # noqa: E402  (channel health gate)
 import dedupe  # noqa: E402
 import rubric  # noqa: E402
 import verify  # noqa: E402  (deep-aletheia citation gate)
@@ -36,6 +41,16 @@ import router  # noqa: E402  (deep-aletheia channel router)
 
 def audit_one(sources, support):
     return pg.audit(sources, [{"id": "c", "text": "t", "support": support}])["claims"][0]
+
+
+def read_json(path):
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def read_text(path):
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
 
 
 class TestIndependence(unittest.TestCase):
@@ -104,6 +119,24 @@ class TestIndependence(unittest.TestCase):
                  "authors": [{"name": "Alpha"}]},
                 {"id": "b", "url": "https://news.example/x", "arxiv_id": "arXiv:2101.00001", "title": "Same Paper",
                  "snippet": body, "authors": [{"name": "Beta"}]}]
+        self.assertEqual(audit_one(srcs, ["a", "b"])["independent_sources"], 1)
+
+    def test_matching_arxiv_id_merges_without_shared_text(self):
+        # 0.4.2 claim scoring may see abs/html/pdf variants with no common snippet. A matching strong
+        # identifier is sufficient identity evidence and must not depend on near-duplicate text.
+        srcs = [
+            {"id": "a", "url": "https://arxiv.org/abs/2503.13657", "title": ""},
+            {"id": "b", "url": "https://arxiv.org/html/2503.13657v2", "title": ""},
+        ]
+        self.assertEqual(audit_one(srcs, ["a", "b"])["independent_sources"], 1)
+
+    def test_publisher_doi_url_variants_merge_without_metadata(self):
+        # 0.4.2 Codex forward test: publisher adapters omitted the doi field, but /doi/abs and
+        # /doi/full still name the same work and must not inflate claim independence.
+        srcs = [
+            {"id": "a", "url": "https://www.tandfonline.com/doi/abs/10.1080/15368378.2024.2327432"},
+            {"id": "b", "url": "https://www.tandfonline.com/doi/full/10.1080/15368378.2024.2327432"},
+        ]
         self.assertEqual(audit_one(srcs, ["a", "b"])["independent_sources"], 1)
 
     def test_b3_authorless_distinct_pages_stay_distinct(self):
@@ -178,6 +211,32 @@ class TestDedupe(unittest.TestCase):
         a = dedupe.voice_key({"doi": "10.1/a", "url": "https://p.org/1"})
         b = dedupe.voice_key({"doi": "10.1/b", "url": "https://p.org/2"})
         self.assertNotEqual(a, b)
+
+    def test_extracts_doi_from_publisher_paths(self):
+        self.assertEqual(
+            dedupe.doi_from_record({
+                "url": "https://www.tandfonline.com/doi/abs/10.1080/15368378.2024.2327432"}),
+            "10.1080/15368378.2024.2327432")
+        self.assertEqual(
+            dedupe.doi_from_record({
+                "url": "https://www.frontiersin.org/articles/10.3389/fneur.2025.1699303/full"}),
+            "10.3389/fneur.2025.1699303")
+
+
+class TestDoctor(unittest.TestCase):
+    def test_http_auth_error_is_not_healthy(self):
+        err = urllib.error.HTTPError("https://example.test", 401, "Unauthorized", {}, None)
+        with mock.patch.object(doctor.urllib.request, "urlopen", side_effect=err):
+            ok, note = doctor.live("https://example.test", 1)
+        self.assertFalse(ok)
+        self.assertEqual(note, "HTTP 401")
+
+    def test_invalid_brave_key_is_warn_not_false_green(self):
+        with mock.patch.dict(os.environ, {"BRAVE_API_KEY": "invalid"}), \
+                mock.patch.object(doctor, "live", return_value=(False, "HTTP 401")):
+            row = doctor.p_brave(1)
+        self.assertEqual(row[2], "warn")
+        self.assertIn("HTTP 401", row[4])
 
 
 class TestRubric(unittest.TestCase):
@@ -309,6 +368,13 @@ class TestScoreRunVerdicts(unittest.TestCase):
         self.assertFalse(s["citation_complete"])                   # so the pass is not complete
         self.assertIsNone(s["citation_accuracy"])
 
+    def test_broken_link_blocks_completion(self):
+        run = self._run_with_verify(["supported", "broken"])
+        s = score_run.score(run)
+        self.assertFalse(s["citation_complete"])
+        self.assertEqual(s["citation_coverage"], 0.5)
+        self.assertIsNone(s["citation_accuracy"])
+
 
 class TestInvestigateRounds(unittest.TestCase):
     """v0.2 depth: investigate is ONE round that ACCUMULATES across calls (rounds counter, n_read),
@@ -341,7 +407,10 @@ class TestInvestigateRounds(unittest.TestCase):
 
     def _node_sources(self):
         p = os.path.join(self.node, "sources.jsonl")
-        return [l for l in open(p, encoding="utf-8") if l.strip()] if os.path.exists(p) else []
+        if not os.path.exists(p):
+            return []
+        with open(p, encoding="utf-8") as fh:
+            return [l for l in fh if l.strip()]
 
     def test_rounds_accumulate_and_no_source_duplication(self):
         investigate.investigate(self.node, channels=["stub"], reads=2)          # round 1: read A,B
@@ -350,7 +419,7 @@ class TestInvestigateRounds(unittest.TestCase):
         self.assertEqual(st["rounds"], 2)                       # accumulated, not overwritten
         self.assertEqual(st["n_read"], 3)                      # A,B (r1) + C (r2); B not re-read
         self.assertEqual(len(self._node_sources()), 3)         # A,B,C — B deduped, not duplicated
-        ev = open(os.path.join(self.node, "evidence.md"), encoding="utf-8").read()
+        ev = read_text(os.path.join(self.node, "evidence.md"))
         self.assertIn("## Round 1", ev)
         self.assertIn("## Round 2", ev)                        # evidence appended, not clobbered
 
@@ -413,15 +482,66 @@ class TestRouterScoping(unittest.TestCase):
         out = subprocess.check_output([sys.executable, r, q, "--json", "--max", "6"], text=True)
         return json.loads(out)
 
+    def _route_env(self, q, **updates):
+        r = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "router.py")
+        env = dict(os.environ, **updates)
+        out = subprocess.check_output([sys.executable, r, q, "--json", "--max", "6"],
+                                      text=True, env=env)
+        return json.loads(out)
+
     def test_biomed_routes_to_europepmc_not_arxiv(self):
         c = self._route("does intermittent fasting improve metabolic health and cognition")["channels"]
         self.assertIn("europepmc", c)
         self.assertNotIn("arxiv", c)          # arXiv has ~no clinical content
 
+    def test_sleep_outcomes_route_to_biomed(self):
+        c = self._route("do blue-light filters on smartphones improve sleep outcomes")["channels"]
+        self.assertIn("europepmc", c)
+        self.assertNotIn("arxiv", c)
+
     def test_cs_routes_to_arxiv_not_europepmc(self):
         c = self._route("how do transformer attention mechanisms scale in large language models")["channels"]
         self.assertIn("arxiv", c)
         self.assertNotIn("europepmc", c)
+
+    def test_security_authentication_routes_to_technical_sources(self):
+        r = self._route("do FIDO2 passkeys resist account takeover better than passwords and TOTP")
+        self.assertEqual(r["category"], "cs_software")
+        self.assertTrue({"github", "stackexchange", "arxiv"} & set(r["channels"]))
+
+    def test_public_library_is_humanities_not_software(self):
+        r = self._route("did Carnegie public libraries improve social mobility historically")
+        self.assertEqual(r["category"], "humanities_history")
+        self.assertIn("wikipedia", r["channels"])
+        self.assertIn("openlibrary", r["channels"])
+        self.assertNotIn("github", r["channels"])
+
+    def test_urban_policy_is_not_general(self):
+        r = self._route("should cities abolish minimum parking requirements through zoning reform")
+        self.assertEqual(r["category"], "policy_econ")
+
+    def test_enabled_core_reset_preserves_no_key_routes(self):
+        cfg = read_json(os.path.join(ROOT, ".cursor", "skills", "channel-retrieval", "channels.json"))
+        self.assertEqual(set(cfg["core_default"]), set(cfg["enabled"]))
+        self.assertIn("wikipedia", cfg["enabled"])
+        self.assertIn("openlibrary", cfg["enabled"])
+
+    def test_missing_brave_key_uses_two_working_web_fallbacks(self):
+        channels = self._route_env("what is consilience", BRAVE_API_KEY="")["channels"]
+        self.assertNotIn("brave", channels)
+        self.assertIn("duckduckgo", channels)
+        self.assertIn("marginalia", channels)
+
+    def test_current_events_can_route_color_channels(self):
+        channels = self._route("latest news trends announced today in 2026")["channels"]
+        self.assertIn("x", channels)
+        self.assertIn("youtube", channels)
+
+    def test_disabled_channels_are_not_routed(self):
+        # 0.4.2 dogfood: Semantic Scholar is hidden/disabled in channels.json, so enabled_only=True
+        # must not route to it (the old parameter was accepted but ignored, causing a 43s 429 stall).
+        c = self._route("how do multi-agent LLM research systems coordinate")["channels"]
+        self.assertNotIn("semanticscholar", c)
 
     def test_products_excludes_academic(self):
         c = self._route("best budget mirrorless camera for a beginner 2026")["channels"]
@@ -450,7 +570,7 @@ class TestRouterScoping(unittest.TestCase):
 
 
 class TestAletheia03Thoroughness(unittest.TestCase):
-    """aletheia 0.3's thoroughness dial sets the tree budget/caps and tags version 0.3.0.
+    """Aletheia's thoroughness dial sets the tree budget/caps and records the current version.
     Run via subprocess to avoid a module-name clash with the frozen deep-aletheia `treestate`."""
 
     T = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "treestate.py")
@@ -459,12 +579,12 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         run = subprocess.check_output(
             [sys.executable, self.T, "init", "test topic", "--thoroughness", tier, "--base", base],
             text=True).strip()
-        return json.load(open(os.path.join(run, "run.json"), encoding="utf-8"))
+        return read_json(os.path.join(run, "run.json"))
 
     def test_tiers_scale_and_version(self):
         base = tempfile.mkdtemp()
         q, dp = self._init("quick", base), self._init("deep", base)
-        self.assertEqual(q["version"], "aletheia-research 0.4.1")
+        self.assertEqual(q["version"], "aletheia-research 0.4.3")
         self.assertEqual(q["thoroughness"], "quick")
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
@@ -474,18 +594,34 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         run = subprocess.check_output(
             [sys.executable, self.T, "init", "test topic", "--base", tempfile.mkdtemp()],
             text=True).strip()
-        c = json.load(open(os.path.join(run, "run.json"), encoding="utf-8"))
+        c = read_json(os.path.join(run, "run.json"))
         self.assertEqual(c["thoroughness"], "unlimited")
         self.assertGreaterEqual(c["budget"], 1_000_000)
         self.assertGreaterEqual(c["max_depth"], 99)
         self.assertEqual(c["verbosity"], "user")              # default audience
+
+    def test_same_topic_initializations_never_share_a_run_directory(self):
+        base = tempfile.mkdtemp()
+        first = subprocess.check_output(
+            [sys.executable, self.T, "init", "same topic", "--slug", "same", "--base", base],
+            text=True).strip()
+        second = subprocess.check_output(
+            [sys.executable, self.T, "init", "same topic", "--slug", "same", "--base", base],
+            text=True).strip()
+        self.assertNotEqual(first, second)
+
+    def test_invalid_thoroughness_fails_instead_of_running_unlimited(self):
+        proc = subprocess.run(
+            [sys.executable, self.T, "init", "topic", "--thoroughness", "quik",
+             "--base", tempfile.mkdtemp()], capture_output=True, text=True)
+        self.assertNotEqual(proc.returncode, 0)
 
     def test_explicit_budget_stays_custom(self):
         # an explicit --budget is a bounded CUSTOM run, NOT overridden by the unlimited default
         run = subprocess.check_output(
             [sys.executable, self.T, "init", "t", "--budget", "32", "--base", tempfile.mkdtemp()],
             text=True).strip()
-        c = json.load(open(os.path.join(run, "run.json"), encoding="utf-8"))
+        c = read_json(os.path.join(run, "run.json"))
         self.assertEqual(c["thoroughness"], "custom")
         self.assertEqual(c["budget"], 32.0)
 
@@ -494,7 +630,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         run = subprocess.check_output(
             [sys.executable, self.T, "init", "bundle topic", "--verbosity", "agent", "--base", base],
             text=True).strip()
-        self.assertEqual(json.load(open(os.path.join(run, "run.json")))["verbosity"], "agent")
+        self.assertEqual(read_json(os.path.join(run, "run.json"))["verbosity"], "agent")
         subprocess.check_call([sys.executable, self.T, "findings", "--node",
                                os.path.join(run, "tree", "root"), "--text",
                                "UNIQUE_FINDING_MARKER with a [primary](https://x)"], stdout=subprocess.DEVNULL)
@@ -502,6 +638,18 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         out = subprocess.check_output([sys.executable, rep, "bundle", "--run", run], text=True)
         self.assertIn("FULL BUNDLE", out)
         self.assertIn("UNIQUE_FINDING_MARKER", out)           # the actual file content is included verbatim
+
+    def test_bundle_can_write_an_artifact(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "bundle output topic", "--verbosity", "agent", "--base", base],
+            text=True).strip()
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        output = os.path.join(run, "bundle.md")
+        printed = subprocess.check_output(
+            [sys.executable, rep, "bundle", "--run", run, "--output", output], text=True).strip()
+        self.assertEqual(printed, os.path.abspath(output))
+        self.assertIn("bundle output topic", read_text(output))
 
     def test_report_score_ships_with_skill(self):
         # 0.4.1 parity: the headline scorer is INSIDE the skill (report.py score) — no repo/eval dep.
@@ -519,6 +667,103 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         self.assertFalse(s["citation_complete"])                     # 1 claim still awaiting
         self.assertIsNone(s["citation_accuracy"])
 
+    def test_report_score_can_persist_machine_readable_artifact(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "persistent score", "--base", base], text=True).strip()
+        with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"claim": "c", "url": "https://x", "verdict": "supported"}) + "\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        output = os.path.join(run, "score.json")
+        stdout_score = json.loads(subprocess.check_output(
+            [sys.executable, rep, "score", "--run", run, "--output", output], text=True))
+        self.assertEqual(read_json(output), stdout_score)
+        self.assertTrue(stdout_score["citation_complete"])
+
+    def test_broken_citation_blocks_completion(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "broken citation", "--base", base], text=True).strip()
+        with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"claim": "good", "url": "https://good", "verdict": "supported"}) + "\n")
+            fh.write(json.dumps({"claim": "bad", "url": "https://dead", "verdict": "broken"}) + "\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        s = json.loads(subprocess.check_output([sys.executable, rep, "score", "--run", run], text=True))
+        self.assertFalse(s["citation_complete"])
+        self.assertLess(s["citation_coverage"], 1.0)
+        self.assertIsNone(s["citation_accuracy"])
+
+    def test_report_scores_independence_over_cited_claim_sources(self):
+        # 0.4.2 dogfood: retrieved-hit independence (including unread/off-topic records) was reported
+        # as if it were claim support. The headline must instead cluster the finally cited sources.
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "claim independence", "--base", base], text=True).strip()
+        idx = os.path.join(run, "index", "sources.jsonl")
+        same_title = "Single Agent Systems Outperform Multi Agent Systems Under Equal Token Budgets"
+        rows = [
+            {"url": "https://arxiv.org/abs/2604.02460", "title": same_title,
+             "index_of_origin": "arxiv"},
+            {"url": "https://researchgate.net/publication/403529711", "title": "(PDF) " + same_title,
+             "index_of_origin": "brave"},
+            {"url": "https://arxiv.org/abs/2503.13657", "title": "Why Do Multi-Agent LLM Systems Fail?",
+             "index_of_origin": "arxiv"},
+            {"url": "https://irrelevant.example/hit", "title": "Unread search hit",
+             "index_of_origin": "brave"},
+        ]
+        with open(idx, "w", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write(json.dumps(row) + "\n")
+        with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
+            for url in (rows[0]["url"], rows[1]["url"], rows[2]["url"]):
+                fh.write(json.dumps({"claim": "c", "url": url, "verdict": "supported"}) + "\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        s = json.loads(subprocess.check_output([sys.executable, rep, "score", "--run", run], text=True))
+        self.assertEqual(s["retrieved_sources"], 4)
+        self.assertEqual(s["claim_sources"], 3)
+        self.assertEqual(s["independent_origins"], 2)       # arXiv + ResearchGate are one work
+        self.assertEqual(s["origin_echo_ratio"], round(1 / 3, 3))
+
+    def test_report_deduplicates_cited_publisher_url_variants(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "publisher variants", "--base", base], text=True).strip()
+        urls = [
+            "https://www.tandfonline.com/doi/abs/10.1080/15368378.2024.2327432",
+            "https://www.tandfonline.com/doi/full/10.1080/15368378.2024.2327432",
+        ]
+        with open(os.path.join(run, "index", "sources.jsonl"), "w", encoding="utf-8") as fh:
+            for url in urls:
+                fh.write(json.dumps({"url": url, "title": "Same paper"}) + "\n")
+        with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
+            for url in urls:
+                fh.write(json.dumps({"claim": "c", "url": url, "verdict": "supported"}) + "\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        s = json.loads(subprocess.check_output([sys.executable, rep, "score", "--run", run], text=True))
+        self.assertEqual(s["claim_sources"], 1)
+        self.assertEqual(s["independent_origins"], 1)
+
+    def test_agent_bundle_includes_nested_reads_and_verification(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "complete bundle", "--base", base], text=True).strip()
+        notes = os.path.join(run, "tree", "root", "notes", "full")
+        os.makedirs(notes)
+        with open(os.path.join(notes, "primary.md"), "w", encoding="utf-8") as fh:
+            fh.write("NESTED_PRIMARY_MARKER")
+        with open(os.path.join(run, "claims.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write('{"claim":"CLAIM_MARKER","url":"https://example"}\n')
+        with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write('{"claim":"CLAIM_MARKER","url":"https://example","verdict":"supported"}\n')
+        with open(os.path.join(run, "score.json"), "w", encoding="utf-8") as fh:
+            fh.write('{"citation_complete":true,"score_marker":"SCORE_MARKER"}\n')
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        out = subprocess.check_output([sys.executable, rep, "bundle", "--run", run, "--reads"], text=True)
+        self.assertIn("NESTED_PRIMARY_MARKER", out)
+        self.assertIn("CLAIM_MARKER", out)
+        self.assertIn('"verdict":"supported"', out)
+        self.assertIn("SCORE_MARKER", out)
+
     def test_report_write_brief_emits_deliverable(self):
         base = tempfile.mkdtemp()
         run = subprocess.check_output(
@@ -526,7 +771,29 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
         subprocess.check_call([sys.executable, rep, "write-brief", "--run", run, "--text",
                                "# Brief\nMULTIPAGE_MARKER"], stdout=subprocess.DEVNULL)
-        self.assertIn("MULTIPAGE_MARKER", open(os.path.join(run, "brief.md")).read())
+        self.assertIn("MULTIPAGE_MARKER", read_text(os.path.join(run, "brief.md")))
+
+    def test_run_lifecycle_reaches_complete(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "lifecycle topic", "--budget", "8", "--base", base],
+            text=True).strip()
+        root = os.path.join(run, "tree", "root")
+        subprocess.check_call([sys.executable, self.T, "split", "--node", root, "--children",
+                               json.dumps([["a", "qa"], ["b", "qb"]])], stdout=subprocess.DEVNULL)
+        with open(os.path.join(run, "run.json"), encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["state"], "investigating")
+        subprocess.check_call([sys.executable, self.T, "findings", "--node", root,
+                               "--text", "root synthesis " * 20], stdout=subprocess.DEVNULL)
+        with open(os.path.join(run, "run.json"), encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["state"], "synthesized")
+        with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"claim": "c", "url": "https://x", "verdict": "supported"}) + "\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        subprocess.check_call([sys.executable, rep, "write-brief", "--run", run,
+                               "--text", "# Complete"], stdout=subprocess.DEVNULL)
+        with open(os.path.join(run, "run.json"), encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["state"], "complete")
 
     def test_bundle_survives_corrupt_artifacts(self):
         # review hardening: a non-UTF-8 byte or a non-dict sources line must NOT abort the whole
@@ -575,7 +842,7 @@ class TestAletheiaResearch031(unittest.TestCase):
             [sys.executable, t, "split", "--node", root, "--children",
              json.dumps([["a", "qa"], ["b", "qb"], ["c", "qc"]]), "--weights", "[3,1,2]"],
             text=True).split()
-        b = [json.load(open(os.path.join(d, "status.json")))["budget"] for d in dirs]
+        b = [read_json(os.path.join(d, "status.json"))["budget"] for d in dirs]
         self.assertAlmostEqual(sum(b), 32, places=2)      # budget conserved across the split
         self.assertTrue(all(x >= 4 - 1e-9 for x in b))    # every child floored at the scrutiny unit
         self.assertGreater(b[0], b[2])                    # weight 3 > weight 2 ...
@@ -588,7 +855,7 @@ class TestAletheiaResearch031(unittest.TestCase):
         dirs = subprocess.check_output(
             [sys.executable, t, "split", "--node", root, "--children",
              json.dumps([["a", "qa"], ["b", "qb"], ["c", "qc"]])], text=True).split()
-        b = [json.load(open(os.path.join(d, "status.json")))["budget"] for d in dirs]
+        b = [read_json(os.path.join(d, "status.json"))["budget"] for d in dirs]
         self.assertEqual(b, [4.0, 4.0, 4.0])              # no weights -> uniform (backward compatible)
 
     def test_resumable_frontier_repicks_crashed_active_node(self):
@@ -626,6 +893,28 @@ class TestAletheiaResearch031(unittest.TestCase):
                  "authors": [{"name": "Team %d" % i}], "primary": True} for i in range(6)]
         self.assertEqual(syn.independence(prim)["independent_origins"], 6)
 
+    def test_synthesis_skips_corrupt_jsonl_records(self):
+        syn = self._load("ar_synthesize_corrupt_compat", "synthesize.py")
+        node = tempfile.mkdtemp()
+        os.makedirs(os.path.join(node, "children"))
+        with open(os.path.join(node, "status.json"), "w", encoding="utf-8") as fh:
+            json.dump({"qid": "root", "question": "q"}, fh)
+        with open(os.path.join(node, "sources.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write("not-json\n")
+            fh.write(json.dumps({"url": "https://valid.example", "_read_ok": True}) + "\n")
+        ind = syn.synthesis_input(node)["independence"]
+        self.assertEqual(ind["n"], 1)
+        self.assertEqual(ind["retrieved_n"], 1)
+
+    def test_subtree_independence_counts_same_source_once(self):
+        # A source may be useful to two branches. Root synthesis must not emit a duplicate-ID warning
+        # or count two retrieval instances as two items merely because both children retained it.
+        syn = self._load("ar_synthesize_cross_branch_042", "synthesize.py")
+        source = {"id": "brav-same", "url": "https://example.org/study", "title": "One study"}
+        ind = syn.independence([source, dict(source)])
+        self.assertEqual(ind["n"], 1)
+        self.assertEqual(ind["independent_origins"], 1)
+
     def test_anchor_skips_proper_noun_and_self_contained(self):
         inv = self._load("ar_investigate", "investigate.py")
         # proper-noun / coined topic must NOT be prepended (the self-referential-Aletheia bug)
@@ -647,6 +936,181 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertNotIn("study", out)      # generic meta word, dropped
         self.assertNotIn("analysis", out)
 
+    def test_anchor_keeps_distinctive_root_subject_on_long_adversary_question(self):
+        # 0.4.2 dogfood: a long adversary leaf was incorrectly treated as self-contained and drifted
+        # into graph theory/macro because it omitted the root's distinctive "LLM" subject.
+        inv = self._load("ar_investigate_anchor_042", "investigate.py")
+        root = ("Do multi-agent LLM research systems improve breadth and accuracy over single-agent "
+                "systems, and what coordination failures erase those gains?")
+        leaf = ("What are the strongest empirical and practitioner counterexamples to the leading "
+                "conditional-complementarity framing, and which coordination failures erase gains?")
+        self.assertIn("llm", inv._anchor(leaf, root).lower())
+
+    def test_anchor_promotes_late_subject_before_api_compaction(self):
+        inv = self._load("ar_investigate_late_anchor_043", "investigate.py")
+        root = "Are synced passkeys more phishing-resistant than passwords plus app-based TOTP?"
+        leaf = ("What do primary standards and security research establish about whether synced "
+                "passkeys resist phishing better than TOTP? Hunt the decisive source.")
+        anchored = inv._anchor(leaf, root).lower()
+        self.assertTrue(anchored.startswith("synced passkeys phishing-resistant "))
+
+    def test_named_history_subject_survives_anchor_and_rank_focus(self):
+        inv = self._load("ar_investigate_named_subject_043", "investigate.py")
+        rk = self._load("ar_rank_named_subject_043", "rank.py")
+        carnegie = "How did Carnegie public libraries affect social mobility in the United States, 1890-1920?"
+        self.assertEqual(inv._subject_terms(carnegie, include_proper=True)[:3],
+                         ["carnegie", "public", "libraries"])
+        anchored = inv._anchor("economic causes and political conflict", "What caused the French Revolution?")
+        self.assertTrue(anchored.lower().startswith("french revolution"))
+        leaf = ("What causal and archival evidence measures how Carnegie public libraries affected "
+                "education and occupational mobility?")
+        self.assertTrue(inv._anchor(leaf, carnegie).lower().startswith("carnegie public libraries "))
+        rows = [
+            {"url": "https://history.example/carnegie", "title": "Carnegie Public Libraries and Social Mobility",
+             "snippet": "historical evidence", "_class": "evidence", "primary": True},
+            {"url": "https://example.org/catalog", "title": "Methods for Library Catalog Maintenance",
+             "snippet": "software system migration", "_class": "evidence"},
+        ]
+        selected = rk.select_reads(rk.rank(
+            carnegie, rows, subject_terms=inv._subject_terms(carnegie, include_proper=True)[:3],
+            required_subject_terms=["carnegie"]), 2)
+        self.assertEqual([row["url"] for row in selected], ["https://history.example/carnegie"])
+
+    def test_cross_domain_title_duplicate_uses_one_read_slot(self):
+        inv = self._load("ar_investigate_dedupe_042", "investigate.py")
+        title = "Single-Agent LLMs Outperform Multi-Agent Systems Under Equal Thinking Token Budgets"
+        recs = [
+            {"url": "https://arxiv.org/abs/2604.02460", "title": title},
+            {"url": "https://researchgate.net/publication/403529711", "title": "(PDF) " + title},
+        ]
+        self.assertEqual(len(inv._dedupe_records(recs)), 1)
+        distinct = [dict(recs[0], doi="10.1/a"), dict(recs[1], doi="10.1/b")]
+        self.assertEqual(len(inv._dedupe_records(distinct)), 2)  # strong IDs veto title merging
+        weak_then_distinct = [{"url": "https://index.example/copy", "title": title}] + distinct
+        self.assertEqual(len(inv._dedupe_records(weak_then_distinct)), 2)  # alias cannot hide DOI B
+
+    def test_forward_trace_index_decorations_collapse_to_one_read(self):
+        inv = self._load("ar_investigate_forward_titles_042", "investigate.py")
+        recs = [
+            {"url": "https://scholars.mssm.edu/en/publications/does-the-ipad-night-shift-mode/fingerprints/",
+             "title": "Does the iPad Night Shift mode reduce melatonin suppression? - Fingerprint - Icahn School of Medicine at Mount Sinai"},
+            {"url": "https://pubmed.ncbi.nlm.nih.gov/31191118/",
+             "title": "Does the iPad Night Shift mode reduce melatonin suppression? - PubMed"},
+            {"url": "https://www.semanticscholar.org/paper/example",
+             "title": "[PDF] Does the iPad Night Shift mode reduce melatonin suppression? | Semantic Scholar"},
+            {"url": "https://journals.sagepub.com/doi/abs/10.1177/1477153517748189",
+             "title": "Does the iPad Night Shift mode reduce melatonin suppression? - R Nagare, B Plitnick, MG Figueiro, 2019"},
+        ]
+        self.assertEqual(len(inv._dedupe_records(recs)), 1)
+
+    def test_forward_trace_truncated_title_collapse_is_order_independent(self):
+        inv = self._load("ar_investigate_forward_truncation_042", "investigate.py")
+        recs = [
+            {"url": "https://www.sciencedirect.com/science/article/pii/S2352721821000607",
+             "title": "Does iPhone night shift mitigate negative effects of smartphone use on ..."},
+            {"url": "https://www.sciencedirect.com/science/article/abs/pii/S2352721821000607",
+             "title": "Does iPhone night shift mitigate negative effects of smartphone use on sleep outcomes in emerging adults? - ScienceDirect"},
+            {"url": "https://www.sleephealthjournal.org/article/S2352-7218(21)00060-7/abstract",
+             "title": "Does iPhone night shift mitigate negative effects of smartphone use on sleep outcomes in emerging adults? - Sleep Health: Journal of the National Sleep Foundation"},
+        ]
+        for ordered in (recs, list(reversed(recs))):
+            self.assertEqual(len(inv._dedupe_records(ordered)), 1)
+
+    def test_later_read_updates_existing_source_record(self):
+        inv = self._load("ar_investigate_update_042", "investigate.py")
+        node = tempfile.mkdtemp()
+        title = "A Definitive Controlled Study of Multi Agent Research Systems"
+        with open(os.path.join(node, "sources.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"url": "https://example.org/paper", "title": title}) + "\n")
+        inv._merge_existing_read_metadata(node, [{"url": "https://mirror.example/paper", "title": title,
+                                                   "_read_ok": True, "_read_file": "notes/x.md"}])
+        with open(os.path.join(node, "sources.jsonl"), encoding="utf-8") as fh:
+            row = json.loads(fh.readline())
+        self.assertTrue(row["_read_ok"])
+        self.assertEqual(row["_read_file"], "notes/x.md")
+
+    def test_arxiv_abstract_resolves_to_full_text_endpoint(self):
+        inv = self._load("ar_investigate_fulltext_042", "investigate.py")
+        calls = []
+        original = inv.readmod.read_url
+
+        def fake_read(url, *args, **kwargs):
+            calls.append(url)
+            return ("full paper body " * 300, "stub")
+
+        inv.readmod.read_url = fake_read
+        try:
+            text, method, resolved = inv._read_source("https://arxiv.org/abs/2503.13657", 5.0)
+        finally:
+            inv.readmod.read_url = original
+        self.assertGreater(len(text), 1500)
+        self.assertIn("/html/2503.13657", calls[0])
+        self.assertEqual(resolved, calls[0])
+        self.assertIn("full-text", method)
+
+    def test_youtube_source_uses_full_captions(self):
+        inv = self._load("ar_investigate_youtube_full", "investigate.py")
+        import youtube
+        original = youtube.captions
+        youtube.captions = lambda _vid: "full caption transcript " * 200
+        try:
+            text, method, resolved = inv._read_source("https://www.youtube.com/watch?v=aircAruvnKk", 1)
+        finally:
+            youtube.captions = original
+        self.assertGreater(len(text), 1500)
+        self.assertIn("captions", method)
+        self.assertIn("youtube.com", resolved)
+
+    def test_short_youtube_captions_never_fall_back_to_generic_page(self):
+        inv = self._load("ar_investigate_youtube_short", "investigate.py")
+        import youtube
+        original_captions = youtube.captions
+        original_read = inv.readmod.read_url
+        youtube.captions = lambda _vid: "short but complete caption transcript"
+        inv.readmod.read_url = lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("must not read the generic YouTube webpage"))
+        try:
+            text, method, resolved = inv._read_source("https://youtu.be/aircAruvnKk", 1)
+        finally:
+            youtube.captions = original_captions
+            inv.readmod.read_url = original_read
+        self.assertEqual(text, "short but complete caption transcript")
+        self.assertIn("captions", method)
+        self.assertIn("youtu.be", resolved)
+
+    def test_verify_finds_reads_in_child_nodes_without_live_refetch(self):
+        ver = self._load("ar_verify_recursive_reads", "verify.py")
+        root = tempfile.mkdtemp()
+        notes = os.path.join(root, "children", "leaf", "notes")
+        os.makedirs(notes)
+        url = "https://example.org/primary"
+        with open(os.path.join(notes, hashlib.sha1(url.encode()).hexdigest()[:10] + ".md"),
+                  "w", encoding="utf-8") as fh:
+            fh.write("Passkeys use origin-bound public key credentials and resist phishing. " * 12)
+        original = ver.readmod.read_url
+        ver.readmod.read_url = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("must not refetch"))
+        try:
+            result = ver.verify_claim("Passkeys use public key credentials to resist phishing",
+                                      [url], root, None, 1)
+        finally:
+            ver.readmod.read_url = original
+        self.assertTrue(result["link_works"])
+        self.assertNotEqual(result["verdict"], "broken")
+
+    def test_synthesis_independence_uses_read_sources_not_search_hits(self):
+        syn = self._load("ar_synthesize_reads_042", "synthesize.py")
+        node = tempfile.mkdtemp()
+        os.makedirs(os.path.join(node, "children"))
+        with open(os.path.join(node, "status.json"), "w", encoding="utf-8") as fh:
+            json.dump({"qid": "root", "question": "q"}, fh)
+        with open(os.path.join(node, "sources.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"url": "https://read.example/a", "_read_ok": True}) + "\n")
+            for i in range(10):
+                fh.write(json.dumps({"url": "https://unread.example/%d" % i}) + "\n")
+        ind = syn.synthesis_input(node)["independence"]
+        self.assertEqual(ind["n"], 1)
+        self.assertEqual(ind["retrieved_n"], 11)
+
     def test_rank_relevance_gate_excludes_offtopic_high_authority(self):
         # 0.4.1 efficacy parity: authority must NOT buy a read slot for an off-topic source; the
         # decisive on-topic primary must be read instead (the cold-caller quality gap).
@@ -665,6 +1129,45 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertIn("j.example/rct", urls)          # the on-topic primary is read
         self.assertNotIn("nature.com", urls)          # off-topic-high-authority is NOT
         self.assertNotIn("consensus.app", urls)       # secondary aggregator is NOT
+
+    def test_rank_never_fills_thin_pool_with_off_topic_sources(self):
+        rk = self._load("ar_rank_thin_pool", "rank.py")
+        ranked = rk.rank("FIDO2 passkey phishing resistance", [
+            {"url": "https://nature.com/ocean", "title": "Deep ocean circulation", "_class": "evidence"},
+            {"url": "https://example.org/trees", "title": "Forest canopy ecology", "_class": "evidence"},
+        ])
+        self.assertEqual(rk.select_reads(ranked, 4), [])
+
+    def test_rank_requires_root_subject_not_generic_comparator_overlap(self):
+        rk = self._load("ar_rank_root_focus", "rank.py")
+        q = ("synced passkeys phishing-resistant primary standards security whether synced passkeys "
+             "are better than passwords plus app TOTP under an exact threat model")
+        recs = [
+            {"url": "https://arxiv.org/abs/honeywords",
+             "title": "The Impact of Exposed Passwords on Honeyword Efficacy",
+             "snippet": "password credential database threat model", "_class": "evidence", "primary": True},
+            {"url": "https://example.org/totp", "title": "A synced TOTP authenticator app",
+             "snippet": "password plus app TOTP", "_class": "lead_gen"},
+            {"url": "https://www.nist.gov/passkeys", "title": "Synced passkeys are phishing-resistant",
+             "snippet": "passkey credentials are scoped to the relying party", "_class": "evidence", "primary": True},
+        ]
+        selected = rk.select_reads(rk.rank(
+            q, recs, subject_terms=["synced", "passkeys", "phishing-resistant"]), 3)
+        self.assertEqual([r["url"] for r in selected], ["https://www.nist.gov/passkeys"])
+
+    def test_rank_preserves_evidence_and_lead_gen_quotas(self):
+        rk = self._load("ar_rank_class_quota", "rank.py")
+        rows = [
+            {"url": "https://e%d" % i, "_class": "evidence", "_relnorm": 1.0,
+             "score": 0.5 - i * 0.01} for i in range(4)
+        ] + [
+            {"url": "https://lead", "_class": "lead_gen", "_relnorm": 1.0, "score": 0.99},
+            {"url": "https://color", "_class": "color", "_relnorm": 1.0, "score": 1.0},
+        ]
+        selected = rk.select_reads(rows, 4)
+        self.assertGreaterEqual(sum(r["_class"] == "evidence" for r in selected), 3)
+        self.assertEqual(sum(r["_class"] == "lead_gen" for r in selected), 1)
+        self.assertEqual(sum(r["_class"] == "color" for r in selected), 0)
 
     def test_b6_short_distinctive_token_not_dropped(self):
         # review regression: a short but SPECIFIC token (keto/json) must not be dropped in favor of a
@@ -691,6 +1194,32 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertIn("relaxed_to", per["stub"])            # and recorded which shorter query worked
         self.assertGreater(len(calls), 1)                   # it actually retried
 
+    def test_runtime_dispatch_covers_enabled_specialty_channels(self):
+        inv = self._load("ar_investigate_dispatch_compat", "investigate.py")
+        for channel in ("openlibrary", "x", "youtube"):
+            self.assertIn(channel, inv.DISPATCH)
+
+    def test_bounded_tier_round_cap_matches_scrutiny_budget(self):
+        inv = self._load("ar_investigate_round_cap", "investigate.py")
+        self.assertEqual(inv._round_cap({"budget": 4}, {"unit": 4, "thoroughness": "quick"}), 1)
+        self.assertEqual(inv._round_cap({"budget": 12}, {"unit": 4, "thoroughness": "deep"}), 3)
+        self.assertIsNone(inv._round_cap({"budget": 1_000_000},
+                                         {"unit": 4, "thoroughness": "unlimited"}))
+
+    def test_bounded_leaf_refuses_an_extra_round_before_network_io(self):
+        inv = self._load("ar_investigate_round_enforcement", "investigate.py")
+        ts = self._load("ar_treestate_round_enforcement", "treestate.py")
+        run = ts.init_run("topic", thoroughness="quick", base=tempfile.mkdtemp())
+        leaf = ts.split_node(os.path.join(run, "tree", "root"), [["a", "qa"], ["b", "qb"]])[0]
+        ts.set_status(leaf, rounds=1)
+        original = inv.retrieve
+        inv.retrieve = lambda *_a, **_k: self.fail("network must not run after the cap")
+        try:
+            with self.assertRaises(SystemExit):
+                inv.investigate(leaf)
+        finally:
+            inv.retrieve = original
+
     def test_relaxation_not_triggered_when_first_query_hits(self):
         # never broaden a query that already returned results
         inv = self._load("ar_investigate", "investigate.py")
@@ -712,10 +1241,27 @@ class TestAletheiaResearch031(unittest.TestCase):
                   "https://www.efsa.europa.eu/x", "https://www.who.int/x", "https://www.nice.org.uk/x"):
             self.assertEqual(rk.authority(u), 1.0, u)
 
+    def test_tree_caps_reserve_room_for_a_real_split(self):
+        ts = self._load("ar_treestate_node_cap", "treestate.py")
+        run = ts.init_run("topic", budget=16, unit=4, max_depth=3, max_children=4,
+                          max_nodes=4, base=tempfile.mkdtemp())
+        root = os.path.join(run, "tree", "root")
+        children = ts.split_node(root, [["a", "qa"], ["b", "qb"]])
+        chk = ts.can_split(children[0])
+        self.assertFalse(chk["can_split"])
+        self.assertIn("max_nodes", " ".join(chk["reasons"]))
+
+    def test_weight_count_mismatch_is_rejected(self):
+        ts = self._load("ar_treestate_weight_validation", "treestate.py")
+        run = ts.init_run("topic", budget=16, unit=4, base=tempfile.mkdtemp())
+        with self.assertRaises(SystemExit):
+            ts.split_node(os.path.join(run, "tree", "root"), [["a", "qa"], ["b", "qb"]],
+                          weights=[1])
+
     def test_citation_accuracy_null_until_coverage_complete(self):
         run = tempfile.mkdtemp()
-        json.dump({"topic": "t", "version": "aletheia-research 0.3.1"},
-                  open(os.path.join(run, "run.json"), "w"))
+        with open(os.path.join(run, "run.json"), "w", encoding="utf-8") as fh:
+            json.dump({"topic": "t", "version": "aletheia-research 0.3.1"}, fh)
         os.makedirs(os.path.join(run, "tree"))
         with open(os.path.join(run, "verify.jsonl"), "w") as fh:
             for v in ("supported", "contradicted", "relevant"):     # one still awaiting the LLM pass
@@ -726,6 +1272,101 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertEqual(s["citation_precision"], 0.5)       # 1 supported / 2 finally judged
         self.assertEqual(s["citation_denominator"], 2)       # stated denominator = claims judged
         self.assertEqual(s["citation_coverage"], round(2 / 3, 3))
+
+    def test_openalex_shortens_queries_over_api_limit(self):
+        import importlib.util
+        path = os.path.join(ROOT, ".cursor", "skills", "channel-retrieval", "scripts", "openalex.py")
+        spec = importlib.util.spec_from_file_location("openalex_042", path)
+        oa = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(oa)
+        seen = []
+        original = oa._http.get_json
+        oa._http.get_json = lambda url, timeout: (seen.append(url) or {"results": []})
+        try:
+            oa.search("What controlled evidence shows that multi-agent LLM research improves breadth "
+                      "or accuracy over strong single-agent baselines?", 5, 1.0)
+        finally:
+            oa._http.get_json = original
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(seen[0]).query)["search"][0]
+        self.assertLessEqual(len(query), 100)
+        self.assertIn("llm", query.lower())
+
+    def test_brave_retries_rejected_compound_query(self):
+        import importlib.util
+        path = os.path.join(ROOT, ".cursor", "skills", "channel-retrieval", "scripts", "brave.py")
+        spec = importlib.util.spec_from_file_location("brave_043", path)
+        brave = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(brave)
+        calls = []
+        original = brave._http.get_json
+
+        def fake(url, *_a, **_k):
+            calls.append(url)
+            if len(calls) == 1:
+                raise urllib.error.HTTPError(url, 422, "Unprocessable", {}, None)
+            return {"web": {"results": []}}
+
+        brave._http.get_json = fake
+        with mock.patch.dict(os.environ, {"BRAVE_API_KEY": "test"}):
+            try:
+                brave.search("a very long compound authentication security query with many deployment "
+                             "recovery fallback phishing implementation compatibility terms", 5, 1)
+            finally:
+                brave._http.get_json = original
+        self.assertEqual(len(calls), 2)
+        first = urllib.parse.parse_qs(urllib.parse.urlparse(calls[0]).query)["q"][0]
+        second = urllib.parse.parse_qs(urllib.parse.urlparse(calls[1]).query)["q"][0]
+        self.assertLess(len(second.split()), len(first.split()))
+
+    def test_openlibrary_client_normalizes_book_records(self):
+        import importlib.util
+        path = os.path.join(ROOT, ".cursor", "skills", "channel-retrieval", "scripts", "openlibrary.py")
+        spec = importlib.util.spec_from_file_location("openlibrary_043", path)
+        ol = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ol)
+        original = ol._http.get_json
+        ol._http.get_json = lambda *_a, **_k: {"docs": [{
+            "key": "/works/OL1W", "title": "Carnegie Libraries", "author_name": ["A. Scholar"],
+            "first_publish_year": 2021, "edition_count": 3, "subject": ["Libraries", "Education"],
+        }]}
+        try:
+            rows = ol.search("Carnegie libraries", 5, 1)
+        finally:
+            ol._http.get_json = original
+        self.assertEqual(rows[0]["index_of_origin"], "openlibrary")
+        self.assertEqual(rows[0]["title"], "Carnegie Libraries")
+        self.assertIn("openlibrary.org/works/OL1W", rows[0]["url"])
+
+
+class TestInstall(unittest.TestCase):
+    def test_installer_links_skills_for_codex(self):
+        home = tempfile.mkdtemp()
+        env = dict(os.environ, HOME=home, CODEX_HOME=os.path.join(home, ".codex"))
+        subprocess.check_call(["bash", os.path.join(ROOT, "scripts", "install.sh")], env=env,
+                              stdout=subprocess.DEVNULL)
+        target = os.path.join(home, ".codex", "skills", "aletheia-research")
+        self.assertTrue(os.path.islink(target))
+        self.assertTrue(os.path.isfile(os.path.join(target, "SKILL.md")))
+        self.assertTrue(os.path.isfile(os.path.join(target, "agents", "openai.yaml")))
+        self.assertFalse(os.path.exists(os.path.join(home, ".codex", "skills", "deep-aletheia")))
+
+    def test_installer_rejects_invalid_mode(self):
+        home = tempfile.mkdtemp()
+        env = dict(os.environ, HOME=home, CODEX_HOME=os.path.join(home, ".codex"))
+        proc = subprocess.run(["bash", os.path.join(ROOT, "scripts", "install.sh"), "--invalid"],
+                              env=env, capture_output=True, text=True)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertFalse(os.path.exists(os.path.join(home, ".codex", "skills")))
+
+    def test_copy_install_keeps_non_secret_repo_root_pointer(self):
+        home = tempfile.mkdtemp()
+        env = dict(os.environ, HOME=home, CODEX_HOME=os.path.join(home, ".codex"))
+        subprocess.check_call(["bash", os.path.join(ROOT, "scripts", "install.sh"), "--copy"],
+                              env=env, stdout=subprocess.DEVNULL)
+        marker = os.path.join(home, ".cursor", "skills", "channel-retrieval", ".aletheia-root")
+        self.assertTrue(os.path.isfile(marker))
+        self.assertEqual(read_text(marker).strip(), os.path.abspath(ROOT))
+        self.assertTrue(os.path.islink(os.path.join(home, ".codex", "skills", "aletheia-research")))
 
 
 class TestKeywordizeRecall(unittest.TestCase):
@@ -775,6 +1416,14 @@ class TestKeywordizeRecall(unittest.TestCase):
         out = _http.keywordize('find "alpha one" "beta two" "gamma three" "delta four" now', 2)
         self.assertLessEqual(out.count('"') // 2 + len([w for w in out.split()]), 4)  # <= 2 phrase-units
         self.assertIn("alpha", out)
+
+    def test_orchestration_and_dates_cannot_crowd_out_root_subject(self):
+        q = ("synced passkeys phishing-resistant What do primary standards, government guidance, "
+             "and security research establish about app-based TOTP as of 2026-07-09? Hunt results.")
+        out = _http.keywordize(q, 3)
+        self.assertEqual(out, "synced passkeys totp")
+        self.assertNotIn("2026", out)
+        self.assertNotIn("hunt", out)
 
 
 class TestEvalJudgeCore(unittest.TestCase):

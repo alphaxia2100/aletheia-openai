@@ -1,9 +1,14 @@
 ---
 name: aletheia-research
-description: Aletheia Research — deep, high-scrutiny research surveyor (v0.4). THE research tool: use this whenever you need to research, survey, fact-check, map, or "get an accurate picture of" a topic, or anchor a decision in evidence — rather than building an ad-hoc workflow. Frames competing perspectives (anti-anchoring), decomposes into a filesystem-coordinated tree, and runs parallel READ-ONLY investigations that pull a WIDE VARIETY of current/diverse/real sources, read primaries in full, hunt the decisive authoritative source, judge whether support is independent or one origin echoed, attack the leading conclusion, surface gaps honestly, and tie every claim to a primary through a verification gate that runs to completion. Effort defaults to UNLIMITED depth/budget (stop on saturation; `thoroughness: quick|standard|deep|exhaustive` to bound it, `max` for a week-deep run). Output scales to the reader via `verbosity: user` (a multi-page nuanced summary) or `agent` (the full artifact bundle). Callable from any session.
+description: >-
+  Aletheia Research — deep, high-scrutiny research surveyor (v0.4.3). Use whenever Codex needs to
+  research, survey, fact-check, map, get an accurate picture of a topic, or anchor a decision in
+  evidence. Frames competing perspectives, runs wide primary-first investigations, judges source
+  independence, attacks the leading conclusion, states gaps, and verifies every load-bearing claim.
+  Supports quick through unlimited/max effort and user summaries or full agent artifact bundles.
 ---
 
-# Aletheia Research 0.4 — deep, multi-perspective research surveyor
+# Aletheia Research 0.4.3 — deep, multi-perspective research surveyor
 
 An accurate, un-anchored picture of a field. A bare LLM anchors on its priors, searches to confirm
 them, cites nothing, and is stale. Aletheia beats it by **surveying widely and for real**: competing
@@ -17,9 +22,18 @@ that and adds four things it was missing (see **What's new** below). Everything 
 is a directory; nothing depends on one context window.
 
 ## Toolkit (do this first)
-Installed globally at `~/.cursor/skills/` (via `scripts/install.sh`) — call by absolute path.
+Installed globally by `scripts/install.sh` for Cursor, Claude Code, and Codex. Prefer Codex's
+flagship symlink so realpath reaches the repository's sibling runtime, `.env`, and channel config;
+fall back to the other client roots when Codex is not installed.
 ```bash
-AL=~/.cursor/skills ; A="$AL/aletheia-research/scripts"
+A="${CODEX_HOME:-$HOME/.codex}/skills/aletheia-research/scripts"
+if [ ! -d "$A" ]; then
+  for ROOT in "$HOME/.cursor/skills" "$HOME/.claude/skills"; do
+    [ ! -d "$ROOT/aletheia-research/scripts" ] || { A="$ROOT/aletheia-research/scripts"; break; }
+  done
+fi
+[ -d "$A" ] || { echo "aletheia-research is not installed" >&2; exit 1; }
+AL="$(cd -P "$A/../.." && pwd)"
 python3 "$AL/channel-retrieval/scripts/doctor.py"     # confirm channels live (keys auto-load from repo .env)
 ```
 **Surface channel health (do NOT skip).** `doctor.py` runs a real query per channel, so a channel that
@@ -51,6 +65,9 @@ branch is **saturated** — new rounds surface no new *distinct origins* or clai
 independence report). A high `max_nodes` (512 / 2048) is only a runaway backstop, not a target. Only
 choose a bounded tier when the user explicitly wants it fast. `auto` → judge breadth×contestedness;
 default to `unlimited` unless the question is genuinely narrow/settled (then `quick`/`standard`).
+Bounded tiers spend one scrutiny unit per leaf round (`floor(node budget / unit)` rounds; quick is
+normally one). The runtime refuses extra rounds instead of silently turning a quick request into an
+unbounded run; choose a deeper tier when more rounds are needed.
 
 ## Verbosity — who is the answer FOR? (`verbosity: agent | user`, default `user`)
 Pass it at init (`treestate.py init … --verbosity agent`). It changes the FINAL output, not the research.
@@ -126,15 +143,24 @@ run the leaf engine, which reads primaries in full and **accumulates across roun
 ```bash
 python3 "$A/investigate.py" --node "<NODE_DIR>"     # round 1; repeat with --query "<gap>" to deepen
 ```
+Repeat only while the bounded node has scrutiny rounds remaining; `unlimited`/`max` continue to
+convergence. If evidence marks a load-bearing read `TRUNCATED`, re-read it without the cap:
+`python3 "$AL/channel-retrieval/scripts/read.py" URL --outdir "<NODE_DIR>/notes/full" --max-chars 0`.
+The agent bundle includes nested `notes/full` and `notes/decisive` artifacts.
 **Scoped channels (each run fires only what the question needs).** `investigate.py` calls `router.py`
-to pick a SMALL, domain-appropriate set — biomed→europepmc/openalex (not arXiv), CS→arxiv/semanticscholar/
-github, history→wikipedia/googlebooks, products/current→community+web — always covering web·primary·
-community and **excluding off-topic indexes**. Preview it: `python3 "$A/router.py" "<q>" --framing "<angle>" --json`.
+to pick a SMALL, domain-appropriate set — biomed→europepmc/openalex (not arXiv), CS→arxiv/openalex
+(Semantic Scholar when enabled), history→wikipedia/googlebooks, products/current→community+web — always covering web·primary·
+community and **excluding off-topic indexes**. Humanities routes include Wikipedia/Open Library;
+Google Books is used only when enabled and healthy. Preview it:
+`python3 "$A/router.py" "<q>" --framing "<angle>" --json`.
 The classifier is keyword-based, so if it mis-scopes (e.g. a title with no domain word), **override**:
 `investigate.py --node <N> --channels europepmc,openalex,brave,reddit`. Different framings warrant
 different channels (practitioner→community/forums; consensus→primaries).
+The default router uses only channels listed in `channels.json -> enabled`; explicit `--channels` is
+the deliberate override. arXiv abstract hits resolve to full HTML/PDF automatically.
 At `deep`/`exhaustive`/`unlimited`/`max` (i.e. the default and every deep tier — anytime there are
-multiple leaves), spawn one **READ-ONLY worker subagent per leaf, in parallel** (Task tool),
+multiple leaves), spawn one **READ-ONLY worker subagent per leaf, in parallel** using Codex's
+subagent/collaboration mechanism (or the host's equivalent),
 each given the topic + its framing + why it exists. Each worker: reads `evidence.md`+`notes/`;
 **pulls a variety of distinct sources**; **hunts the decisive source** for its sub-question; **chases
 primaries** (no secondhand citations); writes `<NODE_DIR>/findings.md` (3–8 claims, each with the
@@ -148,7 +174,8 @@ sources** (`treestate.py answer …`) before you author. Then write `<NODE_DIR>/
 (single-threaded), honoring the independence report (high echo ⇒ don't treat convergence as truth).
 
 ### 5. Judge independence + attack the leading conclusion
-`synthesize.py` reports two independence signals: identity `echo_ratio` (voice_key) AND the stronger
+`synthesize.py` judges successfully **read sources**, not every search hit, and reports two
+independence signals: identity `echo_ratio` (voice_key) AND the stronger
 structural `origin_echo_ratio` / `independent_origins` (shared-origin clusters — it catches "40 domains
 but 1 origin echoed 40×", which voice_key alone scores as independent). **Low echo does NOT license
 "Agreement" — high `origin_echo_ratio` means trace claims to their independent origins first.** Take the
@@ -165,17 +192,23 @@ Layer 1 (lexical) certifies **relevance only**, never support — it emits `rele
 claim** (read the cited primary in a small context; watch polarity + magnitude) and rewrite each
 verdict to `supported`/`contradicted`/`unsupported`. Only `supported` survives in Agreement;
 `contradicted` → cut/flip; `unsupported` → downgrade to Unverified.
-**Use a DIFFERENT model for the Fact-Check than wrote the draft** (self-preference/verbosity bias is
-real — the writer grades its own work too kindly; at `deep`/`exhaustive`/`unlimited`/`max` spawn the verifier as a
-subagent on another model). The score is **code-gated, not honor-system** — compute it with the
+Any `broken` citation must be replaced with a readable primary or its claim removed; broken rows
+block `citation_complete` and cannot be waived as verified.
+**Use a DIFFERENT model for the Fact-Check than wrote the draft when the orchestrator supports model
+selection** (self-preference/verbosity bias is real — the writer grades its own work too kindly). At
+`deep`/`exhaustive`/`unlimited`/`max`, otherwise use an independent fresh-context verifier subagent and
+state the same-model limitation. The score is **code-gated, not honor-system** — compute it with the
 skill's own scorer (ships with the skill; no repo/eval dependency):
 ```bash
-python3 "$A/report.py" score --run "$RUN"    # citation_accuracy/precision/coverage/denominator + independence
+python3 "$A/report.py" score --run "$RUN" --output "$RUN/score.json"
+# stdout and score.json both contain citation accuracy/precision/coverage/denominator + independence
 ```
 `citation_accuracy` (= precision) is **null until `citation_complete` is true** — i.e. every on-topic
 claim has a final verdict (`citation_coverage` = 1.0), with the stated `citation_denominator` (claims
 judged; readable `off_topic` counts against it so a dropped citation can't vanish). A run with claims
-still `awaiting_llm_check` has NO headline accuracy: finish the pass.
+still `awaiting_llm_check` has NO headline accuracy: finish the pass. Headline
+`independent_origins` is over finally cited claim sources; retrieval breadth stays separate under
+`retrieved_*` and never counts as corroboration.
 
 ### 7. Answer, grounded — scaled to the VERBOSITY
 Always write `$RUN/brief.md` (author it directly; or if your harness blocks writing report `.md`
@@ -186,8 +219,10 @@ Include: **Bottom line** · **Agreement** (independent sources converge) ·
 the **primary you read**; dates on time-sensitive claims. **X/YouTube are `color`** (never cite as
 fact); **Reddit/HN are `lead_gen`** — cite the primary they point to, not the thread. Then, by verbosity:
 - **`verbosity: agent`** → return the **FULL bundle**, not a summary:
-  `python3 "$A/report.py" bundle --run "$RUN" --reads` — hand the whole pack (every node's findings +
-  evidence + sources + primaries read in full) back to the calling agent. Do not compress it.
+  `python3 "$A/report.py" bundle --run "$RUN" --reads --output "$RUN/bundle.md"` — persist first,
+  then hand the whole artifact (every node's findings + evidence + sources + score + primaries read
+  in full) back to the calling agent. Do not compress it. Persist-before-handoff is mandatory on
+  streamed Codex runs so a disconnected response cannot erase the completed deliverable.
 - **`verbosity: user`** (default) → deliver a **MULTI-PAGE summary (a few pages MINIMUM)**: a nuanced
   synthesis with the mechanisms, the disagreements and *why* they exist, the decisive sources, the
   numbers/caveats, and the honest gaps — the distilled equivalent of a day (or, at `max`, a week) of
@@ -204,6 +239,7 @@ external dependency; the brief + the run dir are the output.
 `decisions.jsonl`, `questions.jsonl`/`answers.jsonl`, `sources.jsonl`, `notes/`, `evidence.md`,
 `findings.md`. Fully resumable — after a crash/interrupt re-run `frontier --run "$RUN" --resumable`
 (re-picks pending + mid-round `active` + unanswered nodes, so nothing in flight is silently skipped).
+`run.json.state` advances through `framing → investigating → synthesized → briefed/complete`.
 
 ## Rules
 Channel **classes**: `evidence` citable · `lead_gen` (search/HN/Reddit) → **find & cite the primary** ·

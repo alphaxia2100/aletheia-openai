@@ -1,9 +1,9 @@
 {
   "_comment": "Single source of truth for retrieval channels. 'index_group' is what independence is counted over (two channels sharing an index_group are NOT independent = fake diversity). 'class' is the default epistemic weight: evidence > lead_gen > color. Scripts (provenance_graph.py) and skills read this file.",
-  "core_default": ["brave", "marginalia", "youtube", "x", "openalex", "arxiv", "reddit", "hackernews"],
-  "enabled": ["brave", "duckduckgo", "marginalia", "youtube", "x", "openalex", "arxiv", "reddit", "hackernews", "github", "stackexchange"],
+  "core_default": ["brave", "duckduckgo", "marginalia", "youtube", "x", "openalex", "arxiv", "europepmc", "reddit", "hackernews", "github", "stackexchange", "wikipedia", "openlibrary"],
+  "enabled": ["brave", "duckduckgo", "marginalia", "youtube", "x", "openalex", "arxiv", "europepmc", "reddit", "hackernews", "github", "stackexchange", "wikipedia", "openlibrary"],
   "utilities_always_on": ["read", "rerank", "provenance_graph", "dedupe", "deepen", "doctor", "entity_resolve"],
-  "enabled_note": "NO-KEY FIRST (this is a personal research project). The core runs with ZERO API keys: web = marginalia (independent) + duckduckgo, video = youtube (yt-dlp discovery + youtube-transcript-api), primary = arxiv + openalex (keyless low-volume), community = reddit (pullpush) + hackernews, X via agent-reach browser session. Free-key UPGRADES (not required): add 'brave' (better independent web) and put OPENALEX_API_KEY for volume. PAID upgrades (optional): exa (neural web), getxapi/twitterapi (X API). Enable any hidden channel: `python3 ~/.cursor/skills/channel-retrieval/scripts/channels.py enable <name>`.",
+  "enabled_note": "NO-KEY FIRST (this is a personal research project). The core runs with ZERO API keys: web = marginalia (independent) + duckduckgo, video = youtube (yt-dlp discovery + youtube-transcript-api), primary = arxiv + openalex (keyless low-volume) + europepmc, books/history = wikipedia + openlibrary, community = reddit (pullpush) + hackernews, X via agent-reach browser session. Free-key UPGRADES (not required): Brave (better independent web), OPENALEX_API_KEY for volume, and Google Books when needed. PAID upgrades (optional): exa (neural web), getxapi/twitterapi (X API). Enable any hidden channel: `python3 ~/.cursor/skills/channel-retrieval/scripts/channels.py enable <name>`.",
   "classes": {
     "evidence": "Citable directly. Structured/primary/near-primary.",
     "lead_gen": "Use to FIND primary sources; cite the linked primary, not the aggregator.",
@@ -38,7 +38,7 @@
     "marginalia":       { "class": "lead_gen", "index_group": "marginalia",       "kind": "web_search_independent","auth": "none",              "primary_default": false },
 
     "google_books":     { "class": "evidence", "index_group": "google_books",     "kind": "books",              "auth": "free_key",            "primary_default": true },
-    "openlibrary":      { "class": "evidence", "index_group": "internet_archive", "kind": "books",              "auth": "none",                "primary_default": true },
+    "openlibrary":      { "class": "lead_gen", "index_group": "internet_archive", "kind": "books",              "auth": "none",                "primary_default": false },
     "internet_archive": { "class": "evidence", "index_group": "internet_archive", "kind": "books",              "auth": "none",                "primary_default": true },
     "gutenberg":        { "class": "evidence", "index_group": "gutenberg",        "kind": "books_public_domain","auth": "none",                "primary_default": true },
     "standard_ebooks":  { "class": "evidence", "index_group": "standard_ebooks",  "kind": "books_public_domain","auth": "none",                "primary_default": true },

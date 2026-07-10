@@ -40,10 +40,16 @@ import read as readmod  # noqa: E402
 import _http  # noqa: E402  (keywordize, for 0-result relaxation)
 
 MAX_READ_CHARS = 40000   #: read cap; a read that hits it is flagged `_truncated` (no silent cut-off)
-_ARXIV = re.compile(r"arxiv\.org/(?:abs|html|pdf)/([0-9]{4}\.[0-9]{4,5})", re.I)
+_ARXIV = re.compile(
+    r"arxiv\.org/(?:abs|html|pdf)/((?:[0-9]{4}\.[0-9]{4,5}|[a-z-]+(?:\.[a-z-]+)?/[0-9]{7})(?:v[0-9]+)?)",
+    re.I,
+)
 _STOP = set("the a an of for and or to in on is are be was were with without vs versus more "
-            "than better best effect effects does do how what why which when who into over "
-            "real world results side its their your our".split())
+            "than better best effect effects does do did how what why which when who into over "
+            "real world results side its their your our materially measurably significantly "
+            "reduce reduces reduced reducing improve improves improved improving increase increases "
+            "increased increasing decrease decreases decreased decreasing affect affects affected "
+            "affecting cause causes caused causing impact impacts impacted impacting".split())
 #: generic/self-referential terms that never make a useful subject anchor (a topic that is a coined
 #: artifact — "the X agent/skill/system" — anchored on these just injects self-reference).
 _SELFREF = set("agent agents tool tools skill skills system systems framework frameworks design "
@@ -79,6 +85,29 @@ def _proper_nouns(topic: str) -> set:
     return proper
 
 
+def _subject_terms(topic: str, include_proper: bool = False) -> List[str]:
+    """Return an ordered root-topic signature.
+
+    Anchoring defaults to common nouns so coined tool names cannot inject self-reference. Ranking
+    opts into proper nouns because named subjects such as Carnegie or the French Revolution are
+    often the most discriminating relevance signal.
+    """
+    proper = _proper_nouns(topic)
+    terms = []
+    for raw in re.findall(r"[A-Za-z0-9][A-Za-z0-9-]*", topic):
+        low = raw.lower()
+        parts = [p for p in low.split("-") if p]
+        is_acronym = raw.isupper() and 2 <= len(raw) <= 10
+        is_distinctive_hyphen = "-" in raw and any(
+            len(p) >= 4 and p not in _STOP and p not in _SELFREF and p not in _META for p in parts)
+        is_common_subject = ("-" not in low and len(low) >= 3 and (include_proper or low not in proper)
+                             and low not in _STOP
+                             and low not in _SELFREF and low not in _META)
+        if (is_acronym or is_distinctive_hyphen or is_common_subject) and low not in terms:
+            terms.append(low)
+    return terms
+
+
 def _anchor(question: str, topic: str) -> str:
     """Keep an UNDER-SPECIFIED sub-question tied to the ROOT SUBJECT — a bare leaf like
     'real-world adherence' must still be about *intermittent fasting*, not medication adherence.
@@ -87,24 +116,27 @@ def _anchor(question: str, topic: str) -> str:
     anchor from COMMON-NOUN subject terms only (drop proper nouns + generic self-referential words)."""
     if not topic:
         return question
-    tt = [w for w in re.findall(r"[a-z]{4,}", topic.lower()) if w not in _STOP]
-    ql = question.lower()
-    if sum(1 for w in set(tt) if w in ql) >= 2:            # already tied to the subject
-        return question
-    q_terms = {w for w in re.findall(r"[a-z]{4,}", ql) if w not in _STOP}
-    if len(q_terms) >= 5:                                  # specific enough to stand on its own
-        return question
-    proper = _proper_nouns(topic)
-    # candidates = the topic's content words minus proper nouns, self-ref, and generic research-meta
-    # words. Since _META already strips the generic words, whatever survives is a real subject term —
-    # so keep the FIRST few in topic order (do NOT rank by length: a short word like "keto"/"json"
-    # is often the MOST specific term, and length-ranking would wrongly drop it for a longer generic
-    # word). If nothing survives (pure proper noun / coined name / only meta words), leave unchanged.
-    subj_terms = [w for w in dict.fromkeys(tt)
-                  if w not in proper and w not in _SELFREF and w not in _META][:3]
+    # Build a compact subject signature in topic order. Named subjects are vital for entity-centered
+    # work (Carnegie, NIST, the French Revolution). Exclude them only for prompts that combine a
+    # tool/system term WITH research-meta language—the narrow self-referential class that caused
+    # Aletheia to search for itself.
+    root_tokens = {w.lower() for w in re.findall(r"[A-Za-z][A-Za-z-]*", topic)}
+    meta_hits = len(root_tokens.intersection(_META))
+    self_referential = bool(
+        (root_tokens.intersection(_SELFREF) and meta_hits) or meta_hits >= 2)
+    subj_terms = _subject_terms(topic, include_proper=not self_referential)
     if not subj_terms:
         return question
-    subj = " ".join(subj_terms)[:60]
+    qnorm = re.sub(r"[^a-z0-9]+", " ", question.lower()).strip()
+    # A subject mentioned only late in a long orchestration prompt is still lost when keyword APIs
+    # compact the query. Treat it as already anchored only when it appears near the front.
+    # Keyword APIs compact to roughly six units, so a subject appearing after that window is not
+    # operationally front-loaded even if it looks early in a prose sentence.
+    early = " ".join(qnorm.split()[:6])
+    if any(re.search(r"(?:^|\s)%s(?:\s|$)" % re.escape(
+            re.sub(r"[^a-z0-9]+", " ", term).strip()), early) for term in subj_terms[:2]):
+        return question
+    subj = " ".join(subj_terms[:3])[:60]
     return (subj + " " + question).strip()
 
 
@@ -114,13 +146,141 @@ def _work_key(r: Dict[str, Any]) -> str:
     url = r.get("url", "") or ""
     m = _ARXIV.search(url)
     if m:
-        return "arxiv:" + m.group(1)
-    doi = (r.get("doi") or "").strip().lower()
+        return "arxiv:" + re.sub(r"v\d+$", "", m.group(1).lower())
+    doi = dedupe.doi_from_record(r)
     if doi:
-        return "doi:" + doi.split("doi.org/")[-1]
-    if "doi.org/" in url:
-        return "doi:" + url.split("doi.org/")[-1].lower()
+        return "doi:" + doi
     return "url:" + dedupe.canonical_url(url)
+
+
+def _strong_keys(r: Dict[str, Any]) -> set[str]:
+    """Return every work-level identifier present; one record may carry arXiv + DOI aliases."""
+    keys: set[str] = set()
+    doi = dedupe.doi_from_record(r)
+    if doi:
+        keys.add("doi:" + doi)
+    m = _ARXIV.search(str(r.get("url") or ""))
+    if m:
+        keys.add("arxiv:" + re.sub(r"v\d+$", "", m.group(1).lower()))
+    pmid = str(r.get("pmid") or "").strip()
+    if not pmid:
+        m = re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", str(r.get("url") or ""), re.I)
+        pmid = m.group(1) if m else ""
+    if pmid:
+        keys.add("pmid:" + re.sub(r"\D", "", pmid))
+    return keys
+
+
+def _strong_key(r: Dict[str, Any]) -> str:
+    """Backward-compatible single identity view; internal dedup uses all aliases."""
+    keys = _strong_keys(r)
+    return sorted(keys)[0] if keys else ""
+
+
+def _title_info(r: Dict[str, Any]) -> tuple[str, bool]:
+    """Normalize title decorations while retaining whether an index visibly truncated the title."""
+    raw = str(r.get("title") or "").strip()
+    truncated = raw.endswith(("...", "…"))
+    title = raw.lower()
+    title = re.sub(r"^\s*(?:\[[^]]+\]|\(pdf\)|pdf\s*[:\-]?|full article\s*[:\-]?)\s*", "", title)
+    # Search engines commonly decorate the real title with the index, publisher, or author line.
+    # Only strip recognizable templates; arbitrary subtitles remain part of the identity.
+    title = re.sub(r"\s*[|]\s*(?:request pdf|semantic scholar)\s*$", "", title)
+    title = re.sub(
+        r"\s+-\s+(?:fingerprint(?:\s+-\s+.*)?|pmc|pubmed|sciencedirect|sleep health(?::.*)?)\s*$",
+        "", title)
+    title = re.sub(r"\s+-\s+[^-]{1,160},\s*(?:19|20)\d{2}\s*$", "", title)
+    title = re.sub(r":\s*[^:]{3,100}:\s*vol\s+\d+.*$", "", title)
+    title = re.sub(r"(?:\.{3}|…)\s*$", "", title)
+    words = [w for w in re.findall(r"[a-z0-9]+", title) if w not in {"pdf", "full", "article"}]
+    return (" ".join(words) if len(words) >= 5 else "", truncated)
+
+
+def _title_key(r: Dict[str, Any]) -> str:
+    """Conservative normalized-title key for cross-domain copies lacking shared identifiers."""
+    return _title_info(r)[0]
+
+
+def _titles_match(a: tuple[str, bool], b: tuple[str, bool]) -> bool:
+    """Match exact cleaned titles, plus explicit search-result truncations of >=8 words."""
+    a_key, a_truncated = a
+    b_key, b_truncated = b
+    if not a_key or not b_key:
+        return False
+    if a_key == b_key:
+        return True
+    a_words, b_words = a_key.split(), b_key.split()
+    if len(a_words) <= len(b_words):
+        short, long, visibly_cut = a_words, b_words, a_truncated
+    else:
+        short, long, visibly_cut = b_words, a_words, b_truncated
+    return visibly_cut and len(short) >= 8 and long[:len(short)] == short
+
+
+def _strong_conflict(strong: set[str], identities: set[str]) -> bool:
+    """Different IDs of the same kind prove distinct works; DOI-vs-PMID does not."""
+    if not strong:
+        return False
+    new_by_kind: Dict[str, set] = {}
+    old_by_kind: Dict[str, set] = {}
+    for value in strong:
+        new_by_kind.setdefault(value.split(":", 1)[0], set()).add(value)
+    for value in identities:
+        old_by_kind.setdefault(value.split(":", 1)[0], set()).add(value)
+    shared = new_by_kind.keys() & old_by_kind.keys()
+    if any(new_by_kind[k] & old_by_kind[k] for k in shared):
+        return False  # one matching typed identity proves equivalence, even if metadata conflicts
+    return bool(shared)
+
+
+def _dedupe_records(records: List[Dict[str, Any]], existing: List[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Deduplicate exact works and conservative title copies while preserving distinct strong IDs.
+
+    This closes the read-budget leak where arXiv and ResearchGate variants of one paper consumed two
+    slots. Equal long titles merge when either copy lacks a strong ID; two different DOI/arXiv/PMID
+    values remain distinct even if their titles happen to match.
+    """
+    strong_seen, weak_seen = set(), set()
+    title_clusters: List[Dict[str, Any]] = []
+
+    def remember(r: Dict[str, Any]) -> None:
+        strong = _strong_keys(r)
+        if strong:
+            strong_seen.update(strong)
+        else:
+            weak_seen.add(_work_key(r))
+        title = _title_info(r)
+        if not title[0]:
+            return
+        for cluster in title_clusters:
+            if _titles_match(title, cluster["title"]) and not _strong_conflict(strong, cluster["ids"]):
+                if strong:
+                    cluster["ids"].update(strong)
+                return
+        title_clusters.append({"title": title, "ids": set(strong)})
+
+    for row in existing or []:
+        remember(row)
+
+    out = []
+    for row in records:
+        strong, weak, title = _strong_keys(row), _work_key(row), _title_info(row)
+        duplicate = bool(strong & strong_seen) or bool(not strong and weak in weak_seen)
+        matched_cluster = None
+        for cluster in title_clusters:
+            if _titles_match(title, cluster["title"]) and not _strong_conflict(strong, cluster["ids"]):
+                matched_cluster = cluster
+                duplicate = True
+                break
+        if duplicate:
+            # Record a newly discovered cross-index alias even when this copy is not returned.  That
+            # lets a later, genuinely different DOI with the same generic title pass the veto.
+            if matched_cluster is not None and strong:
+                matched_cluster["ids"].update(strong)
+            continue
+        out.append(row)
+        remember(row)
+    return out
 
 
 def _search(mod: str, q: str, n: int, t: float):
@@ -139,6 +299,7 @@ DISPATCH = {
     "reddit": lambda q, n, t: importlib.import_module("reddit").search(q, n, t),
     "europepmc": lambda q, n, t: _search("europepmc", q, n, t),          # biomed/clinical primary
     "wikipedia": lambda q, n, t: _search("wikipedia", q, n, t),          # orientation / humanities
+    "openlibrary": lambda q, n, t: _search("openlibrary", q, n, t),      # books / catalog leads
     "crossref": lambda q, n, t: _search("crossref", q, n, t),            # DOI metadata / references
     "semanticscholar": lambda q, n, t: _search("semanticscholar", q, n, t),  # CS/ML citation graph
     "googlebooks": lambda q, n, t: _search("googlebooks", q, n, t),      # books / history / humanities
@@ -146,6 +307,7 @@ DISPATCH = {
     "youtube": lambda q, n, t: [{"index_of_origin": "youtube",
                                  "url": "https://www.youtube.com/watch?v=" + v, "title": ""}
                                 for v in importlib.import_module("youtube").yt_search(q, n, t)],
+    "x": lambda q, n, t: _search("x", q, n, t),
 }
 
 
@@ -196,16 +358,54 @@ def retrieve(query: str, channels: List[str], limit: int, timeout: float):
     return recs, per
 
 
-def _save_read(node: str, url: str, text: str, method: str, truncated: bool = False) -> str:
+def _save_read(node: str, url: str, text: str, method: str, truncated: bool = False,
+               resolved_url: str = "") -> str:
     d = os.path.join(node, "notes")
     os.makedirs(d, exist_ok=True)
     h = hashlib.sha1(url.encode()).hexdigest()[:10]
     path = os.path.join(d, h + ".md")
     trunc = " TRUNCATED at %d chars — re-read with a larger cap if a claim rests on the tail" % \
         MAX_READ_CHARS if truncated else ""
+    resolved = " resolved=%s" % resolved_url if resolved_url and resolved_url != url else ""
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write("<!-- %s (via %s)%s -->\n\n%s" % (url, method, trunc, text))
+        fh.write("<!-- %s (via %s)%s%s -->\n\n%s" % (url, method, resolved, trunc, text))
     return path
+
+
+def _read_source(url: str, timeout: float):
+    """Read a source, resolving arXiv abstract pages to full HTML then PDF.
+
+    A 9KB arXiv metadata/abstract page previously passed the generic character threshold and was
+    mislabeled "read in full." For `/abs/` URLs, only a successful HTML/PDF body is accepted.
+    """
+    if "youtube.com/" in (url or "") or "youtu.be/" in (url or ""):
+        youtube = importlib.import_module("youtube")
+        text = youtube.captions(youtube.video_id(url))
+        if not text.strip():
+            raise RuntimeError("empty YouTube caption transcript for %s" % url)
+        # A short video can have a complete transcript below the general 1,500-character evidence
+        # threshold. Return the captions anyway so the caller can mark it as a short read; never
+        # fall through to Jina's generic video page and mistake navigation chrome for full evidence.
+        return text, "youtube captions full-text", url
+
+    m = _ARXIV.search(url or "")
+    candidates = [url]
+    is_abs = bool(m and "/abs/" in (url or "").lower())
+    if is_abs:
+        aid = m.group(1)
+        candidates = ["https://arxiv.org/html/" + aid, "https://arxiv.org/pdf/" + aid]
+    last_error = None
+    for candidate in candidates:
+        try:
+            text, method = readmod.read_url(candidate, timeout, MAX_READ_CHARS, False)
+            if len(text.strip()) < 1500:
+                last_error = RuntimeError("short read from %s" % candidate)
+                continue
+            label = str(method or "read") + (" full-text" if m else "")
+            return text, label, candidate
+        except Exception as exc:  # noqa: BLE001 - try arXiv PDF after HTML failure
+            last_error = exc
+    raise last_error or RuntimeError("no readable full text for %s" % url)
 
 
 def _note_exists(node: str, url: str) -> bool:
@@ -220,18 +420,65 @@ def _existing_work_keys(node: str) -> set:
     keys = set()
     p = os.path.join(node, "sources.jsonl")
     if os.path.exists(p):
-        for line in open(p, encoding="utf-8"):
+        with open(p, encoding="utf-8") as fh:
+            for line in fh:
+                if line.strip():
+                    try:
+                        keys.add(_work_key(json.loads(line)))
+                    except ValueError:
+                        pass
+    return keys
+
+
+def _existing_records(node: str) -> List[Dict[str, Any]]:
+    p = os.path.join(node, "sources.jsonl")
+    if not os.path.exists(p):
+        return []
+    rows = []
+    with open(p, encoding="utf-8") as fh:
+        for line in fh:
             if line.strip():
                 try:
-                    keys.add(_work_key(json.loads(line)))
+                    row = json.loads(line)
+                    if isinstance(row, dict):
+                        rows.append(row)
                 except ValueError:
                     pass
-    return keys
+    return rows
+
+
+def _merge_existing_read_metadata(node: str, records: List[Dict[str, Any]]) -> int:
+    """Persist a later-round read when the source record was indexed in an earlier round."""
+    existing = _existing_records(node)
+    updates = [r for r in records if r.get("_read_file")]
+    changed = 0
+    for old in existing:
+        for new in updates:
+            if _dedupe_records([new], [old]):       # still present => distinct work
+                continue
+            for key in ("_read_file", "_read_ok", "_truncated", "_resolved_url"):
+                if key in new and old.get(key) != new.get(key):
+                    old[key] = new[key]
+                    changed += 1
+            break
+    if changed:
+        with open(os.path.join(node, "sources.jsonl"), "w", encoding="utf-8") as fh:
+            for row in existing:
+                fh.write(json.dumps(row) + "\n")
+    return changed
 
 
 def _run_cfg(node: str) -> Dict[str, Any]:
     run = treestate._find_run(node)
     return (treestate._read_json(os.path.join(run, "run.json"), {}) or {}) if run else {}
+
+
+def _round_cap(status: Dict[str, Any], cfg: Dict[str, Any]):
+    """Bounded tiers spend one scrutiny unit per round; unlimited/max converge without a cap."""
+    if cfg.get("thoroughness") in ("unlimited", "max"):
+        return None
+    unit = max(float(cfg.get("unit", 4) or 4), 1e-9)
+    return max(1, int(float(status.get("budget", unit) or unit) // unit))
 
 
 def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
@@ -243,9 +490,15 @@ def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
     st = treestate._read_json(os.path.join(node, "status.json"), {}) or {}
     cfg = _run_cfg(node)
     unit = float(cfg.get("unit", 4))
+    cap = _round_cap(st, cfg)
+    completed_rounds = int(st.get("rounds", 0) or 0)
+    if cap is not None and completed_rounds >= cap:
+        raise SystemExit("bounded %s leaf exhausted its %d investigation round(s); use a deeper tier "
+                         "instead of silently overrunning the requested budget" % (
+                             cfg.get("thoroughness", "custom"), cap))
     query = query or st.get("question", "")
     query = _anchor(query, cfg.get("topic", ""))   # keep the leaf tied to the root subject
-    round_no = int(st.get("rounds", 0)) + 1
+    round_no = completed_rounds + 1
     prev_read = int(st.get("n_read", 0) or 0)
     reads = reads or max(3, round(unit))           # ~one scrutiny unit per round, not the whole budget
     treestate.set_status(node, state="active")
@@ -257,14 +510,18 @@ def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
 
     recs, per = retrieve(query, chans, limit, timeout)
     # dedupe at the WORK level (arXiv id / DOI / canonical url) so versions don't duplicate
-    seen, uniq = set(), []
-    for r in recs:
-        wk = _work_key(r)
-        if wk and wk not in seen:
-            seen.add(wk); uniq.append(r)
-    ranked = rankmod.rank(query, uniq)
-    # don't spend read slots re-reading a source already read in a previous round
-    sel = [r for r in rankmod.select_reads(ranked, reads) if not _note_exists(node, r.get("url", ""))]
+    uniq = _dedupe_records(recs)
+    root_topic = cfg.get("topic", "")
+    subject_terms = _subject_terms(root_topic, include_proper=True)[:3]
+    proper_terms = _proper_nouns(root_topic)
+    required_terms = [term for term in subject_terms if term in proper_terms]
+    ranked = rankmod.rank(query, uniq, subject_terms=subject_terms,
+                          required_subject_terms=required_terms)
+    existing = _existing_records(node)
+    already_read = [r for r in existing if r.get("_read_ok")]
+    # Don't spend read slots re-reading the same work under another domain/title variant.
+    read_pool = _dedupe_records(ranked, already_read)
+    sel = [r for r in rankmod.select_reads(read_pool, reads) if not _note_exists(node, r.get("url", ""))]
     treestate.log_decision(node, "investigate",
                            "round %d: retrieved %d -> %d unique; reading %d new" % (
                                round_no, len(recs), len(uniq), len(sel)),
@@ -278,15 +535,17 @@ def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
             continue
         t0 = time.time()
         try:
-            txt, method = readmod.read_url(u, timeout, MAX_READ_CHARS, False)
+            txt, method, resolved_url = _read_source(u, timeout)
             truncated = len(txt) >= MAX_READ_CHARS      # hit the cap -> tail may be missing
-            path = _save_read(node, u, txt, method, truncated)
+            path = _save_read(node, u, txt, method, truncated, resolved_url)
             ok = len(txt.strip()) >= 1500
             r["_read_file"] = os.path.relpath(path, node)
             r["_read_ok"] = ok
             r["_truncated"] = truncated
+            r["_resolved_url"] = resolved_url
             read_meta.append({"url": u, "chars": len(txt), "method": method, "ok": ok,
                               "truncated": truncated,
+                              "resolved_url": resolved_url,
                               "t": round(time.time() - t0, 1), "title": r.get("title", "")})
         except Exception as e:  # noqa: BLE001
             read_meta.append({"url": u, "chars": 0, "method": "FAIL", "ok": False,
@@ -295,12 +554,13 @@ def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
     # node-level dedup across rounds: add_sources only deduped the GLOBAL index, so repeated
     # rounds duplicated this node's sources.jsonl and corrupted independence math. Add only
     # work-keys this node hasn't seen yet.
-    existing = _existing_work_keys(node)
-    new_for_node = [r for r in ranked if _work_key(r) not in existing]
+    _merge_existing_read_metadata(node, ranked)
+    existing = _existing_records(node)
+    new_for_node = _dedupe_records(ranked, existing)
     treestate.add_sources(node, new_for_node)
     _write_evidence(node, query, ranked, sel, per, read_meta, round_no)
     this_ok = sum(1 for m in read_meta if m.get("ok"))
-    treestate.set_status(node, state="investigated", n_sources=len(_existing_work_keys(node)),
+    treestate.set_status(node, state="investigated", n_sources=len(_dedupe_records(_existing_records(node))),
                          n_read=prev_read + this_ok, rounds=round_no)
     return {"node": node, "round": round_no, "query": query, "channels": chans, "unique": len(uniq),
             "reads_ok": this_ok, "reads_total": prev_read + this_ok, "per_channel": per}
@@ -327,7 +587,8 @@ def _write_evidence(node, query, ranked, sel, per, read_meta, round_no=1):
         excerpt = ""
         if r.get("_read_file"):
             try:
-                body = open(os.path.join(node, r["_read_file"]), encoding="utf-8").read()
+                with open(os.path.join(node, r["_read_file"]), encoding="utf-8") as fh:
+                    body = fh.read()
                 excerpt = " ".join(body.split()[:80])
             except OSError:
                 pass
