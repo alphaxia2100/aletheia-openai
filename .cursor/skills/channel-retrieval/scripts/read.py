@@ -69,7 +69,9 @@ def read_url(url: str, timeout: float, max_chars: int, browser: bool = False) ->
     blocked = _blocked(text)
     # 3. Way-around: Jina stubbed/blocked (or forced) -> render in real logged-in Chrome
     if (browser or len(text.strip()) < _STUB or blocked) and _agentreach.browser_available():
-        btxt, _berr = _agentreach.browser_extract(url, max(timeout, 60), max_chars or 40000)
+        # Zero means unlimited on every backend. Do not silently turn an explicitly uncapped reread
+        # back into the default 40k browser cap.
+        btxt, _berr = _agentreach.browser_extract(url, max(timeout, 60), max_chars)
         if btxt and not _blocked(btxt) and len(btxt) > (0 if blocked else len(text)):
             text, method, blocked = btxt, "opencli-browser", False
     if blocked:  # unrecoverable block -> honest failure, not a fake success

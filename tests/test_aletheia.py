@@ -1802,6 +1802,76 @@ class TestKeywordizeRecall(unittest.TestCase):
         self.assertNotIn("hunt", out)
 
 
+class TestHighAccuracyRuntimeLedger(unittest.TestCase):
+    AR = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts")
+
+    @classmethod
+    def _load(cls, name, fname):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(name, os.path.join(cls.AR, fname))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_init_decouples_read_and_reasoning_budgets(self):
+        ts = self._load("runtime_ts_decoupled", "treestate.py")
+        run = ts.init_run("accuracy", thoroughness="exhaustive", base=tempfile.mkdtemp(),
+                          reads_per_round=40, max_read_attempts=640, max_seconds=3600)
+        cfg = read_json(os.path.join(run, "run.json"))
+        self.assertEqual(cfg["unit"], 4.0)
+        self.assertEqual(cfg["limits"], {"max_seconds": 3600,
+                                         "max_reads_per_round": 40,
+                                         "max_read_attempts": 640})
+
+    def test_run_read_cap_is_atomic_and_fail_closed(self):
+        ts = self._load("runtime_ts_cap", "treestate.py")
+        run = ts.init_run("accuracy", base=tempfile.mkdtemp(), reads_per_round=4,
+                          max_read_attempts=3)
+        node = os.path.join(run, "tree", "root")
+        ts.reserve_runtime(node, "read", 2, "worker-a")
+        with self.assertRaises(SystemExit):
+            ts.reserve_runtime(node, "read", 2, "worker-b")
+        ledger = read_json(os.path.join(run, "runtime-ledger.json"))
+        self.assertEqual(ledger["read_attempts_reserved"], 2)
+        self.assertEqual(ledger["termination_reason"], "run_read_limit")
+
+    def test_candidates_honors_explicit_reads(self):
+        ts = self._load("runtime_ts_reads", "treestate.py")
+        prior = sys.modules.get("treestate")
+        sys.modules["treestate"] = ts
+        try:
+            inv = self._load("runtime_inv_reads", "investigate.py")
+        finally:
+            if prior is None:
+                sys.modules.pop("treestate", None)
+            else:
+                sys.modules["treestate"] = prior
+        run = ts.init_run("pump reliability", base=tempfile.mkdtemp(), reads_per_round=7)
+        node = os.path.join(run, "tree", "root")
+        inv.retrieve = lambda *_a, **_k: ([{"url": "https://x.example/a", "title": "pump reliability",
+                                             "snippet": "pump reliability evidence",
+                                             "index_of_origin": "stub"}], {"stub": {"n": 1}})
+        inv.rankmod.rank = lambda _q, recs, **_k: [dict(r, _class="evidence",
+                                                        _index_group="stub", _relnorm=1.0,
+                                                        score=1.0) for r in recs]
+        inv.router.route = lambda *_a, **_k: {"channels": ["stub"]}
+        out = inv.gather_candidates(node, channels=["stub"], reads=7)
+        self.assertEqual(out["reads_suggested"], 7)
+
+    def test_browser_zero_max_chars_stays_unlimited(self):
+        import importlib.util
+        path = os.path.join(ROOT, ".cursor", "skills", "channel-retrieval", "scripts", "read.py")
+        spec = importlib.util.spec_from_file_location("runtime_read_zero", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        seen = []
+        module._agentreach.browser_available = lambda: True
+        module._agentreach.browser_extract = lambda _u, _t, n: (seen.append(n) or ("x" * 2000), "")
+        text, method = module.read_url("https://example.invalid", 1, 0, browser=True)
+        self.assertEqual((len(text), method), (2000, "opencli-browser"))
+        self.assertEqual(seen, [0])
+
+
 class TestEvalJudgeCore(unittest.TestCase):
     """The eval measurement core must be HONEST: it declares a winner ONLY when the win-rate CI clears
     0.5 AND the automated judge is calibrated to the human anchor — otherwise 'inconclusive'. This is
