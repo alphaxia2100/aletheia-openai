@@ -229,7 +229,18 @@ def audit_claim_scope(run: str, auditor: str, added_claims: int = 0,
 def _runtime_telemetry(run: str) -> Dict[str, Any]:
     """Aggregate selection-path activation and cost counters emitted by investigate.py."""
     events = []
+    read_artifacts = set()
+    engine_artifacts = set()
     for node in _nodes_depth_first(run):
+        notes = os.path.join(node, "notes")
+        for _rel, path in _note_files(notes):
+            read_artifacts.add(os.path.realpath(path))
+        for source in _jsonl_dicts(os.path.join(node, "sources.jsonl")):
+            rel = str(source.get("_read_file") or "").strip()
+            if rel:
+                path = os.path.realpath(os.path.join(node, rel))
+                if os.path.isfile(path):
+                    engine_artifacts.add(path)
         for event in _jsonl_dicts(os.path.join(node, "telemetry.jsonl")):
             tagged = dict(event)
             tagged["_node"] = node       # disambiguate equal round numbers across different leaves
@@ -268,6 +279,11 @@ def _runtime_telemetry(run: str) -> Dict[str, Any]:
         "abstained_rounds": sum(1 for e in rounds if e.get("abstained") is True),
         "triage_requeries": sum(1 for e in events if e.get("event") == "triage_requery"),
         "read_seconds": round(sum(float(e.get("read_seconds", 0) or 0) for e in rounds), 1),
+        # Workers may chase a linked primary or make an uncapped reread outside investigate.py. Those
+        # files are valid evidence, but they are additional cost and must not disappear from an A/B.
+        "read_artifacts": len(read_artifacts),
+        "engine_read_artifacts": len(read_artifacts & engine_artifacts),
+        "direct_or_manual_read_artifacts": len(read_artifacts - engine_artifacts),
     }
 
 

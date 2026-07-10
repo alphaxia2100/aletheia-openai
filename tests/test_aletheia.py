@@ -735,6 +735,27 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         self.assertEqual(s["runtime"]["retrieved"], 9)
         self.assertEqual(s["runtime"]["completed_round_retrieved"], 9)
 
+    def test_runtime_exposes_read_artifacts_outside_engine_telemetry(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "read artifact accounting", "--base", base],
+            text=True).strip()
+        node = os.path.join(run, "tree", "root")
+        notes = os.path.join(node, "notes")
+        os.makedirs(os.path.join(notes, "decisive"))
+        with open(os.path.join(notes, "engine.md"), "w", encoding="utf-8") as fh:
+            fh.write("engine-selected primary")
+        with open(os.path.join(notes, "decisive", "manual.md"), "w", encoding="utf-8") as fh:
+            fh.write("manually chased primary")
+        with open(os.path.join(node, "sources.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"url": "https://engine", "_read_file": "notes/engine.md",
+                                 "_read_ok": True}) + "\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        s = json.loads(subprocess.check_output([sys.executable, rep, "score", "--run", run], text=True))
+        self.assertEqual(s["runtime"]["read_artifacts"], 2)
+        self.assertEqual(s["runtime"]["engine_read_artifacts"], 1)
+        self.assertEqual(s["runtime"]["direct_or_manual_read_artifacts"], 1)
+
     def test_report_score_can_persist_machine_readable_artifact(self):
         base = tempfile.mkdtemp()
         run = subprocess.check_output(

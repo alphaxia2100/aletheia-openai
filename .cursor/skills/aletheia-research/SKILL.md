@@ -169,8 +169,10 @@ A relevance-gated read floor protects only the deterministic path from false zer
 forcing the agent path to ingest a source it judged unsuitable.
 Every manifest and completed round appends `telemetry.jsonl` (retrieval passes, selector used,
 retrieved/eligible/selected counts, attempts/successes/failures, floor use, requeries, abstentions);
-`report.py score` aggregates it under `runtime`. Use these counters to prove the intended path executed
-and enforce search/read cost parity in A/Bs.
+`report.py score` aggregates it under `runtime` and also counts every persisted note under
+`read_artifacts`, separating engine-tracked from `direct_or_manual_read_artifacts`. Use both the event
+counters and artifact counts to prove the intended path executed and enforce search/read cost parity
+in A/Bs—manual primary chasing and uncapped rereads are real cost, not free work.
 Repeat only while the bounded node has scrutiny rounds remaining; `unlimited`/`max` continue to
 convergence. If evidence marks a load-bearing read `TRUNCATED`, re-read it without the cap:
 `python3 "$AL/channel-retrieval/scripts/read.py" URL --outdir "<NODE_DIR>/notes/full" --max-chars 0`.
