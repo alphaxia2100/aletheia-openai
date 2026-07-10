@@ -1,0 +1,247 @@
+{
+  "batches": [
+    {
+      "best_brier": "calibrated",
+      "dimension": "probabilistic-calibration",
+      "id": "cal-01-reliability",
+      "release_trusted": false,
+      "status": "meta-eval-only: insufficient calibration sample for release claim",
+      "systems": {
+        "calibrated": {
+          "auroc": 0.75,
+          "brier": 0.1875,
+          "ece_exact_bins": 0.0,
+          "log_loss": 0.562335,
+          "meets_minimum_release_sample": false,
+          "n": 16,
+          "positive_rate": 0.5,
+          "release_invalid_reasons": [
+            "fewer_than_30_labeled_outcomes",
+            "release_provenance_not_attested"
+          ],
+          "release_provenance_attested": false,
+          "reliability": [
+            {
+              "absolute_gap": 0.0,
+              "confidence": 0.25,
+              "n": 8,
+              "observed_frequency": 0.25
+            },
+            {
+              "absolute_gap": 0.0,
+              "confidence": 0.75,
+              "n": 8,
+              "observed_frequency": 0.75
+            }
+          ],
+          "valid_for_meta_eval": true,
+          "valid_for_release_claim": false
+        },
+        "overconfident": {
+          "auroc": 0.75,
+          "brier": 0.2451,
+          "ece_exact_bins": 0.24,
+          "log_loss": 1.15883,
+          "meets_minimum_release_sample": false,
+          "n": 16,
+          "positive_rate": 0.5,
+          "release_invalid_reasons": [
+            "fewer_than_30_labeled_outcomes",
+            "release_provenance_not_attested"
+          ],
+          "release_provenance_attested": false,
+          "reliability": [
+            {
+              "absolute_gap": 0.24,
+              "confidence": 0.01,
+              "n": 8,
+              "observed_frequency": 0.25
+            },
+            {
+              "absolute_gap": 0.24,
+              "confidence": 0.99,
+              "n": 8,
+              "observed_frequency": 0.75
+            }
+          ],
+          "valid_for_meta_eval": true,
+          "valid_for_release_claim": false
+        },
+        "uninformative": {
+          "auroc": 0.5,
+          "brier": 0.25,
+          "ece_exact_bins": 0.0,
+          "log_loss": 0.693147,
+          "meets_minimum_release_sample": false,
+          "n": 16,
+          "positive_rate": 0.5,
+          "release_invalid_reasons": [
+            "fewer_than_30_labeled_outcomes",
+            "release_provenance_not_attested"
+          ],
+          "release_provenance_attested": false,
+          "reliability": [
+            {
+              "absolute_gap": 0.0,
+              "confidence": 0.5,
+              "n": 16,
+              "observed_frequency": 0.5
+            }
+          ],
+          "valid_for_meta_eval": true,
+          "valid_for_release_claim": false
+        }
+      }
+    },
+    {
+      "best_brier": "honest",
+      "dimension": "probabilistic-calibration",
+      "id": "cal-02-overconfidence-shift",
+      "release_trusted": false,
+      "status": "meta-eval-only: insufficient calibration sample for release claim",
+      "systems": {
+        "honest": {
+          "auroc": 1.0,
+          "brier": 0.2025,
+          "ece_exact_bins": 0.45,
+          "log_loss": 0.597837,
+          "meets_minimum_release_sample": false,
+          "n": 10,
+          "positive_rate": 0.5,
+          "release_invalid_reasons": [
+            "fewer_than_30_labeled_outcomes",
+            "release_provenance_not_attested"
+          ],
+          "release_provenance_attested": false,
+          "reliability": [
+            {
+              "absolute_gap": 0.45,
+              "confidence": 0.45,
+              "n": 5,
+              "observed_frequency": 0.0
+            },
+            {
+              "absolute_gap": 0.45,
+              "confidence": 0.55,
+              "n": 5,
+              "observed_frequency": 1.0
+            }
+          ],
+          "valid_for_meta_eval": true,
+          "valid_for_release_claim": false
+        },
+        "rhetorically_certain": {
+          "auroc": 0.5,
+          "brier": 0.4525,
+          "ece_exact_bins": 0.45,
+          "log_loss": 1.523513,
+          "meets_minimum_release_sample": false,
+          "n": 10,
+          "positive_rate": 0.5,
+          "release_invalid_reasons": [
+            "fewer_than_30_labeled_outcomes",
+            "release_provenance_not_attested"
+          ],
+          "release_provenance_attested": false,
+          "reliability": [
+            {
+              "absolute_gap": 0.45,
+              "confidence": 0.95,
+              "n": 10,
+              "observed_frequency": 0.5
+            }
+          ],
+          "valid_for_meta_eval": true,
+          "valid_for_release_claim": false
+        }
+      }
+    },
+    {
+      "dimension": "selective-prediction",
+      "id": "cal-03-selective-risk",
+      "release_trusted": false,
+      "selective_risk": {
+        "aurc_discrete": 0.213988,
+        "curve": [
+          {
+            "abstention_rate": 0.875,
+            "accuracy": 1.0,
+            "coverage": 0.125,
+            "retained": 1,
+            "risk": 0.0,
+            "threshold": 0.99
+          },
+          {
+            "abstention_rate": 0.75,
+            "accuracy": 1.0,
+            "coverage": 0.25,
+            "retained": 2,
+            "risk": 0.0,
+            "threshold": 0.92
+          },
+          {
+            "abstention_rate": 0.625,
+            "accuracy": 1.0,
+            "coverage": 0.375,
+            "retained": 3,
+            "risk": 0.0,
+            "threshold": 0.85
+          },
+          {
+            "abstention_rate": 0.5,
+            "accuracy": 0.75,
+            "coverage": 0.5,
+            "retained": 4,
+            "risk": 0.25,
+            "threshold": 0.78
+          },
+          {
+            "abstention_rate": 0.375,
+            "accuracy": 0.8,
+            "coverage": 0.625,
+            "retained": 5,
+            "risk": 0.2,
+            "threshold": 0.65
+          },
+          {
+            "abstention_rate": 0.25,
+            "accuracy": 0.666667,
+            "coverage": 0.75,
+            "retained": 6,
+            "risk": 0.333333,
+            "threshold": 0.55
+          },
+          {
+            "abstention_rate": 0.125,
+            "accuracy": 0.571429,
+            "coverage": 0.875,
+            "retained": 7,
+            "risk": 0.428571,
+            "threshold": 0.35
+          },
+          {
+            "abstention_rate": 0.0,
+            "accuracy": 0.5,
+            "coverage": 1.0,
+            "retained": 8,
+            "risk": 0.5,
+            "threshold": 0.15
+          }
+        ],
+        "meets_minimum_release_sample": false,
+        "n": 8,
+        "release_invalid_reasons": [
+          "fewer_than_30_labeled_outcomes",
+          "release_provenance_not_attested"
+        ],
+        "release_provenance_attested": false,
+        "valid_for_meta_eval": false,
+        "valid_for_release_claim": false
+      },
+      "status": "meta-eval-only: insufficient selective-risk sample for release claim"
+    }
+  ],
+  "fixture_sha256": "22f3999298ca1346aff9ab4ecf9896e7d1ab10f4346b97b2c9507bfcb93342a8",
+  "release_trusted": false,
+  "schema_version": 2
+}

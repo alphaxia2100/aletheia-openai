@@ -33,6 +33,10 @@ import dedupe  # noqa: E402
 import rubric  # noqa: E402
 import verify  # noqa: E402  (deep-aletheia citation gate)
 import score_run  # noqa: E402  (deep-aletheia run scorer)
+import evaluator_v2  # noqa: E402
+import calibration_score  # noqa: E402
+import defect_meta_eval  # noqa: E402
+import persist_judges  # noqa: E402
 import treestate  # noqa: E402  (deep-aletheia blackboard)
 import investigate  # noqa: E402  (deep-aletheia leaf engine)
 import synthesize  # noqa: E402  (deep-aletheia synthesis + gate)
@@ -339,14 +343,14 @@ class TestScoreRunVerdicts(unittest.TestCase):
 
     def test_citation_accuracy_and_breakdown(self):
         run = self._run_with_verify(["supported", "supported", "contradicted", "unsupported"])
-        s = score_run.score(run)
+        s = score_run.score(run, require_scope=False)
         self.assertEqual(s["citation_accuracy"], 0.5)
         self.assertEqual(s["verdicts"], {"supported": 2, "contradicted": 1, "unsupported": 1,
                                          "off_topic": 0, "broken": 0, "awaiting_llm_check": 0})
 
     def test_citation_accuracy_is_none_before_llm_pass(self):
         run = self._run_with_verify(["relevant", "relevant", "relevant"])
-        s = score_run.score(run)
+        s = score_run.score(run, require_scope=False)
         self.assertIsNone(s["citation_accuracy"])          # not yet Fact-Checked
         self.assertEqual(s["verdicts"]["awaiting_llm_check"], 3)
         self.assertEqual(s["on_topic_rate"], 1.0)
@@ -355,7 +359,7 @@ class TestScoreRunVerdicts(unittest.TestCase):
         # B4: a readable off_topic citation is a FAILED citation, not a non-event — it must stay in
         # the precision denominator so a wrongly-dropped claim can't silently vanish & inflate precision.
         run = self._run_with_verify(["supported", "off_topic"])
-        s = score_run.score(run)
+        s = score_run.score(run, require_scope=False)
         self.assertEqual(s["citation_denominator"], 2)     # supported + off_topic (NOT just supported)
         self.assertEqual(s["citation_precision"], 0.5)     # 1 supported / 2 judged (was 1.0 before the fix)
         self.assertTrue(s["citation_complete"])            # nothing awaiting the LLM
@@ -363,14 +367,14 @@ class TestScoreRunVerdicts(unittest.TestCase):
 
     def test_borderline_counts_as_awaiting_llm(self):
         run = self._run_with_verify(["supported", "borderline"])
-        s = score_run.score(run)
+        s = score_run.score(run, require_scope=False)
         self.assertEqual(s["verdicts"]["awaiting_llm_check"], 1)   # borderline still needs the LLM
         self.assertFalse(s["citation_complete"])                   # so the pass is not complete
         self.assertIsNone(s["citation_accuracy"])
 
     def test_broken_link_blocks_completion(self):
         run = self._run_with_verify(["supported", "broken"])
-        s = score_run.score(run)
+        s = score_run.score(run, require_scope=False)
         self.assertFalse(s["citation_complete"])
         self.assertEqual(s["citation_coverage"], 0.5)
         self.assertIsNone(s["citation_accuracy"])
@@ -1834,6 +1838,173 @@ class TestEvalJudgeCore(unittest.TestCase):
         s = js.summarize(r)
         self.assertEqual(s["objective_delta_candidate_minus_baseline"]["citation_precision"], 0.1)
         self.assertEqual(s["ties"], 1)
+
+    def test_one_matching_anchor_is_not_calibration(self):
+        r = {"pairwise": [{"topic": "a", "winner": "candidate"}],
+             "human": [{"topic": "a", "winner": "candidate"}]}
+        s = js.summarize(r)
+        self.assertEqual(s["judge_calibration"]["cohen_kappa"], 1.0)
+        self.assertFalse(s["judge_calibration"]["trusted"])
+        self.assertIn("insufficient_anchor_count", s["judge_calibration"]["reasons"])
+
+    def test_exact_order_pairs_can_pass_calibration(self):
+        pairwise, human = [], []
+        for i in range(30):
+            topic = "t%02d" % i
+            winner = "candidate" if i < 15 else "baseline"
+            shown1 = "A" if winner == "candidate" else "B"
+            shown2 = "B" if winner == "candidate" else "A"
+            pairwise += [
+                {"topic": topic, "pair_id": "p", "order": {"A": "candidate", "B": "baseline"},
+                 "winner_shown": shown1},
+                {"topic": topic, "pair_id": "p", "order": {"A": "baseline", "B": "candidate"},
+                 "winner_shown": shown2},
+            ]
+            human.append({"topic": topic, "winner": winner})
+        s = js.summarize({"pairwise": pairwise, "human": human})
+        self.assertTrue(s["order_protocol"]["valid"])
+        self.assertTrue(s["judge_calibration"]["trusted"])
+
+    def test_position_inconsistent_pair_becomes_tie(self):
+        rows = [
+            {"topic": "t", "pair_id": "p", "order": {"A": "candidate", "B": "baseline"},
+             "winner_shown": "A"},
+            {"topic": "t", "pair_id": "p", "order": {"A": "baseline", "B": "candidate"},
+             "winner_shown": "A"},
+        ]
+        s = js.summarize({"pairwise": rows})
+        self.assertEqual(s["per_topic"]["t"], "tie")
+        self.assertEqual(s["order_protocol"]["position_inconsistent_pairs"], 1)
+
+    def test_duplicate_order_is_not_an_exact_pair(self):
+        rows = [
+            {"topic": "t", "pair_id": "p", "order": {"A": "candidate", "B": "baseline"},
+             "winner_shown": "A"},
+            {"topic": "t", "pair_id": "p", "order": {"A": "candidate", "B": "baseline"},
+             "winner_shown": "A"},
+            {"topic": "t", "pair_id": "p", "order": {"A": "baseline", "B": "candidate"},
+             "winner_shown": "B"},
+        ]
+        s = js.summarize({"pairwise": rows})
+        self.assertFalse(s["order_protocol"]["valid"])
+        self.assertEqual(s["order_protocol"]["duplicate_order_pairs"], 1)
+
+    def test_null_objective_metrics_are_not_subtracted(self):
+        rows = [
+            {"topic": "t", "pair_id": "p", "order": {"A": "candidate", "B": "baseline"},
+             "winner_shown": "A"},
+            {"topic": "t", "pair_id": "p", "order": {"A": "baseline", "B": "candidate"},
+             "winner_shown": "B"},
+        ]
+        objective = {"candidate": {"t": {"factual_accuracy": None, "citation_precision": 1.0}},
+                     "baseline": {"t": {"factual_accuracy": None, "citation_precision": 0.5}}}
+        s = js.summarize({"pairwise": rows, "objective": objective})
+        self.assertEqual(s["objective_delta_candidate_minus_baseline"], {"citation_precision": 0.5})
+        self.assertEqual(s["objective_delta_n_topics"], {"citation_precision": 1})
+
+
+class TestEvaluatorV2(unittest.TestCase):
+    def _run(self):
+        run = tempfile.mkdtemp()
+        os.makedirs(os.path.join(run, "tree"))
+        with open(os.path.join(run, "run.json"), "w", encoding="utf-8") as fh:
+            json.dump({"topic": "t", "version": "aletheia-research 0.4.3"}, fh)
+        with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"claim": "c", "url": "https://x", "verdict": "supported"}) + "\n")
+        return run
+
+    def test_scope_audit_is_required_even_for_legacy_eval_run(self):
+        score = evaluator_v2.score_run(self._run())
+        self.assertIsNone(score["citation_accuracy"])
+        self.assertFalse(score["scope_gate_passed"])
+        self.assertIn("strict_eval_requires_claim_scope_audit", score["claim_scope_audit"]["reasons"])
+
+    def test_legacy_diagnostic_never_becomes_factual_accuracy(self):
+        score = evaluator_v2.score_run(self._run(), require_scope=False)
+        self.assertEqual(score["citation_entailment_precision"], 1.0)
+        self.assertIsNone(score["factual_accuracy"])
+
+    def test_calibration_scores_and_rejects_small_release_claim(self):
+        outcomes = [1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0]
+        calibrated = [0.75] * 8 + [0.25] * 8
+        overconfident = [0.99] * 8 + [0.01] * 8
+        a = calibration_score.score_probabilities(outcomes, calibrated)
+        b = calibration_score.score_probabilities(outcomes, overconfident)
+        self.assertLess(a["brier"], b["brier"])
+        self.assertTrue(a["valid_for_meta_eval"])
+        self.assertFalse(a["valid_for_release_claim"])
+
+    def test_calibration_sample_size_alone_is_not_release_provenance(self):
+        outcomes = [0, 1] * 15
+        probabilities = [0.25, 0.75] * 15
+        score = calibration_score.score_probabilities(outcomes, probabilities)
+        self.assertTrue(score["meets_minimum_release_sample"])
+        self.assertFalse(score["valid_for_release_claim"])
+        self.assertIn("release_provenance_not_attested", score["release_invalid_reasons"])
+        selective = calibration_score.score_selective_risk([1, 0], [0.9, 0.1])
+        self.assertEqual(selective["curve"][0]["abstention_rate"], 0.5)
+
+    def test_judge_artifacts_all_persist_and_mapping_is_private(self):
+        out = tempfile.mkdtemp()
+        blind = os.path.join(out, "blind-inputs", "t")
+        os.makedirs(blind)
+        candidate, baseline = os.path.join(blind, "input-1.md"), os.path.join(blind, "input-2.md")
+        with open(candidate, "w", encoding="utf-8") as fh:
+            fh.write("candidate content")
+        with open(baseline, "w", encoding="utf-8") as fh:
+            fh.write("baseline content")
+        payload = {
+            "judge_artifacts": [
+                {"topic": "t", "pair_id": "p", "judge_id": "j1",
+                 "judge_model": "test-model", "order": {"A": "candidate", "B": "baseline"},
+                 "winner_shown": "A", "winner": "candidate", "A_path": candidate,
+                 "B_path": baseline, "prompt": "Read %s and %s" % (candidate, baseline)},
+                {"topic": "t", "pair_id": "p", "judge_id": "j2",
+                 "judge_model": "test-model", "order": {"A": "baseline", "B": "candidate"},
+                 "winner_shown": "B", "winner": "candidate", "A_path": baseline,
+                 "B_path": candidate, "prompt": "Read %s and %s" % (baseline, candidate)},
+            ],
+            "anchor": [{"topic": "t", "A": candidate, "B": baseline, "_cand_is": "A"}],
+        }
+        manifest = persist_judges.persist(payload, out)
+        self.assertEqual(manifest["judge_artifact_count"], 2)
+        self.assertTrue(manifest["every_judge_artifact_persisted"])
+        self.assertTrue(manifest["paired_schema_valid"])
+        self.assertTrue(manifest["anchor_schema_valid"])
+        self.assertTrue(manifest["anchor_key_complete"])
+        with open(os.path.join(out, "anchor-public.jsonl"), encoding="utf-8") as fh:
+            self.assertNotIn("cand", fh.read())
+        self.assertEqual(os.stat(os.path.join(out, "anchor-key.jsonl")).st_mode & 0o777, 0o600)
+
+    def test_self_authored_defect_labels_cannot_validate_implementation(self):
+        fixture = os.path.join(ROOT, "docs", "evals", "fixtures", "evaluator-known-defects.jsonl")
+        here = os.path.join(ROOT, "docs", "evals", "results")
+        result = defect_meta_eval.compare(
+            fixture,
+            os.path.join(here, "evaluator-v2-old-judgments.jsonl"),
+            os.path.join(here, "evaluator-v2-self-authored-design-target-judgments.jsonl"),
+            old_provenance="self-authored-capability-audit",
+            new_provenance="self-authored-design-target",
+        )
+        self.assertTrue(result["calibration_target_conformance_passed"])
+        self.assertFalse(result["implementation_validated"])
+        self.assertIn("new_judgments_not_independent", result["release_gate"]["reasons"])
+
+    def test_evaluator_import_keeps_frozen_baseline_modules_isolated(self):
+        for module in (treestate, investigate, router):
+            self.assertIn("deep-aletheia", os.path.realpath(module.__file__))
+
+    def test_defect_control_matchers(self):
+        self.assertTrue(defect_meta_eval._matches(
+            "clean_or_tie_never_mutated", {"relation": "tie"}))
+        self.assertTrue(defect_meta_eval._matches(
+            "clean_better_in_both_orders",
+            {"relation": "clean_better", "orders": {"candidate_first": "clean_better",
+                                                        "baseline_first": "clean_better"}}))
+        self.assertFalse(defect_meta_eval._matches(
+            "tie_in_both_orders",
+            {"relation": "tie", "orders": {"candidate_first": "tie",
+                                               "baseline_first": "clean_better"}}))
 
 
 if __name__ == "__main__":

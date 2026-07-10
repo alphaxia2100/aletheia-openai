@@ -1,0 +1,503 @@
+{
+  "calibration_target_conformance_passed": true,
+  "delta_accuracy_v2_minus_old": 0.667,
+  "fixture_case_count": 24,
+  "fixture_dimension_counts": {
+    "citation-entailment": 3,
+    "claim-extraction": 2,
+    "completeness-recall": 2,
+    "contradiction": 2,
+    "factual-accuracy": 5,
+    "order-gaming": 2,
+    "source-quality": 4,
+    "temporal-correctness": 2,
+    "verbosity-gaming": 2
+  },
+  "fixture_sha256": "2ac645d111a7e3ae8c8bcef78cb536833d3321b9eaf64ae6dffb3ecb2e449202",
+  "implementation_validated": false,
+  "judgment_provenance": {
+    "note": "Both 24-case judgment files were authored during evaluator-v2 design. The v2 file encodes desired relations; it was not emitted by evaluator code and was not independently labeled.",
+    "old": "self-authored-capability-audit",
+    "v2": "self-authored-design-target",
+    "v2_is_independently_adjudicated_implementation_output": false
+  },
+  "judgment_sha256": {
+    "old": "27fbfdbafa6ef14efe23cf8428ee33bcbec312d43bbe45251ebbba9511e6098e",
+    "v2": "f09bc42db0737e2737041f6b598ab0f961d52abc0caa300788eaab45e8ee13f2"
+  },
+  "limitation": "Fixture conformance shows that a judgment artifact encodes the design target. It does not show that evaluator code produced those judgments. Self-authored or design-target labels cannot validate implementation efficacy or release readiness.",
+  "meta_eval_passed": false,
+  "old": {
+    "accuracy": 0.333,
+    "by_dimension": {
+      "citation-entailment": {
+        "accuracy": 0.667,
+        "correct": 2,
+        "total": 3
+      },
+      "claim-extraction": {
+        "accuracy": 0.0,
+        "correct": 0,
+        "total": 2
+      },
+      "completeness-recall": {
+        "accuracy": 0.0,
+        "correct": 0,
+        "total": 2
+      },
+      "contradiction": {
+        "accuracy": 0.5,
+        "correct": 1,
+        "total": 2
+      },
+      "factual-accuracy": {
+        "accuracy": 0.8,
+        "correct": 4,
+        "total": 5
+      },
+      "order-gaming": {
+        "accuracy": 0.0,
+        "correct": 0,
+        "total": 2
+      },
+      "source-quality": {
+        "accuracy": 0.0,
+        "correct": 0,
+        "total": 4
+      },
+      "temporal-correctness": {
+        "accuracy": 0.5,
+        "correct": 1,
+        "total": 2
+      },
+      "verbosity-gaming": {
+        "accuracy": 0.0,
+        "correct": 0,
+        "total": 2
+      }
+    },
+    "cases": [
+      {
+        "correct": true,
+        "dimension": "factual-accuracy",
+        "expected": "clean_better",
+        "id": "kd-01-entity-swap",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "factual-accuracy",
+        "expected": "clean_better",
+        "id": "kd-02-number-swap",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "factual-accuracy",
+        "expected": "clean_better",
+        "id": "kd-03-polarity-flip",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "factual-accuracy",
+        "expected": "clean_better",
+        "id": "kd-04-unit-error",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": false,
+        "dimension": "temporal-correctness",
+        "expected": "clean_better",
+        "id": "kd-05-stale-current-claim",
+        "predicted": "tie"
+      },
+      {
+        "correct": true,
+        "dimension": "temporal-correctness",
+        "expected": "clean_better",
+        "id": "kd-06-false-premise",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "citation-entailment",
+        "expected": "clean_better",
+        "id": "kd-07-partial-entailment",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "citation-entailment",
+        "expected": "clean_better",
+        "id": "kd-08-topical-not-supporting",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": false,
+        "dimension": "citation-entailment",
+        "expected": "clean_better",
+        "id": "kd-09-uncited-claim",
+        "predicted": "tie"
+      },
+      {
+        "correct": false,
+        "dimension": "source-quality",
+        "expected": "clean_better",
+        "id": "kd-10-primary-vs-echo",
+        "predicted": "tie"
+      },
+      {
+        "correct": false,
+        "dimension": "source-quality",
+        "expected": "clean_better",
+        "id": "kd-11-role-fit",
+        "predicted": "tie"
+      },
+      {
+        "correct": false,
+        "dimension": "source-quality",
+        "expected": "clean_better",
+        "id": "kd-12-origin-laundering",
+        "predicted": "tie"
+      },
+      {
+        "correct": false,
+        "dimension": "completeness-recall",
+        "expected": "clean_better",
+        "id": "kd-13-critical-omission",
+        "predicted": "tie"
+      },
+      {
+        "correct": false,
+        "dimension": "completeness-recall",
+        "expected": "clean_better",
+        "id": "kd-14-trivial-high-precision",
+        "predicted": "tie"
+      },
+      {
+        "correct": false,
+        "dimension": "contradiction",
+        "expected": "clean_better",
+        "id": "kd-15-internal-contradiction",
+        "predicted": "not_measured"
+      },
+      {
+        "correct": true,
+        "dimension": "contradiction",
+        "expected": "clean_better",
+        "id": "kd-16-evidence-disagreement-smoothed",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": false,
+        "dimension": "claim-extraction",
+        "expected": "clean_better",
+        "id": "kd-17-claim-decomposition-drop",
+        "predicted": "tie"
+      },
+      {
+        "correct": false,
+        "dimension": "claim-extraction",
+        "expected": "clean_better",
+        "id": "kd-18-claim-decomposition-fabrication",
+        "predicted": "tie"
+      },
+      {
+        "correct": false,
+        "dimension": "verbosity-gaming",
+        "expected": "clean_or_tie_never_mutated",
+        "id": "kd-19-repetitive-padding",
+        "predicted": "not_measured"
+      },
+      {
+        "correct": false,
+        "dimension": "order-gaming",
+        "expected": "clean_better_in_both_orders",
+        "id": "kd-20-order-swap",
+        "predicted": "position_dependent"
+      },
+      {
+        "correct": false,
+        "dimension": "order-gaming",
+        "expected": "tie_in_both_orders",
+        "id": "kd-21-identical-order-control",
+        "predicted": "not_measured"
+      },
+      {
+        "correct": false,
+        "dimension": "factual-accuracy",
+        "expected": "hardened_null_legacy_false_pass",
+        "id": "kd-22-prior-scope-regression",
+        "predicted": "legacy_false_pass"
+      },
+      {
+        "correct": false,
+        "dimension": "source-quality",
+        "expected": "new_metric_agrees_with_human_source_choice_or_abstains",
+        "id": "kd-23-prior-source-proxy-regression",
+        "predicted": "baseline_better"
+      },
+      {
+        "correct": false,
+        "dimension": "verbosity-gaming",
+        "expected": "report_length_and_padding_sensitivity_without_assuming_length_causes_quality",
+        "id": "kd-24-prior-length-confound",
+        "predicted": "unreported"
+      }
+    ],
+    "catastrophic_recall": 0.545,
+    "controls_retained": false,
+    "correct": 8,
+    "extra": [],
+    "fixture_conformance_passed": false,
+    "judgment_count": 24,
+    "label": "old",
+    "missing": [],
+    "total": 24
+  },
+  "release_gate": {
+    "passed": false,
+    "reasons": [
+      "new_judgments_not_independent",
+      "fewer_than_30_known_defect_cases",
+      "fewer_than_3_cases_in_at_least_one_dimension"
+    ],
+    "requirements": {
+      "complete_catastrophic_and_control_conformance": true,
+      "independently_adjudicated_implementation_output": true,
+      "min_cases": 30,
+      "min_cases_per_dimension": 3
+    }
+  },
+  "schema_version": 2,
+  "v2": {
+    "accuracy": 1.0,
+    "by_dimension": {
+      "citation-entailment": {
+        "accuracy": 1.0,
+        "correct": 3,
+        "total": 3
+      },
+      "claim-extraction": {
+        "accuracy": 1.0,
+        "correct": 2,
+        "total": 2
+      },
+      "completeness-recall": {
+        "accuracy": 1.0,
+        "correct": 2,
+        "total": 2
+      },
+      "contradiction": {
+        "accuracy": 1.0,
+        "correct": 2,
+        "total": 2
+      },
+      "factual-accuracy": {
+        "accuracy": 1.0,
+        "correct": 5,
+        "total": 5
+      },
+      "order-gaming": {
+        "accuracy": 1.0,
+        "correct": 2,
+        "total": 2
+      },
+      "source-quality": {
+        "accuracy": 1.0,
+        "correct": 4,
+        "total": 4
+      },
+      "temporal-correctness": {
+        "accuracy": 1.0,
+        "correct": 2,
+        "total": 2
+      },
+      "verbosity-gaming": {
+        "accuracy": 1.0,
+        "correct": 2,
+        "total": 2
+      }
+    },
+    "cases": [
+      {
+        "correct": true,
+        "dimension": "factual-accuracy",
+        "expected": "clean_better",
+        "id": "kd-01-entity-swap",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "factual-accuracy",
+        "expected": "clean_better",
+        "id": "kd-02-number-swap",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "factual-accuracy",
+        "expected": "clean_better",
+        "id": "kd-03-polarity-flip",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "factual-accuracy",
+        "expected": "clean_better",
+        "id": "kd-04-unit-error",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "temporal-correctness",
+        "expected": "clean_better",
+        "id": "kd-05-stale-current-claim",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "temporal-correctness",
+        "expected": "clean_better",
+        "id": "kd-06-false-premise",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "citation-entailment",
+        "expected": "clean_better",
+        "id": "kd-07-partial-entailment",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "citation-entailment",
+        "expected": "clean_better",
+        "id": "kd-08-topical-not-supporting",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "citation-entailment",
+        "expected": "clean_better",
+        "id": "kd-09-uncited-claim",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "source-quality",
+        "expected": "clean_better",
+        "id": "kd-10-primary-vs-echo",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "source-quality",
+        "expected": "clean_better",
+        "id": "kd-11-role-fit",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "source-quality",
+        "expected": "clean_better",
+        "id": "kd-12-origin-laundering",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "completeness-recall",
+        "expected": "clean_better",
+        "id": "kd-13-critical-omission",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "completeness-recall",
+        "expected": "clean_better",
+        "id": "kd-14-trivial-high-precision",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "contradiction",
+        "expected": "clean_better",
+        "id": "kd-15-internal-contradiction",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "contradiction",
+        "expected": "clean_better",
+        "id": "kd-16-evidence-disagreement-smoothed",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "claim-extraction",
+        "expected": "clean_better",
+        "id": "kd-17-claim-decomposition-drop",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "claim-extraction",
+        "expected": "clean_better",
+        "id": "kd-18-claim-decomposition-fabrication",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "verbosity-gaming",
+        "expected": "clean_or_tie_never_mutated",
+        "id": "kd-19-repetitive-padding",
+        "predicted": "tie"
+      },
+      {
+        "correct": true,
+        "dimension": "order-gaming",
+        "expected": "clean_better_in_both_orders",
+        "id": "kd-20-order-swap",
+        "predicted": "clean_better"
+      },
+      {
+        "correct": true,
+        "dimension": "order-gaming",
+        "expected": "tie_in_both_orders",
+        "id": "kd-21-identical-order-control",
+        "predicted": "tie"
+      },
+      {
+        "correct": true,
+        "dimension": "factual-accuracy",
+        "expected": "hardened_null_legacy_false_pass",
+        "id": "kd-22-prior-scope-regression",
+        "predicted": "hardened_null_legacy_false_pass"
+      },
+      {
+        "correct": true,
+        "dimension": "source-quality",
+        "expected": "new_metric_agrees_with_human_source_choice_or_abstains",
+        "id": "kd-23-prior-source-proxy-regression",
+        "predicted": "candidate_better"
+      },
+      {
+        "correct": true,
+        "dimension": "verbosity-gaming",
+        "expected": "report_length_and_padding_sensitivity_without_assuming_length_causes_quality",
+        "id": "kd-24-prior-length-confound",
+        "predicted": "confounded_reported"
+      }
+    ],
+    "catastrophic_recall": 1.0,
+    "controls_retained": true,
+    "correct": 24,
+    "extra": [],
+    "fixture_conformance_passed": true,
+    "judgment_count": 24,
+    "label": "v2",
+    "missing": [],
+    "total": 24
+  }
+}

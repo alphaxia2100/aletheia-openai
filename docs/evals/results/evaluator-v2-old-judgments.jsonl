@@ -1,0 +1,24 @@
+{"id":"kd-01-entity-swap","judge":"legacy-capability-audit","relation":"clean_better","rationale":"A submitted atomic claim checked against its cited text can expose the unsupported entity."}
+{"id":"kd-02-number-swap","judge":"legacy-capability-audit","relation":"clean_better","rationale":"A submitted atomic claim checked against its cited text can expose the changed magnitude."}
+{"id":"kd-03-polarity-flip","judge":"legacy-capability-audit","relation":"clean_better","rationale":"A submitted atomic claim checked against its cited text can expose the negation flip."}
+{"id":"kd-04-unit-error","judge":"legacy-capability-audit","relation":"clean_better","rationale":"A submitted atomic claim checked against its cited text can expose the unit mismatch."}
+{"id":"kd-05-stale-current-claim","judge":"legacy-capability-audit","relation":"tie","rationale":"Both statements are entailed by their own cited snapshots; the legacy score has no as-of or supersession rule."}
+{"id":"kd-06-false-premise","judge":"legacy-capability-audit","relation":"clean_better","rationale":"The mutated assertion directly conflicts with its submitted registry citation."}
+{"id":"kd-07-partial-entailment","judge":"legacy-capability-audit","relation":"clean_better","rationale":"A careful verifier can reject the unsupported second conjunct, although partial support has no distinct label."}
+{"id":"kd-08-topical-not-supporting","judge":"legacy-capability-audit","relation":"clean_better","rationale":"The cited review lacks the claimed numeric fact and can be marked unsupported."}
+{"id":"kd-09-uncited-claim","judge":"legacy-capability-audit","relation":"tie","rationale":"The legacy scorer only sees submitted rows; an omitted added assertion does not enter its denominator."}
+{"id":"kd-10-primary-vs-echo","judge":"legacy-capability-audit","relation":"tie","rationale":"Both citations entail the sentence and the legacy authority proxy does not encode primary-versus-echo role."}
+{"id":"kd-11-role-fit","judge":"legacy-capability-audit","relation":"tie","rationale":"The authority-domain proxy cannot compare marketing copy with longitudinal evidence for a reliability question."}
+{"id":"kd-12-origin-laundering","judge":"legacy-capability-audit","relation":"tie","rationale":"Identity/domain diversity can count republishers without a claim-level shared-origin judgment."}
+{"id":"kd-13-critical-omission","judge":"legacy-capability-audit","relation":"tie","rationale":"Citation precision has no frozen must-cover rubric for harm and applicability."}
+{"id":"kd-14-trivial-high-precision","judge":"legacy-capability-audit","relation":"tie","rationale":"The one safe submitted fact receives the same perfect precision as a complete answer."}
+{"id":"kd-15-internal-contradiction","judge":"legacy-capability-audit","relation":"not_measured","rationale":"The scorer has no final-answer all-pairs contradiction gate."}
+{"id":"kd-16-evidence-disagreement-smoothed","judge":"legacy-capability-audit","relation":"clean_better","rationale":"If both source rows are submitted, the second citation contradicts the false-consensus claim."}
+{"id":"kd-17-claim-decomposition-drop","judge":"legacy-capability-audit","relation":"tie","rationale":"Claim-extraction coverage is asserted by an auditor but not meta-scored by the legacy evaluator."}
+{"id":"kd-18-claim-decomposition-fabrication","judge":"legacy-capability-audit","relation":"tie","rationale":"The legacy evaluator does not check whether decomposition converted a condition into a fact."}
+{"id":"kd-19-repetitive-padding","judge":"legacy-capability-audit","relation":"not_measured","rationale":"There is no persisted padding-control result or length-invariant gate."}
+{"id":"kd-20-order-swap","judge":"legacy-capability-audit","relation":"position_dependent","rationale":"Three alternating trials let one side occupy position A twice; exact swap stability is not required."}
+{"id":"kd-21-identical-order-control","judge":"legacy-capability-audit","relation":"not_measured","rationale":"The standard workflow does not persist an identical-answer exact-swap control."}
+{"id":"kd-22-prior-scope-regression","judge":"legacy-capability-audit","relation":"legacy_false_pass","rationale":"scripts/eval/score_run.py actually reports 1.0 despite the documented omitted warranty-extension claim."}
+{"id":"kd-23-prior-source-proxy-regression","judge":"legacy-capability-audit","relation":"baseline_better","rationale":"The legacy source-quality proxy scores the science baseline 0.597 and candidate 0.453, opposite both blind source-choice judgments."}
+{"id":"kd-24-prior-length-confound","judge":"legacy-capability-audit","relation":"unreported","rationale":"The prior holistic result does not report a padding or concise-equivalent sensitivity test."}

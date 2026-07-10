@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Score a completed Deep Aletheia run — the deterministic half of the Anthropic-style rubric
-plus Aletheia-specific epistemic metrics. (Factual accuracy & completeness are LLM-judge
-dimensions added by a judging subagent; this covers what can be computed.)
+"""Compatibility scorer for completed Aletheia runs.
+
+Tree/process diagnostics remain here for historical comparisons.  Citation headlines are delegated
+to :mod:`evaluator_v2`, which in turn calls the scorer shipped with the current skill and requires a
+valid final-brief claim-scope attestation.  This prevents the three repository scorers from silently
+using different citation denominators.
 
 Metrics:
   citation_precision  supported / finally-judged   (of the claims Fact-Checked, the fraction that hold)
@@ -35,6 +38,7 @@ sys.path.insert(0, os.path.join(REPO, ".cursor", "skills", "deep-aletheia", "scr
 import dedupe  # noqa: E402
 import rank as rankmod  # noqa: E402
 import provenance_graph as pg  # noqa: E402  (structural shared-origin independence)
+import evaluator_v2  # noqa: E402  (canonical, fail-closed citation scorer)
 
 
 def _jsonl(p):
@@ -44,7 +48,7 @@ def _jsonl(p):
         return [json.loads(l) for l in fh if l.strip()]
 
 
-def score(run: str) -> dict:
+def score(run: str, require_scope: bool = True) -> dict:
     with open(os.path.join(run, "run.json"), encoding="utf-8") as fh:
         cfg = json.load(fh)
     idx = _jsonl(os.path.join(run, "index", "sources.jsonl"))
@@ -158,7 +162,7 @@ def score(run: str) -> dict:
         btext = ""
     sections = {s: (s in btext) for s in ("agreement", "disagreement", "unverified")}
 
-    return {
+    out = {
         "topic": cfg.get("topic"), "version": cfg.get("version"),
         "citation_accuracy": cit_acc, "citation_precision": precision,
         "citation_coverage": coverage, "citation_denominator": judged,
@@ -167,7 +171,9 @@ def score(run: str) -> dict:
         "verdicts": {"supported": supported, "contradicted": contradicted,
                      "unsupported": unsupported, "off_topic": off_topic, "broken": broken,
                      "awaiting_llm_check": awaiting},
-        "source_quality": quality, "sources": len(idx),
+        # Kept only as an explicitly legacy diagnostic.  The old authority-domain proxy reversed
+        # both promoted forward-test source-choice judgments and must never be a release metric.
+        "source_quality": None, "legacy_source_quality_proxy": quality, "sources": len(idx),
         "independence": round(1 - echo, 3), "echo_ratio": echo, "unique_voices": len(voices),
         "origin_independence": origin_indep, "origin_echo_ratio": origin_echo,
         "independent_origins": origins,
@@ -179,6 +185,19 @@ def score(run: str) -> dict:
         "brief_sections": sections,
         "evidence_sources": ev, "high_authority_sources": hi,
     }
+    canonical = evaluator_v2.score_run(run, require_scope=require_scope)
+    for key in (
+        "citation_accuracy", "citation_precision", "citation_entailment_precision",
+        "citation_coverage", "citation_denominator", "citation_complete",
+        "row_verification_complete", "claim_scope_audit", "scope_gate_passed",
+        "verdicts", "factual_accuracy", "answer_recall", "probabilistic_calibration",
+        "temporal_correctness", "contradiction_recall", "unmeasured_dimensions",
+        "metric_semantics", "evaluator", "eval_schema_version", "brief_word_count",
+        "extracted_claim_rows",
+    ):
+        if key in canonical:
+            out[key] = canonical[key]
+    return out
 
 
 def main(argv=None) -> int:
