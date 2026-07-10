@@ -40,9 +40,11 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -56,6 +58,59 @@ def _now() -> str:
 def _slugify(s: str, n: int = 40) -> str:
     s = re.sub(r"[^A-Za-z0-9]+", "-", (s or "").lower()).strip("-")
     return (s[:n].strip("-") or "run")
+
+
+def _sha256_files(root: str, paths: List[str]) -> Optional[str]:
+    h = hashlib.sha256()
+    found = False
+    for path in sorted(paths):
+        try:
+            with open(path, "rb") as fh:
+                data = fh.read()
+        except OSError:
+            continue
+        found = True
+        h.update(os.path.relpath(path, root).encode("utf-8", "surrogateescape"))
+        h.update(b"\0")
+        h.update(data)
+        h.update(b"\0")
+    return h.hexdigest() if found else None
+
+
+def _implementation_metadata() -> Dict[str, Any]:
+    """Fingerprint the executable skill, not just its manually maintained version label."""
+    scripts = os.path.dirname(os.path.realpath(__file__))
+    skill = os.path.dirname(scripts)
+    skills_root = os.path.dirname(skill)
+    files = [os.path.join(skill, "SKILL.md"), os.path.join(skill, "agents", "openai.yaml")]
+    for directory, _subdirs, names in os.walk(scripts):
+        files.extend(os.path.join(directory, name) for name in names
+                     if name.endswith((".py", ".json", ".sh")))
+    channel_cfg = os.path.realpath(os.path.join(skill, "..", "channel-retrieval", "channels.json"))
+    runtime_files = list(files)
+    for dependency in ("channel-retrieval", "provenance-audit"):
+        dep_root = os.path.join(skills_root, dependency)
+        for directory, _subdirs, names in os.walk(dep_root):
+            runtime_files.extend(os.path.join(directory, name) for name in names
+                                 if name.endswith((".py", ".json", ".sh")))
+    meta: Dict[str, Any] = {
+        "schema_version": 1,
+        "skill_sha256": _sha256_files(skill, files),
+        "channel_config_sha256": _sha256_files(os.path.dirname(channel_cfg), [channel_cfg]),
+        "runtime_sha256": _sha256_files(skills_root, runtime_files),
+        "git_commit": None,
+        "git_dirty": None,
+    }
+    try:
+        meta["git_commit"] = subprocess.check_output(
+            ["git", "-C", skill, "rev-parse", "HEAD"], stderr=subprocess.DEVNULL,
+            text=True, timeout=3).strip() or None
+        meta["git_dirty"] = bool(subprocess.check_output(
+            ["git", "-C", skill, "status", "--porcelain", "--untracked-files=normal"],
+            stderr=subprocess.DEVNULL, text=True, timeout=3).strip())
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return meta
 
 
 def _read_json(path: str, default: Any = None) -> Any:
@@ -180,6 +235,7 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
     os.makedirs(os.path.join(run, "index"))
     _write_json(os.path.join(run, "run.json"), {
         "topic": topic, "created": _now(), "version": "aletheia-research 0.5.0-dev2",
+        "implementation": _implementation_metadata(),
         "thoroughness": tier, "verbosity": verbosity,
         "budget": budget, "unit": unit, "max_depth": max_depth,
         "max_children": max_children, "max_nodes": max_nodes, "state": "framing",

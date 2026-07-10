@@ -126,6 +126,10 @@ def bundle(run: str, reads: bool = False, max_chars: int = 0) -> str:
     L.append("**Topic:** %s" % cfg.get("topic", ""))
     L.append("**Thoroughness:** %s · **Verbosity:** %s · **Version:** %s"
              % (cfg.get("thoroughness"), cfg.get("verbosity"), cfg.get("version")))
+    impl = cfg.get("implementation") or {}
+    if impl:
+        L.append("**Implementation:** commit=%s · dirty=%s · runtime_sha256=%s"
+                 % (impl.get("git_commit"), impl.get("git_dirty"), impl.get("runtime_sha256")))
     L.append("")
     L.append("This is the COMPLETE research artifact set — not a summary. Every node's findings and "
              "evidence are included verbatim so no nuance is lost. Read it in full; cite the primaries.")
@@ -290,8 +294,10 @@ def score(run: str) -> Dict[str, Any]:
     cited = _claim_source_records(ver, idx)
     origins = _independent_origins(cited)
     retrieved_origins = _independent_origins(idx)
+    cfg = _cfg(run)
     return {
-        "topic": _cfg(run).get("topic"), "version": _cfg(run).get("version"),
+        "topic": cfg.get("topic"), "version": cfg.get("version"),
+        "implementation": cfg.get("implementation") or {},
         "citation_accuracy": precision if complete else None,
         "citation_precision": precision, "citation_coverage": coverage,
         "citation_denominator": judged, "citation_complete": complete,
