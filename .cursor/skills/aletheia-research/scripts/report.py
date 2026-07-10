@@ -13,10 +13,12 @@ Usage:
   report.py bundle  --run RUN_DIR [--reads] [--max-chars N] [--output FILE]
   report.py outline --run RUN_DIR
   report.py score   --run RUN_DIR [--output FILE]
+  report.py audit-claims --run RUN_DIR --auditor "fresh-context verifier" [--added-claims N]
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -72,6 +74,89 @@ def _jsonl_dicts(path: str) -> List[Dict[str, Any]]:
         if isinstance(row, dict):
             rows.append(row)
     return rows
+
+
+def _file_sha256(path: str) -> str:
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _claim_scope_state(run: str) -> Dict[str, Any]:
+    """Validate the claim-coverage attestation against the exact final artifacts."""
+    audit = treestate._read_json(os.path.join(run, "claim_audit.json"), {}) or {}
+    reasons = []
+    if audit.get("status") != "complete":
+        reasons.append("missing_complete_attestation")
+    if not str(audit.get("auditor") or "").strip():
+        reasons.append("missing_auditor")
+    brief_hash = _file_sha256(os.path.join(run, "brief.md"))
+    claims_hash = _file_sha256(os.path.join(run, "claims.jsonl"))
+    if not brief_hash:
+        reasons.append("missing_brief")
+    elif audit.get("brief_sha256") != brief_hash:
+        reasons.append("brief_changed_after_audit")
+    if not claims_hash:
+        reasons.append("missing_claims")
+    elif audit.get("claims_sha256") != claims_hash:
+        reasons.append("claims_changed_after_audit")
+    claims = _jsonl_dicts(os.path.join(run, "claims.jsonl"))
+    if int(audit.get("claim_count", -1) or -1) != len(claims):
+        reasons.append("claim_count_mismatch")
+    return {
+        "required": True,
+        "valid": not reasons,
+        "auditor": audit.get("auditor"),
+        "claim_count": len(claims),
+        "added_claims": int(audit.get("added_claims", 0) or 0),
+        "reasons": reasons,
+    }
+
+
+def audit_claim_scope(run: str, auditor: str, added_claims: int = 0,
+                      notes: str = "") -> Dict[str, Any]:
+    """Attest that a verifier compared the final brief with the complete claim set.
+
+    Code enforces artifact identity and completed row verification. The auditor supplies the semantic
+    judgment that every load-bearing factual assertion was extracted; hashes make any later edit
+    invalidate the attestation.
+    """
+    auditor = str(auditor or "").strip()
+    if not auditor:
+        raise ValueError("auditor must identify the fresh-context verification pass")
+    if added_claims < 0:
+        raise ValueError("added_claims must be non-negative")
+    brief_path = os.path.join(run, "brief.md")
+    claims_path = os.path.join(run, "claims.jsonl")
+    claims = _jsonl_dicts(claims_path)
+    verdicts = _jsonl_dicts(os.path.join(run, "verify.jsonl"))
+    if not _file_sha256(brief_path):
+        raise ValueError("write the final brief before attesting claim coverage")
+    if not claims:
+        raise ValueError("claims.jsonl is empty")
+    final = {"supported", "contradicted", "unsupported", "off_topic"}
+    if len(verdicts) != len(claims) or any(v.get("verdict") not in final for v in verdicts):
+        raise ValueError("every extracted claim must have a final readable verdict before attestation")
+    claim_keys = sorted((str(c.get("claim") or ""), str(c.get("url") or "")) for c in claims)
+    verdict_keys = sorted((str(v.get("claim") or ""), str(v.get("url") or "")) for v in verdicts)
+    if claim_keys != verdict_keys:
+        raise ValueError("claims.jsonl and verify.jsonl do not describe the same claim/url set")
+    payload = {
+        "status": "complete",
+        "auditor": auditor,
+        "attestation": ("Auditor read the final brief, added every omitted load-bearing factual claim, "
+                        "and checked the final claim/url set against verify.jsonl."),
+        "claim_count": len(claims),
+        "added_claims": added_claims,
+        "brief_sha256": _file_sha256(brief_path),
+        "claims_sha256": _file_sha256(claims_path),
+        "notes": notes,
+        "created": treestate._now(),
+    }
+    treestate._write_json(os.path.join(run, "claim_audit.json"), payload)
+    return payload
 
 
 def _runtime_telemetry(run: str) -> Dict[str, Any]:
@@ -135,7 +220,7 @@ def bundle(run: str, reads: bool = False, max_chars: int = 0) -> str:
     L.append("")
     L.append(treestate.tree_view(run))
     L.append("")
-    for artifact in ("claims.jsonl", "verify.jsonl", "score.json"):
+    for artifact in ("claims.jsonl", "verify.jsonl", "claim_audit.json", "score.json"):
         content = _read(os.path.join(run, artifact))
         if content.strip():
             L.append("## %s" % artifact)
@@ -275,7 +360,8 @@ def score(run: str) -> Dict[str, Any]:
     """Self-contained scorer (ships WITH the skill — no repo/eval or deep-aletheia dependency). The
     headline `citation_accuracy` is precision, reported ONLY when the verification pass is complete
     (every on-topic claim has a final verdict); off_topic counts in the denominator so a dropped
-    citation can't vanish; independence via shared-origin clustering. coverage != answer recall."""
+    citation can't vanish; an independent, content-hashed scope audit prevents the writer from omitting
+    inconvenient claims from the denominator; independence uses shared-origin clustering."""
     ver = _jsonl_dicts(os.path.join(run, "verify.jsonl"))
     vc = Counter(r.get("verdict") for r in ver)
     supported, contradicted, unsupported = vc["supported"], vc["contradicted"], vc["unsupported"]
@@ -285,7 +371,9 @@ def score(run: str) -> Dict[str, Any]:
     precision = round(supported / judged, 3) if judged else None
     blocking = awaiting + broken
     coverage = round(judged / (judged + blocking), 3) if (judged + blocking) else None
-    complete = bool(judged and blocking == 0)
+    row_complete = bool(judged and blocking == 0)
+    claim_scope = _claim_scope_state(run)
+    complete = row_complete and claim_scope["valid"]
     idx = _jsonl_dicts(os.path.join(run, "index", "sources.jsonl"))
     cited = _claim_source_records(ver, idx)
     origins = _independent_origins(cited)
@@ -295,6 +383,8 @@ def score(run: str) -> Dict[str, Any]:
         "citation_accuracy": precision if complete else None,
         "citation_precision": precision, "citation_coverage": coverage,
         "citation_denominator": judged, "citation_complete": complete,
+        "row_verification_complete": row_complete,
+        "claim_scope_audit": claim_scope,
         "verdicts": {"supported": supported, "contradicted": contradicted, "unsupported": unsupported,
                      "off_topic": off_topic, "broken": broken, "awaiting_llm_check": awaiting},
         # Headline independence is claim-level. Retrieval breadth remains observable but cannot
@@ -332,6 +422,10 @@ def main(argv=None) -> int:
     w = sub.add_parser("write-brief"); w.add_argument("--run", required=True)
     w.add_argument("--file", default="", help="read brief text from this file")
     w.add_argument("--text", default="", help="inline brief text (use --file for anything long)")
+    a = sub.add_parser("audit-claims"); a.add_argument("--run", required=True)
+    a.add_argument("--auditor", required=True, help="fresh-context verifier identity/role")
+    a.add_argument("--added-claims", type=int, default=0)
+    a.add_argument("--notes", default="")
     args = ap.parse_args(argv)
     if args.cmd == "bundle":
         text = bundle(args.run, args.reads, args.max_chars)
@@ -354,6 +448,14 @@ def main(argv=None) -> int:
         if not txt.strip():
             sys.stderr.write("write-brief: need --file or --text\n"); return 2
         print(write_brief(args.run, txt))
+    elif args.cmd == "audit-claims":
+        try:
+            payload = audit_claim_scope(args.run, args.auditor, args.added_claims, args.notes)
+        except ValueError as exc:
+            sys.stderr.write("audit-claims: %s\n" % exc); return 2
+        treestate.set_run_state(args.run, "complete" if score(args.run).get("citation_complete")
+                                else "briefed")
+        print(json.dumps(payload, indent=2))
     return 0
 
 

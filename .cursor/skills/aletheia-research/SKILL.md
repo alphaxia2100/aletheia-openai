@@ -206,7 +206,9 @@ but 1 origin echoed 40×", which voice_key alone scores as independent). **Low e
 **adversary** branch + un-laundered channels and try to break the leading framing. Survive → keep; else downgrade. Log it.
 
 ### 6. Verify every load-bearing claim (must complete)
-Extract the draft's claims → `$RUN/claims.jsonl` (`{"claim":"…","url":"…"}`):
+First write the **complete draft answer** to `$RUN/brief.md` using step 7's sections; verification must
+cover the answer the user will actually receive, not an earlier findings file. Extract every
+load-bearing factual claim from that draft → `$RUN/claims.jsonl` (`{"claim":"…","url":"…"}`):
 ```bash
 python3 "$A/verify.py" --claims "$RUN/claims.jsonl" --node "$RUN/tree/root" --out "$RUN/verify.jsonl"
 ```
@@ -220,28 +222,43 @@ Any `broken` citation must be replaced with a readable primary or its claim remo
 block `citation_complete` and cannot be waived as verified.
 **Use a DIFFERENT model for the Fact-Check than wrote the draft when the orchestrator supports model
 selection** (self-preference/verbosity bias is real — the writer grades its own work too kindly). At
-`deep`/`exhaustive`/`unlimited`/`max`, otherwise use an independent fresh-context verifier subagent and
-state the same-model limitation. The score is **code-gated, not honor-system** — compute it with the
+`standard` and above, otherwise use an independent fresh-context verifier subagent; only `quick` may
+self-check, and it must state that limitation.
+
+After applying the verdicts to the draft, the independent verifier must read the **entire final
+`brief.md` plus `claims.jsonl`**, add every omitted load-bearing claim, and repeat verification for
+those additions. Only then attest the exact final artifacts (identify the verifier; report how many
+claims it added):
+```bash
+python3 "$A/report.py" audit-claims --run "$RUN" \
+  --auditor "<fresh-context verifier/model>" --added-claims <N>
+```
+The attestation hashes both files. Any later edit to the brief or claim set invalidates headline
+accuracy and requires a new independent coverage pass. Then compute the code-gated score with the
 skill's own scorer (ships with the skill; no repo/eval dependency):
 ```bash
 python3 "$A/report.py" score --run "$RUN" --output "$RUN/score.json"
 # stdout and score.json both contain citation accuracy/precision/coverage/denominator + independence
 ```
 `citation_accuracy` (= precision) is **null until `citation_complete` is true** — i.e. every on-topic
-claim has a final verdict (`citation_coverage` = 1.0), with the stated `citation_denominator` (claims
-judged; readable `off_topic` counts against it so a dropped citation can't vanish). A run with claims
-still `awaiting_llm_check` has NO headline accuracy: finish the pass. Headline
+claim has a final verdict (`citation_coverage` = 1.0) **and** the final claim-scope hash audit is valid,
+with the stated `citation_denominator` (claims judged; readable `off_topic` counts against it so a
+dropped citation can't vanish). A run with claims still `awaiting_llm_check`, an omitted-claim audit
+missing, or a post-audit edit has NO headline accuracy: finish the pass. Headline
 `independent_origins` is over finally cited claim sources; retrieval breadth stays separate under
 `retrieved_*` and never counts as corroboration.
 
 ### 7. Answer, grounded — scaled to the VERBOSITY
-Always write `$RUN/brief.md` (author it directly; or if your harness blocks writing report `.md`
-files, use the skill's own writer: `python3 "$A/report.py" write-brief --run "$RUN" --file <draft>`).
+Finalize `$RUN/brief.md` **before the step-6 claim-scope attestation** (author it directly; or use
+`python3 "$A/report.py" write-brief --run "$RUN" --file <draft>`). Do not edit it afterward without
+re-running the coverage audit and score.
 Include: **Bottom line** · **Agreement** (independent sources converge) ·
 **Disagreement** (name both sides; do not smooth over) · **Unverified / single-origin** · **Gaps**
 (paywalled primaries, missing large RCTs, empty/degraded channels — state them). Every claim links to
 the **primary you read**; dates on time-sensitive claims. **X/YouTube are `color`** (never cite as
-fact); **Reddit/HN are `lead_gen`** — cite the primary they point to, not the thread. Then, by verbosity:
+fact). **Reddit/HN are `lead_gen` by default** — cite the primary they point to; when the question is
+specifically about lived experience, a first-hand thread may be cited as a labeled case report, never
+as a prevalence/rate estimate. Then, by verbosity:
 - **`verbosity: agent`** → return the **FULL bundle**, not a summary:
   `python3 "$A/report.py" bundle --run "$RUN" --reads --output "$RUN/bundle.md"` — persist first,
   then hand the whole artifact (every node's findings + evidence + sources + score + primaries read
@@ -266,7 +283,8 @@ external dependency; the brief + the run dir are the output.
 `run.json.state` advances through `framing → investigating → synthesized → briefed/complete`.
 
 ## Rules
-Channel **classes**: `evidence` citable · `lead_gen` (search/HN/Reddit) → **find & cite the primary** ·
+Channel **classes**: `evidence` citable · `lead_gen` (search/HN/Reddit) → **find & cite the primary**
+(except labeled first-hand cases when lived experience is itself the evidence) ·
 `color` (X/YouTube) → never cite as fact. Variety, decisive-source hunt, chase-the-primary,
 independence-by-judgment, adversary, read-in-full, honest gaps, and completed verification are
 non-optional from `standard` up — and therefore always at the `unlimited` default and `max`.

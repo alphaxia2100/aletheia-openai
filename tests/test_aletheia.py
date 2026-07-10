@@ -689,14 +689,49 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         base = tempfile.mkdtemp()
         run = subprocess.check_output(
             [sys.executable, self.T, "init", "persistent score", "--base", base], text=True).strip()
+        claim = {"claim": "c", "url": "https://x"}
+        with open(os.path.join(run, "claims.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(claim) + "\n")
         with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
-            fh.write(json.dumps({"claim": "c", "url": "https://x", "verdict": "supported"}) + "\n")
+            fh.write(json.dumps(dict(claim, verdict="supported")) + "\n")
         rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        subprocess.check_call([sys.executable, rep, "write-brief", "--run", run,
+                               "--text", "# Final brief\nSupported claim c."],
+                              stdout=subprocess.DEVNULL)
+        subprocess.check_call([sys.executable, rep, "audit-claims", "--run", run,
+                               "--auditor", "fresh-context-test-verifier"],
+                              stdout=subprocess.DEVNULL)
         output = os.path.join(run, "score.json")
         stdout_score = json.loads(subprocess.check_output(
             [sys.executable, rep, "score", "--run", run, "--output", output], text=True))
         self.assertEqual(read_json(output), stdout_score)
         self.assertTrue(stdout_score["citation_complete"])
+        self.assertTrue(stdout_score["claim_scope_audit"]["valid"])
+
+    def test_claim_scope_audit_invalidates_after_final_brief_changes(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "scope audit", "--base", base], text=True).strip()
+        claim = {"claim": "c", "url": "https://x"}
+        with open(os.path.join(run, "claims.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(claim) + "\n")
+        with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(dict(claim, verdict="supported")) + "\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        subprocess.check_call([sys.executable, rep, "write-brief", "--run", run,
+                               "--text", "# Audited\nClaim c."], stdout=subprocess.DEVNULL)
+        subprocess.check_call([sys.executable, rep, "audit-claims", "--run", run,
+                               "--auditor", "fresh-context-test-verifier"],
+                              stdout=subprocess.DEVNULL)
+        self.assertTrue(json.loads(subprocess.check_output(
+            [sys.executable, rep, "score", "--run", run], text=True))["citation_complete"])
+        with open(os.path.join(run, "brief.md"), "a", encoding="utf-8") as fh:
+            fh.write("\nNew unaudited factual assertion.\n")
+        changed = json.loads(subprocess.check_output(
+            [sys.executable, rep, "score", "--run", run], text=True))
+        self.assertFalse(changed["citation_complete"])
+        self.assertIsNone(changed["citation_accuracy"])
+        self.assertIn("brief_changed_after_audit", changed["claim_scope_audit"]["reasons"])
 
     def test_broken_citation_blocks_completion(self):
         base = tempfile.mkdtemp()
@@ -805,11 +840,19 @@ class TestAletheia03Thoroughness(unittest.TestCase):
                                "--text", "root synthesis " * 20], stdout=subprocess.DEVNULL)
         with open(os.path.join(run, "run.json"), encoding="utf-8") as fh:
             self.assertEqual(json.load(fh)["state"], "synthesized")
+        claim = {"claim": "c", "url": "https://x"}
+        with open(os.path.join(run, "claims.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(claim) + "\n")
         with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
-            fh.write(json.dumps({"claim": "c", "url": "https://x", "verdict": "supported"}) + "\n")
+            fh.write(json.dumps(dict(claim, verdict="supported")) + "\n")
         rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
         subprocess.check_call([sys.executable, rep, "write-brief", "--run", run,
                                "--text", "# Complete"], stdout=subprocess.DEVNULL)
+        with open(os.path.join(run, "run.json"), encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["state"], "briefed")
+        subprocess.check_call([sys.executable, rep, "audit-claims", "--run", run,
+                               "--auditor", "fresh-context-test-verifier"],
+                              stdout=subprocess.DEVNULL)
         with open(os.path.join(run, "run.json"), encoding="utf-8") as fh:
             self.assertEqual(json.load(fh)["state"], "complete")
 
