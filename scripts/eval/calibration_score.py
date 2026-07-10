@@ -19,6 +19,20 @@ from typing import Any, Dict, Iterable, List, Optional
 MIN_META_CASES = 10
 MIN_RELEASE_CASES = 30
 
+# Pre-registered minimum quality for a release-level probability claim.  Brier < 0.20 requires
+# a material improvement over the 0.25 maximum-entropy/no-skill forecast; ECE <= 0.10 limits the
+# average reliability gap to ten percentage points; AUROC >= 0.70 requires useful ranking rather
+# than merely matching prevalence.  These are gates, not evidence that a model is optimally
+# calibrated, and changing them requires a new evaluator version and forward set.
+MAX_RELEASE_BRIER = 0.20
+MAX_RELEASE_ECE = 0.10
+MIN_RELEASE_AUROC = 0.70
+RELEASE_THRESHOLDS = {
+    "brier_max": MAX_RELEASE_BRIER,
+    "ece_exact_bins_max": MAX_RELEASE_ECE,
+    "auroc_min": MIN_RELEASE_AUROC,
+}
+
 
 def _sha256(path: str) -> str:
     with open(path, "rb") as fh:
@@ -71,23 +85,34 @@ def score_probabilities(outcomes: Iterable[Any], probabilities: Iterable[Any],
         reliability.append({"confidence": p, "n": len(values),
                             "observed_frequency": round(observed, 6),
                             "absolute_gap": round(abs(observed - p), 6)})
+    auroc = _auroc(ys, ps)
     sample_eligible = n >= MIN_RELEASE_CASES and len(set(ys)) == 2
+    quality_reasons = (
+        (["brier_above_release_threshold"] if brier > MAX_RELEASE_BRIER else [])
+        + (["ece_above_release_threshold"] if ece > MAX_RELEASE_ECE else [])
+        + (["auroc_below_release_threshold"]
+           if auroc is None or auroc < MIN_RELEASE_AUROC else [])
+    )
+    quality_eligible = not quality_reasons
     release_reasons = ((["fewer_than_%d_labeled_outcomes" % MIN_RELEASE_CASES]
                         if n < MIN_RELEASE_CASES else [])
                        + (["single_class_outcomes"] if len(set(ys)) < 2 else [])
-                       + (["release_provenance_not_attested"] if not release_attested else []))
+                       + (["release_provenance_not_attested"] if not release_attested else [])
+                       + quality_reasons)
     return {
         "n": n,
         "positive_rate": round(sum(ys) / n, 6),
         "brier": round(brier, 6),
         "log_loss": round(log_loss, 6),
         "ece_exact_bins": round(ece, 6),
-        "auroc": _auroc(ys, ps),
+        "auroc": auroc,
         "reliability": reliability,
         "valid_for_meta_eval": n >= MIN_META_CASES and len(set(ys)) == 2,
         "meets_minimum_release_sample": sample_eligible,
+        "release_quality_thresholds": dict(RELEASE_THRESHOLDS),
+        "meets_release_quality_thresholds": quality_eligible,
         "release_provenance_attested": release_attested,
-        "valid_for_release_claim": sample_eligible and release_attested,
+        "valid_for_release_claim": sample_eligible and release_attested and quality_eligible,
         "release_invalid_reasons": release_reasons,
     }
 
@@ -95,16 +120,26 @@ def score_probabilities(outcomes: Iterable[Any], probabilities: Iterable[Any],
 def score_selective_risk(outcomes: Iterable[Any], confidence: Iterable[Any],
                          release_attested: bool = False) -> Dict[str, Any]:
     ys, cs = _validate(outcomes, confidence)
-    ordered = sorted(zip(cs, ys), key=lambda item: item[0], reverse=True)
+    # Equal-confidence examples cannot be selectively retained from one another.  Aggregate each
+    # tie group before updating coverage/risk, making both the curve and its right-Riemann discrete
+    # area invariant to row order.  A caller may only abstain at an observed confidence threshold.
+    groups: Dict[float, List[int]] = defaultdict(list)
+    for confidence_value, outcome in zip(cs, ys):
+        groups[confidence_value].append(outcome)
     curve = []
     errors = 0
+    retained = 0
     risk_sum = 0.0
-    for rank, (conf, y) in enumerate(ordered, 1):
-        errors += 1 - y
-        risk = errors / rank
-        risk_sum += risk
-        curve.append({"coverage": round(rank / len(ordered), 6), "retained": rank,
-                      "abstention_rate": round(1 - rank / len(ordered), 6),
+    for conf in sorted(groups, reverse=True):
+        values = groups[conf]
+        group_size = len(values)
+        retained += group_size
+        errors += group_size - sum(values)
+        risk = errors / retained
+        risk_sum += group_size * risk
+        curve.append({"coverage": round(retained / len(ys), 6), "retained": retained,
+                      "tie_group_size": group_size,
+                      "abstention_rate": round(1 - retained / len(ys), 6),
                       "threshold": conf, "risk": round(risk, 6),
                       "accuracy": round(1 - risk, 6)})
     sample_eligible = len(ys) >= MIN_RELEASE_CASES and len(set(ys)) == 2
@@ -112,7 +147,8 @@ def score_selective_risk(outcomes: Iterable[Any], confidence: Iterable[Any],
                         if len(ys) < MIN_RELEASE_CASES else [])
                        + (["single_class_outcomes"] if len(set(ys)) < 2 else [])
                        + (["release_provenance_not_attested"] if not release_attested else []))
-    return {"n": len(ys), "aurc_discrete": round(risk_sum / len(ordered), 6), "curve": curve,
+    return {"n": len(ys), "aurc_discrete": round(risk_sum / len(ys), 6), "curve": curve,
+            "tie_policy": "retain_equal_confidence_as_atomic_group",
             "valid_for_meta_eval": len(ys) >= MIN_META_CASES and len(set(ys)) == 2,
             "meets_minimum_release_sample": sample_eligible,
             "release_provenance_attested": release_attested,

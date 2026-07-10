@@ -41,9 +41,11 @@ the evaluator and candidates are frozen.
    to neutral A/B files, and the mapping key is written separately with mode `0600`.
 7. Judge trust requires at least 30 human anchors, candidate/baseline label diversity, kappa,
    balanced accuracy, macro-F1, per-class metrics, and a Wilson lower bound on agreement.
-8. Calibration utilities compute Brier score, log loss, reliability error, AUROC, and selective risk,
-   and reject release claims below 30 labeled outcomes. Their current release attestation is
-   caller-controlled and has no performance thresholds, so these outputs remain metrics-only.
+8. Calibration utilities compute Brier score, log loss, reliability error, AUROC, and selective risk.
+   Release probability claims require at least 30 two-class outcomes, provenance attestation, Brier
+   <= 0.20, exact-bin ECE <= 0.10, and AUROC >= 0.70. Equal-confidence selective-risk rows are retained
+   as atomic groups. Attestation remains caller-controlled, so passing metrics alone do not authenticate
+   labels or make this a standalone release gate.
 
 ## Evidence and provenance
 
@@ -113,6 +115,13 @@ tie-aware inference, and orchestrator-owned copy/topic-set enforcement.
   release headline.
 - **Do not synthesize a universal score from missing dimensions.** Null is more informative than a
   formatting, domain-authority, or confidence-prose proxy.
+- **Pre-register calibration quality before another forward set.** Brier <= 0.20 demands material
+  improvement over a maximum-entropy 0.25 forecast, ECE <= 0.10 caps mean reliability error at ten
+  percentage points, and AUROC >= 0.70 requires useful discrimination. These are minimum gates, not a
+  claim of optimal calibration; changing them requires a new evaluator version and forward set.
+- **Treat confidence ties as indivisible.** Selective retention happens at observable thresholds, so a
+  tied group enters the risk-coverage curve together. Its group-size-weighted right-endpoint risk makes
+  discrete AURC invariant to row order without inventing a favorable ordering inside a tie.
 - **Do not count self-authored target labels as validation.** Target conformance remains useful for
   specifying behavior, but the CLI exits nonzero for release use.
 - **Do not alter router behavior to make integration tests pass.** The failure was namespace
