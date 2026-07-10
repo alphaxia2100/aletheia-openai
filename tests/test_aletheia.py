@@ -867,6 +867,22 @@ class TestAletheiaResearch031(unittest.TestCase):
         b = [read_json(os.path.join(d, "status.json"))["budget"] for d in dirs]
         self.assertEqual(b, [4.0, 4.0, 4.0])              # no weights -> uniform (backward compatible)
 
+    def test_evidence_driven_proposal_preserves_weights_when_materialized(self):
+        run = self._tinit(tempfile.mkdtemp(), 16, 4)
+        root = os.path.join(run, "tree", "root")
+        t = os.path.join(self.AR, "treestate.py")
+        subprocess.check_call(
+            [sys.executable, t, "propose", "--node", root, "--children",
+             json.dumps([["high_value", "hard unresolved question"],
+                         ["lower_value", "narrow corroboration question"]]),
+             "--weights", "[3,1]", "--why", "scout evidence exposed unequal uncertainty"],
+            stdout=subprocess.DEVNULL)
+        dirs = subprocess.check_output(
+            [sys.executable, t, "materialize", "--node", root], text=True).split()
+        budgets = [read_json(os.path.join(d, "status.json"))["budget"] for d in dirs]
+        self.assertEqual(budgets, [10.0, 6.0])
+        self.assertEqual(read_json(os.path.join(root, "proposal.json"))["weights"], [3, 1])
+
     def test_resumable_frontier_repicks_crashed_active_node(self):
         run = self._tinit(tempfile.mkdtemp(), 12, 4)
         root = os.path.join(run, "tree", "root")

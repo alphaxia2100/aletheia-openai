@@ -301,14 +301,16 @@ def split_node(node: str, children: List[List[str]], actor: str = "orchestrator"
     return made
 
 
-def propose_split(node: str, children: List[List[str]], why: str = "") -> None:
+def propose_split(node: str, children: List[List[str]], why: str = "",
+                  weights: Optional[List[float]] = None) -> None:
     """Worker proposes an EVIDENCE-DRIVEN decomposition AFTER a scout round (the dynamic-outline
     model: look, then decide). The orchestrator reviews proposals across the level and materializes
     approved ones — so caps and cross-level balance stay in one place."""
     _write_json(os.path.join(node, "proposal.json"),
-                {"t": _now(), "children": children, "why": why})
+                {"t": _now(), "children": children, "why": why, "weights": weights})
     set_status(node, state="proposes_split")
-    log_decision(node, "worker", "propose split into %d children" % len(children),
+    log_decision(node, "worker", "propose split into %d children%s" % (
+                     len(children), " with evidence-based weights" if weights is not None else ""),
                  why or "evidence-driven decomposition")
 
 
@@ -317,9 +319,10 @@ def materialize_proposal(node: str, actor: str = "orchestrator") -> List[str]:
     budget/cap floor via can_split)."""
     prop = _read_json(os.path.join(node, "proposal.json"), {}) or {}
     children = prop.get("children") or []
+    weights = prop.get("weights")
     if not children:
         raise SystemExit("no proposal.json (or empty) at %s" % node)
-    return split_node(node, children, actor)
+    return split_node(node, children, actor, weights)
 
 
 def add_sources(node: str, records: List[Dict[str, Any]]) -> int:
@@ -472,6 +475,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("propose"); p.add_argument("--node", required=True)
     p.add_argument("--children", required=True, help='JSON: [["qid","question"],...]')
     p.add_argument("--why", default="")
+    p.add_argument("--weights", default="", help="optional JSON effort weights, one per child")
 
     p = sub.add_parser("materialize"); p.add_argument("--node", required=True)
     p.add_argument("--actor", default="orchestrator")
@@ -514,7 +518,8 @@ def main(argv=None) -> int:
         for d in split_node(args.node, json.loads(args.children), args.actor, wts):
             print(d)
     elif args.cmd == "propose":
-        propose_split(args.node, json.loads(args.children), args.why)
+        wts = json.loads(args.weights) if args.weights.strip() else None
+        propose_split(args.node, json.loads(args.children), args.why, wts)
     elif args.cmd == "materialize":
         for d in materialize_proposal(args.node, args.actor):
             print(d)
