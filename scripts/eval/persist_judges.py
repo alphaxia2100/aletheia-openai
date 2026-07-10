@@ -9,7 +9,7 @@ import os
 import re
 import sys
 import tempfile
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def _canonical(value: Any) -> bytes:
@@ -83,9 +83,76 @@ def _write_jsonl(path: str, rows: List[Dict[str, Any]], mode: int = 0o644) -> No
     _atomic_write(path, data, mode)
 
 
-def persist(payload: Dict[str, Any], out: str) -> Dict[str, Any]:
+def _expected_matrix(path: Optional[str], trusted_sha256: str
+                     ) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Any], List[str]]:
+    """Load an externally pinned topic/version/canonical-brief matrix."""
+    reasons: List[str] = []
+    mapping: Dict[str, Dict[str, Any]] = {}
+    meta: Dict[str, Any] = {"path": "", "sha256": "", "trusted": False}
+    pin = str(trusted_sha256 or "").strip().lower()
+    if not path or not re.fullmatch(r"[0-9a-f]{64}", pin):
+        return mapping, meta, ["expected_matrix_not_trusted"]
+    real = os.path.realpath(path)
+    try:
+        actual = _sha_file(real)
+        with open(real, encoding="utf-8") as fh:
+            value = json.load(fh)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return mapping, meta, ["expected_matrix_unreadable"]
+    meta.update({"path": real, "sha256": actual})
+    if actual != pin:
+        return mapping, meta, ["expected_matrix_sha256_mismatch"]
+    if not isinstance(value, dict) or value.get("schema_version") != 1:
+        return mapping, meta, ["expected_matrix_schema_invalid"]
+    topics = value.get("topics")
+    if not isinstance(topics, list) or not topics:
+        return mapping, meta, ["expected_matrix_schema_invalid"]
+    for raw in topics:
+        if not isinstance(raw, dict):
+            reasons.append("expected_matrix_schema_invalid")
+            continue
+        topic = str(raw.get("topic") or "").strip()
+        if not topic or topic in mapping:
+            reasons.append("expected_matrix_topic_missing_or_duplicate")
+            continue
+        systems: Dict[str, Any] = {}
+        for system in ("candidate", "baseline"):
+            spec = raw.get(system)
+            if not isinstance(spec, dict):
+                reasons.append("expected_matrix_schema_invalid")
+                continue
+            version = str(spec.get("version") or "").strip()
+            brief_path = os.path.realpath(str(spec.get("brief_path") or ""))
+            declared = str(spec.get("brief_sha256") or "").strip().lower()
+            try:
+                actual_brief = _sha_file(brief_path)
+            except OSError:
+                actual_brief = ""
+            if (not version or not re.fullmatch(r"[0-9a-f]{64}", declared)
+                    or not actual_brief or actual_brief != declared):
+                reasons.append("canonical_brief_identity_invalid")
+                continue
+            systems[system] = {"version": version, "brief_path": brief_path,
+                               "brief_sha256": declared}
+        if set(systems) == {"candidate", "baseline"}:
+            mapping[topic] = systems
+    reasons = list(dict.fromkeys(reasons))
+    if len(mapping) != len(topics):
+        reasons.append("expected_matrix_incomplete")
+    meta["trusted"] = not reasons
+    return mapping, meta, reasons
+
+
+def persist(payload: Dict[str, Any], out: str, release_mode: bool = False,
+            expected_matrix: Optional[str] = None,
+            expected_matrix_sha256: str = "") -> Dict[str, Any]:
     out = os.path.realpath(out)
     os.makedirs(out, exist_ok=True)
+    expected, matrix_meta, matrix_reasons = _expected_matrix(
+        expected_matrix, expected_matrix_sha256)
+    if matrix_meta.get("trusted"):
+        _atomic_write(os.path.join(out, "expected-matrix.json"),
+                      _read_bytes(str(matrix_meta["path"])))
     artifacts = payload.get("judge_artifacts")
     if not isinstance(artifacts, list):
         artifacts = payload.get("pairwise") or []
@@ -123,6 +190,17 @@ def persist(payload: Dict[str, Any], out: str) -> Dict[str, Any]:
         if inputs_readable:
             input_hashes = {"A": _sha_file(a_path), "B": _sha_file(b_path)}
             artifact["input_sha256"] = input_hashes
+        expected_topic = expected.get(topic) or {}
+        expected_inputs = {}
+        if signature != "invalid" and expected_topic:
+            expected_inputs = {
+                side: expected_topic.get(str(order_map.get(side)) or "", {}).get("brief_sha256")
+                for side in ("A", "B")
+            }
+        canonical_binding_valid = bool(
+            expected_inputs and input_hashes
+            and all(expected_inputs.get(side) == input_hashes.get(side) for side in ("A", "B"))
+        )
         blind_paths_valid = _neutral_blind_path(a_path) and _neutral_blind_path(b_path)
         prompt = str(artifact.get("prompt") or "")
         prompt_inputs_match = bool(a_path and b_path and a_path in prompt and b_path in prompt)
@@ -149,6 +227,7 @@ def persist(payload: Dict[str, Any], out: str) -> Dict[str, Any]:
                 "signature": signature,
                 "input_sha256": input_hashes,
                 "row_valid": required,
+                "canonical_binding_valid": canonical_binding_valid,
             })
         manifest_rows.append({"index": index, "path": os.path.relpath(path, out),
                               "file_sha256": _sha_file(path), "artifact_sha256": semantic_hash,
@@ -156,7 +235,9 @@ def persist(payload: Dict[str, Any], out: str) -> Dict[str, Any]:
                               "judge_id_unique": judge_unique,
                               "blind_input_paths_valid": blind_paths_valid,
                               "prompt_inputs_match": prompt_inputs_match,
-                              "input_sha256": input_hashes})
+                              "input_sha256": input_hashes,
+                              "expected_canonical_input_sha256": expected_inputs,
+                              "canonical_binding_valid": canonical_binding_valid})
 
     pair_manifest = []
     exact_pairs_valid = bool(pair_groups)
@@ -172,11 +253,13 @@ def persist(payload: Dict[str, Any], out: str) -> Dict[str, Any]:
                 and cf["input_sha256"].get("A") == bf["input_sha256"].get("B")
                 and cf["input_sha256"].get("B") == bf["input_sha256"].get("A")
             )
+        bindings_valid = all(row["canonical_binding_valid"] for row in group)
         valid = exact_two and content_swap_valid and all(row["row_valid"] for row in group)
         exact_pairs_valid = exact_pairs_valid and valid
         pair_manifest.append({"topic": topic, "pair_id": pair_id, "artifact_count": len(group),
                               "exact_two_orders": exact_two,
-                              "content_swap_valid": content_swap_valid, "valid": valid})
+                              "content_swap_valid": content_swap_valid,
+                              "canonical_bindings_valid": bindings_valid, "valid": valid})
     paired_schema_valid = (bool(artifacts) and rows_valid and exact_pairs_valid
                            and sum(len(group) for group in pair_groups.values()) == len(artifacts))
 
@@ -236,9 +319,44 @@ def persist(payload: Dict[str, Any], out: str) -> Dict[str, Any]:
     _write_jsonl(key_path, key_rows, mode=0o600)
     leaked = any(any(k in row for k in secret_keys) for row in public_rows)
     anchor_schema_valid = bool(public_rows) and len(public_rows) == len(anchors)
+    observed_topics = {topic for topic, _pair_id in pair_groups}
+    expected_topics = set(expected)
+    expected_topic_matrix_complete = bool(expected) and observed_topics == expected_topics
+    canonical_brief_bindings_valid = bool(manifest_rows) and all(
+        row["canonical_binding_valid"] for row in manifest_rows)
+    expected_versions = {
+        topic: {system: spec[system]["version"] for system in ("candidate", "baseline")}
+        for topic, spec in sorted(expected.items())
+    }
+    release_reasons = list(matrix_reasons)
+    if matrix_meta.get("trusted") and not expected_topic_matrix_complete:
+        release_reasons.append("observed_topics_do_not_match_expected_matrix")
+    if matrix_meta.get("trusted") and not canonical_brief_bindings_valid:
+        release_reasons.append("blind_inputs_do_not_match_canonical_briefs")
+    if not paired_schema_valid:
+        release_reasons.append("paired_schema_invalid")
+    if not anchor_schema_valid or not key_valid or leaked:
+        release_reasons.append("anchor_schema_or_separation_invalid")
+    if not release_mode:
+        release_reasons.append("diagnostic_mode_not_release")
+    release_reasons = list(dict.fromkeys(release_reasons))
     manifest = {
         "schema_version": 2,
+        "release_mode": release_mode,
+        "release_gate_passed": bool(release_mode and not release_reasons),
+        "release_invalid_reasons": release_reasons,
+        "persistence_code_sha256": _sha_file(os.path.realpath(__file__)),
+        "aggregation_code_sha256": _sha_file(os.path.join(os.path.dirname(__file__),
+                                                           "judge_score.py")),
         "input_sha256": _sha_value(payload),
+        "expected_matrix_trusted": bool(matrix_meta.get("trusted")),
+        "expected_matrix_sha256": matrix_meta.get("sha256") or None,
+        "expected_matrix_artifact": ("expected-matrix.json" if matrix_meta.get("trusted") else None),
+        "expected_topic_count": len(expected),
+        "expected_topics": sorted(expected),
+        "expected_versions": expected_versions,
+        "expected_topic_matrix_complete": expected_topic_matrix_complete,
+        "canonical_brief_bindings_valid": canonical_brief_bindings_valid,
         "judge_artifact_count": len(artifacts),
         "persisted_judge_artifact_count": len(manifest_rows),
         "every_judge_artifact_persisted": len(artifacts) == len(manifest_rows),
@@ -261,21 +379,29 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Persist all judge artifacts with a hashed manifest")
     ap.add_argument("results")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--expected-matrix", default="")
+    ap.add_argument("--expected-matrix-sha256", default="")
+    ap.add_argument("--legacy-diagnostic", action="store_true",
+                    help="preserve unhashed legacy diagnostics; never release-valid")
     args = ap.parse_args(argv)
     try:
         with open(args.results, encoding="utf-8") as fh:
             payload = json.load(fh)
         if not isinstance(payload, dict):
             raise ValueError("results must be a JSON object")
-        manifest = persist(payload, args.out)
+        manifest = persist(payload, args.out, release_mode=not args.legacy_diagnostic,
+                           expected_matrix=args.expected_matrix or None,
+                           expected_matrix_sha256=args.expected_matrix_sha256)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         sys.stderr.write("persist-judges: %s\n" % exc)
         return 2
     print(json.dumps(manifest, indent=2, sort_keys=True))
-    return 0 if (manifest["every_judge_artifact_persisted"]
-                 and manifest["paired_schema_valid"]
-                 and manifest["anchor_schema_valid"]
-                 and manifest["anchor_mapping_separated"]) else 1
+    if args.legacy_diagnostic:
+        return 0 if (manifest["every_judge_artifact_persisted"]
+                     and manifest["paired_schema_valid"]
+                     and manifest["anchor_schema_valid"]
+                     and manifest["anchor_mapping_separated"]) else 1
+    return 0 if manifest["release_gate_passed"] else 1
 
 
 if __name__ == "__main__":

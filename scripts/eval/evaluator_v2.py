@@ -93,6 +93,59 @@ def _jsonl_rows(path: str) -> List[Dict[str, Any]]:
     return rows
 
 
+def _claim_urls(row: Dict[str, Any]) -> List[str]:
+    raw = row.get("urls")
+    if not isinstance(raw, list):
+        raw = [row.get("url")]
+    return [str(value).strip() for value in raw if str(value or "").strip()]
+
+
+def _claim_verdict_identity_matches(claims: List[Dict[str, Any]],
+                                    verdicts: List[Dict[str, Any]]) -> bool:
+    """Return true only for a one-to-one claim/source multiset match."""
+    remaining = list(verdicts)
+    for claim in claims:
+        text = str(claim.get("claim") or "").strip()
+        urls = set(_claim_urls(claim))
+        if not text or not urls:
+            return False
+        match = next((index for index, verdict in enumerate(remaining)
+                      if str(verdict.get("claim") or "").strip() == text
+                      and str(verdict.get("url") or "").strip() in urls), None)
+        if match is None:
+            return False
+        remaining.pop(match)
+    return not remaining
+
+
+def _scope_row_reasons(run: str) -> List[str]:
+    """Independently validate audit, extracted-claim, and final-verdict cardinality/identity."""
+    reasons: List[str] = []
+    try:
+        claims = _jsonl_rows(os.path.join(run, "claims.jsonl"))
+        verdicts = _jsonl_rows(os.path.join(run, "verify.jsonl"))
+        with open(os.path.join(run, "claim_audit.json"), encoding="utf-8") as fh:
+            audit = json.load(fh)
+        if not isinstance(audit, dict):
+            raise ValueError("claim audit is not an object")
+    except (OSError, ValueError, json.JSONDecodeError):
+        return ["scope_identity_artifacts_invalid"]
+
+    audit_count = audit.get("claim_count")
+    if isinstance(audit_count, bool) or not isinstance(audit_count, int):
+        reasons.append("audit_claim_count_invalid")
+    elif audit_count != len(claims) or audit_count != len(verdicts):
+        reasons.append("audit_claim_count_mismatch")
+    if len(claims) != len(verdicts):
+        reasons.append("claim_verdict_cardinality_mismatch")
+    final = {"supported", "contradicted", "unsupported", "off_topic"}
+    if any(row.get("verdict") not in final for row in verdicts):
+        reasons.append("nonfinal_verdict_in_scope_audit")
+    if len(claims) == len(verdicts) and not _claim_verdict_identity_matches(claims, verdicts):
+        reasons.append("claim_verdict_identity_mismatch")
+    return reasons
+
+
 def _strict_scope(run: str, score: Dict[str, Any], require_scope: bool) -> Dict[str, Any]:
     """Require a valid content-hashed semantic scope attestation for an eval headline.
 
@@ -103,8 +156,10 @@ def _strict_scope(run: str, score: Dict[str, Any], require_scope: bool) -> Dict[
     """
     state = dict(score.get("claim_scope_audit") or {})
     present = os.path.isfile(os.path.join(run, "claim_audit.json"))
-    valid = bool(state.get("valid")) and present
+    identity_reasons = _scope_row_reasons(run) if present else []
+    valid = bool(state.get("valid")) and present and not identity_reasons
     reasons = list(state.get("reasons") or [])
+    reasons.extend(identity_reasons)
     if require_scope and not present:
         reasons.append("strict_eval_requires_claim_scope_audit")
     if require_scope and present and not state.get("valid"):
