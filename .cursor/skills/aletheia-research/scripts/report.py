@@ -21,6 +21,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 from typing import Any, Dict, List
 
@@ -84,9 +85,66 @@ def _file_sha256(path: str) -> str:
         return ""
 
 
+def _strict_jsonl_dicts(path: str, label: str) -> List[Dict[str, Any]]:
+    """Read gate-critical JSONL without the bundle reader's corruption-tolerant skipping."""
+    rows = []
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = list(fh)
+    except OSError as exc:
+        raise ValueError("%s is missing or unreadable" % label) from exc
+    for lineno, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError as exc:
+            raise ValueError("%s line %d is invalid JSON" % (label, lineno)) from exc
+        if not isinstance(row, dict):
+            raise ValueError("%s line %d must be a JSON object" % (label, lineno))
+        rows.append(row)
+    return rows
+
+
+def _claim_urls(row: Dict[str, Any]) -> List[str]:
+    raw = row.get("urls")
+    if not isinstance(raw, list):
+        raw = [row.get("url")]
+    return [str(url).strip() for url in raw if str(url or "").strip()]
+
+
+def _claim_verdict_sets_match(claims: List[Dict[str, Any]],
+                              verdicts: List[Dict[str, Any]]) -> bool:
+    """Match each claim to one verdict; a multi-source claim may resolve to any declared URL."""
+    remaining = list(verdicts)
+    for claim in claims:
+        text = str(claim.get("claim") or "").strip()
+        allowed = set(_claim_urls(claim))
+        if not text or not allowed:
+            return False
+        found = next((i for i, verdict in enumerate(remaining)
+                      if str(verdict.get("claim") or "").strip() == text
+                      and str(verdict.get("url") or "").strip() in allowed), None)
+        if found is None:
+            return False
+        remaining.pop(found)
+    return not remaining
+
+
+def _claim_scope_required(run: str) -> bool:
+    """New 0.5 runs require the gate; preserve read-only scoring compatibility for older runs."""
+    version = str(_cfg(run).get("version") or "")
+    match = re.search(r"(?:^|\s)(\d+)\.(\d+)(?:\.|\b)", version)
+    return True if match is None else (int(match.group(1)), int(match.group(2))) >= (0, 5)
+
+
 def _claim_scope_state(run: str) -> Dict[str, Any]:
     """Validate the claim-coverage attestation against the exact final artifacts."""
     audit = treestate._read_json(os.path.join(run, "claim_audit.json"), {}) or {}
+    required = _claim_scope_required(run)
+    if not required and not audit:
+        return {"required": False, "valid": True, "auditor": None, "claim_count": None,
+                "added_claims": 0, "reasons": []}
     reasons = []
     if audit.get("status") != "complete":
         reasons.append("missing_complete_attestation")
@@ -94,6 +152,7 @@ def _claim_scope_state(run: str) -> Dict[str, Any]:
         reasons.append("missing_auditor")
     brief_hash = _file_sha256(os.path.join(run, "brief.md"))
     claims_hash = _file_sha256(os.path.join(run, "claims.jsonl"))
+    verify_hash = _file_sha256(os.path.join(run, "verify.jsonl"))
     if not brief_hash:
         reasons.append("missing_brief")
     elif audit.get("brief_sha256") != brief_hash:
@@ -102,11 +161,20 @@ def _claim_scope_state(run: str) -> Dict[str, Any]:
         reasons.append("missing_claims")
     elif audit.get("claims_sha256") != claims_hash:
         reasons.append("claims_changed_after_audit")
-    claims = _jsonl_dicts(os.path.join(run, "claims.jsonl"))
+    if not verify_hash:
+        reasons.append("missing_verify")
+    elif audit.get("verify_sha256") != verify_hash:
+        reasons.append("verify_changed_after_audit")
+    try:
+        claims = _strict_jsonl_dicts(os.path.join(run, "claims.jsonl"), "claims.jsonl")
+        _strict_jsonl_dicts(os.path.join(run, "verify.jsonl"), "verify.jsonl")
+    except ValueError:
+        claims = []
+        reasons.append("invalid_claim_or_verify_jsonl")
     if int(audit.get("claim_count", -1) or -1) != len(claims):
         reasons.append("claim_count_mismatch")
     return {
-        "required": True,
+        "required": required,
         "valid": not reasons,
         "auditor": audit.get("auditor"),
         "claim_count": len(claims),
@@ -130,8 +198,8 @@ def audit_claim_scope(run: str, auditor: str, added_claims: int = 0,
         raise ValueError("added_claims must be non-negative")
     brief_path = os.path.join(run, "brief.md")
     claims_path = os.path.join(run, "claims.jsonl")
-    claims = _jsonl_dicts(claims_path)
-    verdicts = _jsonl_dicts(os.path.join(run, "verify.jsonl"))
+    claims = _strict_jsonl_dicts(claims_path, "claims.jsonl")
+    verdicts = _strict_jsonl_dicts(os.path.join(run, "verify.jsonl"), "verify.jsonl")
     if not _file_sha256(brief_path):
         raise ValueError("write the final brief before attesting claim coverage")
     if not claims:
@@ -139,10 +207,8 @@ def audit_claim_scope(run: str, auditor: str, added_claims: int = 0,
     final = {"supported", "contradicted", "unsupported", "off_topic"}
     if len(verdicts) != len(claims) or any(v.get("verdict") not in final for v in verdicts):
         raise ValueError("every extracted claim must have a final readable verdict before attestation")
-    claim_keys = sorted((str(c.get("claim") or ""), str(c.get("url") or "")) for c in claims)
-    verdict_keys = sorted((str(v.get("claim") or ""), str(v.get("url") or "")) for v in verdicts)
-    if claim_keys != verdict_keys:
-        raise ValueError("claims.jsonl and verify.jsonl do not describe the same claim/url set")
+    if not _claim_verdict_sets_match(claims, verdicts):
+        raise ValueError("claims.jsonl and verify.jsonl do not describe the same claim/source set")
     payload = {
         "status": "complete",
         "auditor": auditor,
@@ -152,6 +218,7 @@ def audit_claim_scope(run: str, auditor: str, added_claims: int = 0,
         "added_claims": added_claims,
         "brief_sha256": _file_sha256(brief_path),
         "claims_sha256": _file_sha256(claims_path),
+        "verify_sha256": _file_sha256(os.path.join(run, "verify.jsonl")),
         "notes": notes,
         "created": treestate._now(),
     }

@@ -238,8 +238,8 @@ claims it added):
 python3 "$A/report.py" audit-claims --run "$RUN" \
   --auditor "<fresh-context verifier/model>" --added-claims <N>
 ```
-The attestation hashes both files. Any later edit to the brief or claim set invalidates headline
-accuracy and requires a new independent coverage pass. Then compute the code-gated score with the
+The attestation hashes the brief, claim set, and final verdict file. Any later edit to any of them
+invalidates headline accuracy and requires a new independent coverage pass. Then compute the code-gated score with the
 skill's own scorer (ships with the skill; no repo/eval dependency):
 ```bash
 python3 "$A/report.py" score --run "$RUN" --output "$RUN/score.json"
