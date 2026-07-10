@@ -598,6 +598,22 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
 
+    def test_run_records_executable_fingerprint_not_only_version_label(self):
+        base = tempfile.mkdtemp()
+        first = self._init("quick", base)
+        second = self._init("quick", base)
+        a, b = first["implementation"], second["implementation"]
+        self.assertEqual(a["schema_version"], 1)
+        self.assertRegex(a["skill_sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(a["channel_config_sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(a["runtime_sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(a["skill_sha256"], b["skill_sha256"])
+        self.assertEqual(a["channel_config_sha256"], b["channel_config_sha256"])
+        self.assertEqual(a["runtime_sha256"], b["runtime_sha256"])
+        self.assertIn(a["git_dirty"], (True, False, None))
+        if a["git_commit"] is not None:
+            self.assertRegex(a["git_commit"], r"^[0-9a-f]{40}$")
+
     def test_default_is_unlimited(self):
         # 0.4.0: no --thoroughness and no --budget -> the unlimited default (unbounded depth/budget)
         run = subprocess.check_output(

@@ -283,7 +283,10 @@ external dependency; the brief + the run dir are the output.
 ## Observability & resume
 `treestate.py tree --run "$RUN"` shows the whole tree (state/budget/findings). Every node has
 `decisions.jsonl`, `questions.jsonl`/`answers.jsonl`, `sources.jsonl`, `notes/`, `evidence.md`,
-`findings.md`. Fully resumable — after a crash/interrupt re-run `frontier --run "$RUN" --resumable`
+`findings.md`. `run.json` fingerprints the complete executable runtime (skill plus channel/provenance
+dependencies), separately fingerprints channel configuration, and records Git commit/dirty state when
+available; use those fields—not the display version alone—to pin A/Bs.
+Fully resumable — after a crash/interrupt re-run `frontier --run "$RUN" --resumable`
 (re-picks pending + mid-round `active` + unanswered nodes, so nothing in flight is silently skipped).
 `run.json.state` advances through `framing → investigating → synthesized → briefed/complete`.
 
