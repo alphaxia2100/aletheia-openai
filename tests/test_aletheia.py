@@ -593,7 +593,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     def test_tiers_scale_and_version(self):
         base = tempfile.mkdtemp()
         q, dp = self._init("quick", base), self._init("deep", base)
-        self.assertEqual(q["version"], "aletheia-research 0.5.0-dev1")
+        self.assertEqual(q["version"], "aletheia-research 0.5.0-dev2")
         self.assertEqual(q["thoroughness"], "quick")
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
@@ -1223,6 +1223,51 @@ class TestAletheiaResearch031(unittest.TestCase):
         inv._cfg_classes = lambda: {"stub": {"class": "evidence", "index_group": "stub"}}
         res = inv.investigate(node, channels=["stub"], reads=3)
         self.assertGreater(res["reads_ok"], 0)                  # floor engaged, not a silent zero-read
+
+    def _triage_fixture(self):
+        # shared setup for the agent-triage path (0.5 brick 2): a fresh AR rank instance (avoids the
+        # cached deep-aletheia `rank` collision), stubbed retrieve/read, 4 readable candidates.
+        import tempfile
+        inv = self._load("ar_inv_triage", "investigate.py")
+        inv.rankmod = self._load("ar_rank_triage", "rank.py")
+        ts = self._load("ar_ts_triage", "treestate.py")
+        run = ts.init_run("even realities smart glasses review", budget=8, unit=4, base=tempfile.mkdtemp())
+        node = os.path.join(run, "tree", "root")
+        cands = [{"url": "https://site%d.example/x" % i, "title": "hands-on review %d" % i,
+                  "index_of_origin": "stub", "_class": "evidence", "_index_group": "stub",
+                  "snippet": "real user impressions of the device " * 20} for i in range(4)]
+        inv.retrieve = lambda q, ch, lim, to: (list(cands), {"stub": {"n": len(cands)}})
+        inv._read_source = lambda u, to: ("full read text " * 300, "stub", u)
+        inv._cfg_classes = lambda: {"stub": {"class": "evidence", "index_group": "stub"}}
+        return inv, node
+
+    def test_candidates_emits_manifest_without_reading(self):
+        # step 1 of triage: return the ranked manifest for the agent to judge; read NOTHING, don't
+        # bump the round. The manifest must carry the metadata the agent needs (class, snippet, url).
+        inv, node = self._triage_fixture()
+        out = inv.gather_candidates(node, channels=["stub"])
+        self.assertTrue(out["candidates"])                       # a manifest was produced
+        self.assertTrue(all("url" in c and "class" in c and "snippet" in c for c in out["candidates"]))
+        self.assertTrue(os.path.exists(inv._triage_path(node)))  # round context persisted for `read`
+        self.assertFalse(os.path.isdir(os.path.join(node, "notes")) and
+                         os.listdir(os.path.join(node, "notes")))  # nothing read yet
+
+    def test_read_picks_reads_exactly_the_agents_choices(self):
+        # step 2: read exactly the URLs the agent picked, finish the round, consume the manifest.
+        inv, node = self._triage_fixture()
+        inv.gather_candidates(node, channels=["stub"])
+        res = inv.read_picks(node, picks=["https://site0.example/x", "https://site2.example/x"])
+        self.assertEqual(res["reads_ok"], 2)                    # only the two picks were read
+        self.assertEqual(res["round"], 1)                       # round bumped once
+        self.assertFalse(os.path.exists(inv._triage_path(node)))  # manifest consumed after read
+
+    def test_read_picks_read_floor_when_agent_picks_nothing(self):
+        # the read-floor invariant holds in the agent path too: empty/invalid picks must not silently
+        # produce a zero-read round when readable candidates exist.
+        inv, node = self._triage_fixture()
+        inv.gather_candidates(node, channels=["stub"])
+        res = inv.read_picks(node, picks=["https://not-a-candidate.example/z"])
+        self.assertGreater(res["reads_ok"], 0)                 # floor engaged instead of zero-read
 
     def test_runtime_dispatch_covers_enabled_specialty_channels(self):
         inv = self._load("ar_investigate_dispatch_compat", "investigate.py")

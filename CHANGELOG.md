@@ -27,7 +27,7 @@ Versioning is [SemVer](https://semver.org/); each notable change bumps minor/pat
 
 ---
 
-## aletheia-research 0.5.0-dev1 — 2026-07-10 (bilevel intelligence-in-the-loop — EXPERIMENT branch)
+## aletheia-research 0.5.0-dev2 — 2026-07-10 (bilevel intelligence-in-the-loop — EXPERIMENT branch)
 
 Experimental line on branch `aletheia-0.5-bilevel` (stable stays 0.4.3). Design:
 `docs/aletheia-0.5-bilevel-design.md` — replace hardcoded judgment heuristics (subject regex, CLASS_W,
@@ -41,9 +41,22 @@ outer loop** measured on the held-out, κ-calibrated eval. Grounded in deep-alet
   the relevance/subject gate empties the selection (the audited `reads_ok=0` bug on proper-noun/product
   topics, e.g. smart glasses), it falls back to the top-ranked readable candidates instead of a silent
   ungrounded round — the deterministic backstop the design keeps *underneath* agent judgment.
-- Next bricks (not yet in): agent-judged topic-relative source triage (retrieve→judge→read split +
-  untrusted-social handling), the EVOI controller, then the outer meta-loop — each MEASURED vs 0.4.3 on
-  the held-out eval before the next; nothing ships past a step that didn't measurably win.
+- **Brick 2 — agent-judged, topic-relative source triage.** `investigate` is split so the AGENT (or a
+  per-leaf worker) decides which retrieved sources to read *for this question's epistemology*, instead of
+  a fixed authority/class table picking easy blogs over the Reddit/X/YouTube where the signal often lives
+  (the audited "reads easy sources" flaw). New verbs: `investigate.py candidates --node <N>` returns the
+  ranked manifest (url/title/class/index_group/score/snippet) and reads NOTHING; `investigate.py read
+  --node <N> --pick <url,...>` reads exactly the agent's picks and finishes the round. Snippets are
+  treated as UNTRUSTED text (whitespace-collapsed + capped; SKILL instructs quote-never-obey — prompt-
+  injection defense now that forums/video can be primary). The hardcoded gate (`select_reads`/`CLASS_W`/
+  `REL_READ`/authority) is RETAINED as the one-shot **headless fallback**, not deleted — the disciplined
+  "measure before removing" stance; brick-1's read-floor invariant guards both paths. SKILL.md step 3 +
+  the worker contract now default to candidates→judge→read. (investigate() refactored into reusable
+  `_gather`/`_read_floor`/`_execute_reads`; +3 regression tests; suite 142 green.)
+- Next bricks (not yet in): the EVOI/VOC metacognitive controller (deepen/decompose/spawn-sub-Aletheia/
+  commit; retire budget arithmetic into a monotonic bound), then the outer human-gated meta-loop — each
+  MEASURED vs 0.4.3 on the held-out eval before the next; nothing ships past a step that didn't measurably
+  win. **Brick 2 itself is pending that measurement (task: eval vs v0.4.3) before it is called a win.**
 
 ## aletheia-research 0.4.3 — 2026-07-09 (efficacy + compatibility audit)
 
