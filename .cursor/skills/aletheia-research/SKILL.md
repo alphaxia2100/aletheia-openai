@@ -157,15 +157,20 @@ python3 "$A/investigate.py" read --node "<NODE_DIR>" --pick "<url>,<url>,..." \
   --why "<why these sources fit this question>"                 # read exactly your picks
 # deepen: `candidates --query "<top gap>"` then `read --pick ...` again, until the node converges.
 ```
-Choose no more than `reads_suggested` candidates. If none is worth a read, do not submit an empty or
-invented pick: gather a tighter query instead. Empty/invalid picks fail without consuming the round.
+Treat `reads_suggested` as a ceiling, not a target: never pad the selection with weaker sources merely
+to fill the quota. If none is worth a read, do not submit an empty or invented pick: gather **one**
+tighter query. The runtime caps each round at two manifests (initial + one requery), so retrieval cannot
+become a hidden unbounded loop. If the second manifest is still unsuitable, consume an explicit honest
+abstention: `investigate.py reject --node <N> --why "<why no candidate is worth the read budget>"`.
+Empty/invalid picks fail without consuming the pending manifest.
 The one-shot `investigate.py --node "<NODE_DIR>"` (deterministic authority/class gate + read-floor) is a
 **headless fallback** for non-agent invocation; when you are in the loop, use candidates→judge→read.
 A relevance-gated read floor protects only the deterministic path from false zero-read rounds without
 forcing the agent path to ingest a source it judged unsuitable.
-Each completed round appends `telemetry.jsonl` (selector used, retrieved/eligible/selected counts,
-read attempts/successes/failures, floor use, and requeries); `report.py score` aggregates it under
-`runtime`. Use these counters to prove the intended path executed and to enforce cost parity in A/Bs.
+Every manifest and completed round appends `telemetry.jsonl` (retrieval passes, selector used,
+retrieved/eligible/selected counts, attempts/successes/failures, floor use, requeries, abstentions);
+`report.py score` aggregates it under `runtime`. Use these counters to prove the intended path executed
+and enforce search/read cost parity in A/Bs.
 Repeat only while the bounded node has scrutiny rounds remaining; `unlimited`/`max` continue to
 convergence. If evidence marks a load-bearing read `TRUNCATED`, re-read it without the cap:
 `python3 "$AL/channel-retrieval/scripts/read.py" URL --outdir "<NODE_DIR>/notes/full" --max-chars 0`.
