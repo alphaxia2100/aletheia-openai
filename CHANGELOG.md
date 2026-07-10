@@ -1,9 +1,9 @@
 # Changelog
 
 Current skill:
-- **aletheia-research 0.4.3** — deep, multi-perspective research surveyor (filesystem tree; parallel
-  read-only investigations; wide source variety; decisive-source hunt; completed verification). This is
-  the one to use. (Renamed from `aletheia` so its purpose — the research tool to invoke — is explicit.)
+- **aletheia-research 0.5.0-openai.1** — the OpenAI/Codex specialization: topic-relative but bounded
+  source triage, final-answer claim-scope verification, executable-runtime fingerprints, complete read
+  accounting, and Codex-only installation. The separate Claude line is left untouched.
 
 ## channel-retrieval — reliability fixes (2026-07-08)
 - **Query formulation:** keyword channels (HN/Stack Exchange/GitHub/Marginalia) returned 0 on long
@@ -27,36 +27,33 @@ Versioning is [SemVer](https://semver.org/); each notable change bumps minor/pat
 
 ---
 
-## aletheia-research 0.5.0-dev2 — 2026-07-10 (bilevel intelligence-in-the-loop — EXPERIMENT branch)
+## aletheia-research 0.5.0-openai.1 — 2026-07-10 (OpenAI/Codex specialization)
 
-Experimental line on branch `aletheia-0.5-bilevel` (stable stays 0.4.3). Design:
-`docs/aletheia-0.5-bilevel-design.md` — replace hardcoded judgment heuristics (subject regex, CLASS_W,
-REL_READ, authority lists, keywordize, shingle threshold) with **batched, topic-relative LLM judgment**;
-add a **VOC/EVOI metacognitive controller** (deepen / decompose / spawn-sub-Aletheia / commit, gated on
-calibrated uncertainty, bounded by a repurposed monotonic budget); and a **human-gated meta-autoresearch
-outer loop** measured on the held-out, κ-calibrated eval. Grounded in deep-aletheia + a max fan-out
-(ADAS/DGM/Promptbreeder; Russell & Wefald VOC; RankGPT/UMBRELA/Self-RAG; reward-hacking guardrails).
+Research and forward-test record: [`docs/evals/openai-v0.5-forward-test.md`](docs/evals/openai-v0.5-forward-test.md).
 
-- **Brick 1 — read-floor invariant.** `investigate` never reads ZERO when readable candidates exist: if
-  the relevance/subject gate empties the selection (the audited `reads_ok=0` bug on proper-noun/product
-  topics, e.g. smart glasses), it falls back to the top-ranked readable candidates instead of a silent
-  ungrounded round — the deterministic backstop the design keeps *underneath* agent judgment.
-- **Brick 2 — agent-judged, topic-relative source triage.** `investigate` is split so the AGENT (or a
-  per-leaf worker) decides which retrieved sources to read *for this question's epistemology*, instead of
-  a fixed authority/class table picking easy blogs over the Reddit/X/YouTube where the signal often lives
-  (the audited "reads easy sources" flaw). New verbs: `investigate.py candidates --node <N>` returns the
-  ranked manifest (url/title/class/index_group/score/snippet) and reads NOTHING; `investigate.py read
-  --node <N> --pick <url,...>` reads exactly the agent's picks and finishes the round. Snippets are
-  treated as UNTRUSTED text (whitespace-collapsed + capped; SKILL instructs quote-never-obey — prompt-
-  injection defense now that forums/video can be primary). The hardcoded gate (`select_reads`/`CLASS_W`/
-  `REL_READ`/authority) is RETAINED as the one-shot **headless fallback**, not deleted — the disciplined
-  "measure before removing" stance; brick-1's read-floor invariant guards both paths. SKILL.md step 3 +
-  the worker contract now default to candidates→judge→read. (investigate() refactored into reusable
-  `_gather`/`_read_floor`/`_execute_reads`; +3 regression tests; suite 142 green.)
-- Next bricks (not yet in): the EVOI/VOC metacognitive controller (deepen/decompose/spawn-sub-Aletheia/
-  commit; retire budget arithmetic into a monotonic bound), then the outer human-gated meta-loop — each
-  MEASURED vs 0.4.3 on the held-out eval before the next; nothing ships past a step that didn't measurably
-  win. **Brick 2 itself is pending that measurement (task: eval vs v0.4.3) before it is called a win.**
+- **Topic-relative source triage, with hard cost bounds.** Codex judges a visible candidate manifest
+  for the question's epistemology, reads no more than the round ceiling, gets at most one tighter
+  requery, and must explicitly reject an unsuitable second manifest. The deterministic selector remains
+  as a headless fallback with a relevance-gated read floor. Every gather, requery, selection, read,
+  failure, floor use, and abstention is machine-scored.
+- **Matched-cost forward tests.** On a consumer reliability topic, two reversed-order blind judges
+  preferred the candidate at 0.98 confidence. On a biomedical no-regression topic, the capped candidate
+  used the same three engine retrieval passes as 0.4.3, no requeries, and both reversed-order judges
+  preferred it (0.78/0.77). These are small-N mechanism tests, not statistical general-superiority claims.
+- **Final-answer claim coverage.** Verification begins from the complete `brief.md`; a fresh-context
+  verifier compares the entire final brief with `claims.jsonl`, adds omissions, and attests hashes of
+  brief, claims, and verdicts. Any later edit invalidates headline accuracy. The science test's auditor
+  added 15 claims the writer omitted, turning a superficial 17-row pass into 32 checked claims.
+- **Reproducible traces.** `run.json` records the Git commit/dirty state and SHA-256 fingerprints of the
+  skill, channel configuration, and executable dependency runtime. Scores expose old/new mixed traces
+  correctly and count every persisted read artifact, including direct/manual reads outside engine
+  telemetry.
+- **Codex isolation.** `install.sh --codex-only` updates `${CODEX_HOME:-~/.codex}` without modifying
+  Cursor or Claude roots, so this OpenAI line can coexist with a separate Claude worktree.
+- **Living outlines remain experimental.** Evidence-conditioned splits activated and preserved the
+  configured eight-round budget, but the candidate accumulated 97 persisted read artifacts versus 41
+  for the static baseline. That 2.37× hidden read amplification invalidates a cost-matched promotion;
+  the code remains on `codex/exp-budgeted-dynamic-outline` pending an enforceable linked-primary budget.
 
 ## aletheia-research 0.4.3 — 2026-07-09 (efficacy + compatibility audit)
 

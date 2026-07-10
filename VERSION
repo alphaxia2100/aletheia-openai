@@ -1,6 +1,6 @@
-aletheia-research: 0.5.0-dev2 (bilevel experiment branch; stable line is 0.4.3)
+aletheia-research: 0.5.0-openai.1 (OpenAI/Codex specialization; mechanism-tested from 0.4.3)
 deep-aletheia: 0.2.0 (frozen — direct ancestor of aletheia-research 0.3; eval baseline)
 surveyor: 0.1.0 (retired 2026-07-08 — eval baseline; superseded by aletheia-research 0.3)
 aletheia: 1.0.0 (retired — original single-agent loop; the deep-tree flagship is now `aletheia-research`)
-# The flagship skill is `aletheia-research` 0.4.3 (deep multi-perspective tree, built from
-# deep-aletheia 0.2). Renamed from `aletheia` so its purpose (the research tool to invoke) is explicit.
+# This branch's flagship is `aletheia-research` 0.5.0-openai.1. The separate Claude worktree remains
+# independently versioned; Codex-only installation does not mutate Cursor or Claude skill roots.

@@ -37,7 +37,7 @@ flowchart TD
 
 ## Skills
 
-> **Current skill: `aletheia-research` 0.4.3.** The flagship is the deep, multi-perspective tree
+> **Current OpenAI/Codex skill: `aletheia-research` 0.5.0-openai.1.** The flagship is the deep, multi-perspective tree
 > surveyor — built off **deep-aletheia 0.2** (which won a blind LLM-judge on completeness, source
 > variety, and grounding), keeping its good parts and adding a decisive-source hunt, chase-the-primary
 > discipline, wider source variety, and a thoroughness dial. See `docs/aletheia-0.3-design.md` and the
@@ -45,7 +45,7 @@ flowchart TD
 
 | Skill | Role |
 |-------|------|
-| **`aletheia-research` 0.4.3** | **Current** deep surveyor (multi-perspective tree). Defaults to unbounded convergence; `quick\|standard\|deep\|exhaustive` bound it and `max` expands it. |
+| **`aletheia-research` 0.5.0-openai.1** | **Current OpenAI/Codex line.** Topic-relative capped source triage, final-brief claim-scope verification, and reproducible runtime traces; defaults to unbounded convergence. |
 | `deep-aletheia` 0.2 | *Frozen — direct ancestor of aletheia-research 0.3; eval baseline.* |
 | `surveyor` 0.1 | *Retired 2026-07-08 — eval baseline (single-agent).* |
 | `aletheia` v1.0 | *Retired — original single-agent loop; superseded by `aletheia-research`.* |
@@ -94,7 +94,7 @@ The agent uses only enabled channels (`channel-retrieval` enforces this). Hidden
 ```bash
 bash scripts/install.sh          # full suite to Cursor/Claude; validated flagship to Codex
 # bash scripts/install.sh --copy # copy Cursor/Claude skills; Codex stays symlinked for sibling runtime
-# bash scripts/install.sh --codex-only # update Codex while preserving a separate Cursor/Claude version
+# bash scripts/install.sh --codex-only # install this OpenAI line; preserve Cursor/Claude versions
 ```
 Then invoke *"use the aletheia-research skill to survey \<topic\>."* In Codex, `$aletheia-research` is also available after starting a new session. The scripts self-locate this repo via realpath, so `.env`, channel settings, and the atlas work from anywhere. Codex resolves through `${CODEX_HOME:-$HOME/.codex}`; utilities also run by absolute path, e.g. `python3 ~/.cursor/skills/channel-retrieval/scripts/doctor.py`. (One source of truth: edits here show up in every client.)
 

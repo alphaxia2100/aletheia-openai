@@ -234,7 +234,7 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
             suffix += 1
     os.makedirs(os.path.join(run, "index"))
     _write_json(os.path.join(run, "run.json"), {
-        "topic": topic, "created": _now(), "version": "aletheia-research 0.5.0-dev2",
+        "topic": topic, "created": _now(), "version": "aletheia-research 0.5.0-openai.1",
         "implementation": _implementation_metadata(),
         "thoroughness": tier, "verbosity": verbosity,
         "budget": budget, "unit": unit, "max_depth": max_depth,
