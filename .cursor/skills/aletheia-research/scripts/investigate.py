@@ -522,6 +522,23 @@ def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
     # Don't spend read slots re-reading the same work under another domain/title variant.
     read_pool = _dedupe_records(ranked, already_read)
     sel = [r for r in rankmod.select_reads(read_pool, reads) if not _note_exists(node, r.get("url", ""))]
+    if not sel and read_pool:
+        # SAFE READ FLOOR: a subject-signature bug must not turn clearly relevant results into an
+        # ungrounded zero-read round (observed on the Even Realities run), but an actually irrelevant
+        # result set should still be allowed to abstain.  Only bypass the subject/entity gate for
+        # candidates that already passed the lexical relevance floor; never fall back to arbitrary
+        # top-ranked noise merely because some URL exists.
+        eligible = [r for r in read_pool
+                    if float(r.get("_relnorm", 0) or 0) >= rankmod.REL_READ
+                    and str(r.get("url", "")).lower().startswith(("http://", "https://"))
+                    and not _note_exists(node, r.get("url", ""))]
+        sel = eligible[:max(1, reads)]
+        if sel:
+            treestate.log_decision(
+                node, "investigate",
+                "safe read-floor engaged: subject/entity gate returned 0; reading %d candidates "
+                "that still passed lexical relevance" % len(sel),
+                "recover a grounded round without spending reads on a wholly irrelevant pool")
     treestate.log_decision(node, "investigate",
                            "round %d: retrieved %d -> %d unique; reading %d new" % (
                                round_no, len(recs), len(uniq), len(sel)),

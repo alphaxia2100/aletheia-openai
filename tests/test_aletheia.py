@@ -1203,6 +1203,39 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertIn("relaxed_to", per["stub"])            # and recorded which shorter query worked
         self.assertGreater(len(calls), 1)                   # it actually retried
 
+    def test_safe_read_floor_recovers_high_relevance_subject_gate_false_negative(self):
+        inv = self._load("ar_inv_safe_floor", "investigate.py")
+        inv.rankmod = self._load("ar_rank_safe_floor", "rank.py")
+        ts = self._load("ar_ts_safe_floor", "treestate.py")
+        run = ts.init_run("even realities smart glasses review", budget=8, unit=4,
+                          base=tempfile.mkdtemp())
+        node = os.path.join(run, "tree", "root")
+        cands = [{"url": "https://site%d.example/review" % i,
+                  "title": "Even Realities smart glasses hands-on review %d" % i,
+                  "snippet": "daily use review of Even Realities smart glasses " * 10,
+                  "index_of_origin": "stub", "_class": "evidence"} for i in range(3)]
+        inv.retrieve = lambda *_a, **_k: (list(cands), {"stub": {"n": len(cands)}})
+        inv.rankmod.select_reads = lambda _pool, _k: []     # reproduce the over-strict subject gate
+        inv._read_source = lambda u, _t: ("full relevant review " * 200, "stub", u)
+        inv._cfg_classes = lambda: {"stub": {"class": "evidence", "index_group": "stub"}}
+        self.assertGreater(inv.investigate(node, channels=["stub"], reads=3)["reads_ok"], 0)
+
+    def test_safe_read_floor_does_not_spend_budget_on_low_relevance_pool(self):
+        inv = self._load("ar_inv_safe_floor_abstain", "investigate.py")
+        inv.rankmod = self._load("ar_rank_safe_floor_abstain", "rank.py")
+        ts = self._load("ar_ts_safe_floor_abstain", "treestate.py")
+        run = ts.init_run("even realities smart glasses review", budget=8, unit=4,
+                          base=tempfile.mkdtemp())
+        node = os.path.join(run, "tree", "root")
+        raw = [{"url": "https://noise.example/unrelated", "title": "unrelated source",
+                "index_of_origin": "stub", "_class": "evidence"}]
+        inv.retrieve = lambda *_a, **_k: (list(raw), {"stub": {"n": 1}})
+        inv.rankmod.rank = lambda *_a, **_k: [dict(raw[0], _relnorm=0.1, score=0.9)]
+        inv.rankmod.select_reads = lambda _pool, _k: []
+        inv._read_source = lambda *_a, **_k: self.fail("low-relevance noise must not be read")
+        inv._cfg_classes = lambda: {"stub": {"class": "evidence", "index_group": "stub"}}
+        self.assertEqual(inv.investigate(node, channels=["stub"], reads=3)["reads_ok"], 0)
+
     def test_runtime_dispatch_covers_enabled_specialty_channels(self):
         inv = self._load("ar_investigate_dispatch_compat", "investigate.py")
         for channel in ("openlibrary", "x", "youtube"):
