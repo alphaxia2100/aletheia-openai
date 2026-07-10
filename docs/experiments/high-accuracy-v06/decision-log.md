@@ -59,3 +59,50 @@ Append entries; do not rewrite history. A reversal adds a new entry that names t
   ledger and evidence-directed controller rather than adding another fixed outline prompt.
 - Why: the current system cannot schedule work by claim risk or measure claim-specific corroboration.
 - Status: provisional pending external research and evaluator audit.
+
+## D009 — reject the legacy evaluator as an architecture selector
+
+- Finding: the old evaluator detected only 8/24 frozen known defects, falsely allowed headline
+  accuracy without a final claim-scope audit, reversed both blind source-choice results, accepted a
+  one-anchor κ=1.0, and did not control order or verbosity.
+- Decision: no prior dynamic-outline or source-triage preference is promotion evidence. Re-score it
+  with the strict evaluator, and treat missing dimensions as `null`, not as wins or zeros.
+- Consequence: architecture work may proceed on isolated branches, but the sealed forward set stays
+  closed until a genuinely independent release gate exists.
+
+## D010 — prefer evidence-addressed state over unconstrained dynamic planning
+
+- Evidence: WebWeaver's focused section writer improved citation accuracy 86.73→93.37 and support
+  90.95→98.73; outline/planner gains also appear in STORM and SciRAG. Conversely, FAIR-RAG reports
+  sufficiency-controller errors, MRDRE finds 31% content-feedback breakage, and OpenScholar preferred
+  the unrevised answer about 20% of the time.
+- Decision: the first architecture candidate is an append-only atomic claim→span support graph with
+  transactional history, not whole-outline rewriting or model-confidence stopping.
+- Caveat: this exact schema is a design inference. Paper plausibility is not promotion evidence.
+
+## D011 — isolate runtime integrity from answer quality
+
+- Branch/commit: `codex/exp-runtime-ledger-v06` at `087a228`.
+- Result: 160/160 tests pass. The candidate honors agent `--reads`, decouples reads from scrutiny
+  units, makes browser `--max-chars 0` genuinely unlimited, and reserves work atomically before I/O.
+- Decision: retain as experiment-integrity plumbing, but credit it with zero answer-quality gain.
+- Remaining gap: manual reads are audited after acquisition and one in-flight network call can cross
+  the elapsed-time threshold.
+
+## D012 — freeze the first claim/evidence ledger candidate without promoting it
+
+- Branch/commit: `codex/exp-claim-evidence-ledger-v06` at `35fb82a`.
+- Result: 164/164 tests pass. Pending/background edges do not support; required facet checks and
+  claim-specific origins fail closed; contradictions become disputed; exact spans are bound to
+  hashed artifacts; evidence changes revoke support; stale stop probes are invalidated.
+- Decision: freeze for matched-read forward evaluation. Structural defect tests establish invariants,
+  not end-to-end accuracy.
+
+## D013 — evaluator v2 remains a meta-evaluation harness
+
+- Finding: evaluator v2 is fail-closed and its calibration artifact scores 24/24 versus 8/24 for the
+  legacy evaluator, but the 24 judgments were self-authored rather than independent blind labels.
+  Factual truth, answer recall, source quality, temporal correctness, and contradiction recall remain
+  explicitly unmeasured.
+- Decision: do not open the sealed topic set, merge a candidate, or update the installed Codex skill.
+  A fresh model/human must supply topic rubrics and blind paired judgments first.
