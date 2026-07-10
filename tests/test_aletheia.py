@@ -670,8 +670,14 @@ class TestAletheia03Thoroughness(unittest.TestCase):
             for v in ("supported", "supported", "off_topic", "relevant"):
                 fh.write(json.dumps({"verdict": v}) + "\n")
         with open(os.path.join(run, "tree", "root", "telemetry.jsonl"), "w") as fh:
+            fh.write(json.dumps({"event": "candidate_gather", "selection_mode": "agent",
+                                 "round": 1, "attempt": 1, "requery": False, "retrieved": 5,
+                                 "unique": 5, "eligible": 4}) + "\n")
+            fh.write(json.dumps({"event": "candidate_gather", "selection_mode": "agent",
+                                 "round": 1, "attempt": 2, "requery": True, "retrieved": 8,
+                                 "unique": 7, "eligible": 6}) + "\n")
             fh.write(json.dumps({"event": "investigation_round", "selection_mode": "agent",
-                                 "retrieved": 8, "unique": 7, "eligible": 6, "selected": 3,
+                                 "round": 1, "retrieved": 8, "unique": 7, "eligible": 6, "selected": 3,
                                  "read_attempts": 3, "reads_ok": 2, "read_failures": 1,
                                  "floor_engaged": False, "read_seconds": 1.5}) + "\n")
             fh.write(json.dumps({"event": "triage_requery", "selection_mode": "agent"}) + "\n")
@@ -684,6 +690,34 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         self.assertEqual(s["runtime"]["rounds_by_selection_mode"], {"agent": 1})
         self.assertEqual(s["runtime"]["reads_ok"], 2)
         self.assertEqual(s["runtime"]["triage_requeries"], 1)
+        self.assertEqual(s["runtime"]["retrieval_passes"], 2)
+        self.assertEqual(s["runtime"]["candidate_gathers"], 2)
+        self.assertEqual(s["runtime"]["retrieved"], 13)       # gathers only; round is not double-counted
+        self.assertEqual(s["runtime"]["completed_round_retrieved"], 8)
+
+    def test_runtime_cost_handles_mixed_pre_upgrade_agent_trace(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "mixed telemetry", "--base", base], text=True).strip()
+        telemetry = os.path.join(run, "tree", "root", "telemetry.jsonl")
+        with open(telemetry, "w", encoding="utf-8") as fh:
+            # Round 1 predates candidate_gather telemetry, so its completed-round count is the only
+            # available search-cost record. Round 2 is new and must use its gather without doubling.
+            fh.write(json.dumps({"event": "investigation_round", "selection_mode": "agent",
+                                 "round": 1, "retrieved": 4, "unique": 4, "eligible": 3,
+                                 "selected": 2, "read_attempts": 2, "reads_ok": 2}) + "\n")
+            fh.write(json.dumps({"event": "candidate_gather", "selection_mode": "agent",
+                                 "round": 2, "attempt": 1, "retrieved": 5,
+                                 "unique": 5, "eligible": 4}) + "\n")
+            fh.write(json.dumps({"event": "investigation_round", "selection_mode": "agent",
+                                 "round": 2, "retrieved": 5, "unique": 5, "eligible": 4,
+                                 "selected": 2, "read_attempts": 2, "reads_ok": 2}) + "\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        s = json.loads(subprocess.check_output([sys.executable, rep, "score", "--run", run], text=True))
+        self.assertEqual(s["runtime"]["rounds"], 2)
+        self.assertEqual(s["runtime"]["retrieval_passes"], 2)
+        self.assertEqual(s["runtime"]["retrieved"], 9)
+        self.assertEqual(s["runtime"]["completed_round_retrieved"], 9)
 
     def test_report_score_can_persist_machine_readable_artifact(self):
         base = tempfile.mkdtemp()
@@ -1317,10 +1351,43 @@ class TestAletheiaResearch031(unittest.TestCase):
         inv.gather_candidates(node, query="specific pump failure evidence", channels=["stub"])
         with open(inv._telemetry_path(node), encoding="utf-8") as fh:
             events = [json.loads(line) for line in fh if line.strip()]
-        self.assertEqual([e["event"] for e in events], ["triage_requery"])
-        self.assertGreater(events[0]["rejected_candidates"], 0)
+        self.assertEqual([e["event"] for e in events],
+                         ["candidate_gather", "candidate_gather", "triage_requery"])
+        self.assertEqual([e["attempt"] for e in events[:2]], [1, 2])
+        self.assertEqual([e["requery"] for e in events[:2]], [False, True])
+        self.assertGreater(events[2]["rejected_candidates"], 0)
         st = inv.treestate._read_json(os.path.join(node, "status.json"), {})
         self.assertEqual(st.get("rounds", 0), 0)
+
+    def test_agent_requery_cap_refuses_third_gather_before_network_io(self):
+        inv, node = self._triage_fixture()
+        inv.gather_candidates(node, channels=["stub"])
+        inv.gather_candidates(node, query="specific pump failure evidence", channels=["stub"])
+        inv.retrieve = lambda *_a, **_k: self.fail("third gather must fail before network I/O")
+        with self.assertRaises(SystemExit):
+            inv.gather_candidates(node, query="another hidden search pass", channels=["stub"])
+        with open(inv._telemetry_path(node), encoding="utf-8") as fh:
+            events = [json.loads(line) for line in fh if line.strip()]
+        self.assertEqual(sum(e.get("event") == "candidate_gather" for e in events), 2)
+        self.assertTrue(os.path.exists(inv._triage_path(node)))
+        st = inv.treestate._read_json(os.path.join(node, "status.json"), {})
+        self.assertEqual(st.get("rounds", 0), 0)
+
+    def test_agent_can_explicitly_reject_manifest_and_consume_round(self):
+        inv, node = self._triage_fixture()
+        inv.gather_candidates(node, channels=["stub"])
+        inv._read_source = lambda *_a, **_k: self.fail("reject must not read a source")
+        res = inv.reject_candidates(node, why="all candidates are off-topic affiliate pages")
+        self.assertEqual(res["round"], 1)
+        self.assertEqual(res["reads_ok"], 0)
+        self.assertEqual(res["telemetry"]["selection_mode"], "agent")
+        self.assertTrue(res["telemetry"]["abstained"])
+        self.assertFalse(os.path.exists(inv._triage_path(node)))
+        st = inv.treestate._read_json(os.path.join(node, "status.json"), {})
+        self.assertEqual(st.get("rounds"), 1)
+        with open(os.path.join(node, "decisions.jsonl"), encoding="utf-8") as fh:
+            decisions = [json.loads(line) for line in fh if line.strip()]
+        self.assertTrue(any("off-topic affiliate pages" in d.get("why", "") for d in decisions))
 
     def test_runtime_dispatch_covers_enabled_specialty_channels(self):
         inv = self._load("ar_investigate_dispatch_compat", "investigate.py")

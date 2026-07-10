@@ -78,19 +78,34 @@ def _runtime_telemetry(run: str) -> Dict[str, Any]:
     """Aggregate selection-path activation and cost counters emitted by investigate.py."""
     events = []
     for node in _nodes_depth_first(run):
-        events.extend(_jsonl_dicts(os.path.join(node, "telemetry.jsonl")))
+        for event in _jsonl_dicts(os.path.join(node, "telemetry.jsonl")):
+            tagged = dict(event)
+            tagged["_node"] = node       # disambiguate equal round numbers across different leaves
+            events.append(tagged)
     rounds = [e for e in events if e.get("event") == "investigation_round"]
+    gathers = [e for e in events if e.get("event") == "candidate_gather"]
+    # Agent rounds repeat the final gather's retrieval counts, so use gather events for agent search
+    # cost and completed-round events only for deterministic search. Match per node+round so a run
+    # resumed across an upgrade still counts its older agent rounds that lack candidate_gather events.
+    deterministic_search = [e for e in rounds if e.get("selection_mode") != "agent"]
+    gather_rounds = {(e.get("_node"), e.get("round")) for e in gathers}
+    legacy_agent_search = [e for e in rounds if e.get("selection_mode") == "agent"
+                           and (e.get("_node"), e.get("round")) not in gather_rounds]
+    searches = gathers + deterministic_search + legacy_agent_search
     modes = Counter(str(e.get("selection_mode") or "unknown") for e in rounds)
 
-    def total(field: str) -> int:
-        return sum(int(e.get(field, 0) or 0) for e in rounds)
+    def total(field: str, rows=rounds) -> int:
+        return sum(int(e.get(field, 0) or 0) for e in rows)
 
     return {
         "rounds": len(rounds),
         "rounds_by_selection_mode": dict(sorted(modes.items())),
-        "retrieved": total("retrieved"),
-        "unique": total("unique"),
-        "eligible": total("eligible"),
+        "retrieval_passes": len(searches),
+        "candidate_gathers": len(gathers),
+        "retrieved": total("retrieved", searches),
+        "unique": total("unique", searches),
+        "eligible": total("eligible", searches),
+        "completed_round_retrieved": total("retrieved"),
         "selected": total("selected"),
         "read_attempts": total("read_attempts"),
         "reads_ok": total("reads_ok"),
@@ -98,6 +113,7 @@ def _runtime_telemetry(run: str) -> Dict[str, Any]:
         "zero_selection_rounds": sum(1 for e in rounds if int(e.get("selected", 0) or 0) == 0),
         "zero_success_rounds": sum(1 for e in rounds if int(e.get("reads_ok", 0) or 0) == 0),
         "floor_engagements": sum(1 for e in rounds if e.get("floor_engaged") is True),
+        "abstained_rounds": sum(1 for e in rounds if e.get("abstained") is True),
         "triage_requeries": sum(1 for e in events if e.get("event") == "triage_requery"),
         "read_seconds": round(sum(float(e.get("read_seconds", 0) or 0) for e in rounds), 1),
     }
