@@ -198,10 +198,41 @@ for its sub-question; **chases primaries** (no secondhand citations); writes `<N
 **primary URL** + one-line quote + class; corroborated vs single-origin; disconfirming evidence; and
 **what's missing** — the gaps). Workers are independent; they write artifacts, not big blobs back.
 
+### 3a. Build the atomic claim/evidence/span ledger (before prose synthesis)
+
+Do not let `findings.md` become the only epistemic state. After the scout pass, declare each expected
+load-bearing claim (it may remain unresolved), then link every usable source to an **exact verbatim
+span**. A bibliographic citation/hyperlink is discovery only and never becomes a support edge.
+
+```bash
+L="$A/ledger.py"
+python3 "$L" add-claim --run "$RUN" --id C1 --text "<atomic claim>" --scope "<population/time>" \
+  --importance load_bearing --required-origins 2 --checks polarity,scope,numeric,temporal
+python3 "$L" add-evidence --run "$RUN" --id E1 --claim C1 --url "<primary URL>" \
+  --source-class evidence --origin-key "<DOI/dataset/origin>" --span "<exact quote>" \
+  --locator "<page/section/table>" --content-file "<read artifact>" --relation supports
+python3 "$L" verify-evidence --run "$RUN" --id E1 --result verified \
+  --verifier "<fresh-context verifier>" --checks polarity,scope,numeric,temporal \
+  --why "<why the exact span supports this scoped claim>"
+python3 "$L" next --run "$RUN"       # disputed/unsupported/load-bearing gaps first
+```
+
+Evidence records are immutable; corrections append a new verdict. Verified support plus verified
+contradiction makes a claim `disputed` and forces an adjudication query. Claim-specific independent
+origins are enforced, unlike run-wide source counts. Before drafting, run `ledger.py audit` and
+`ledger.py context --output "$RUN/verified-context.md"`; draft only from that focused context. A
+load-bearing blocker that remains at the cap must be surfaced as unresolved, never silently omitted.
+
+Stopping is separate from drafting. After all blockers close, a fresh challenger must use a different
+query/channel/origin strategy, followed by one confirmation pass. Record both with `ledger.py probe`.
+Any later claim, evidence, or verdict invalidates those probes. A hard-cap stop is recorded with
+`ledger.py terminate` and reported as budget exhaustion, never epistemic completion.
+
 ### 4. Synthesize bottom-up, with enforced back-and-forth
 Deepest nodes first. `python3 "$A/synthesize.py" --node "<NODE_DIR>" --gate` — if it exits 3, a child
 is thin/unanswered: **ask it** (`treestate.py ask …`) and let it **answer from its already-gathered
 sources** (`treestate.py answer …`) before you author. Then write `<NODE_DIR>/findings.md` yourself
+from the verified ledger context
 (single-threaded), honoring the independence report (high echo ⇒ don't treat convergence as truth).
 
 ### 5. Judge independence + attack the leading conclusion
