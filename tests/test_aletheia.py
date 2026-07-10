@@ -733,6 +733,84 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         self.assertIsNone(changed["citation_accuracy"])
         self.assertIn("brief_changed_after_audit", changed["claim_scope_audit"]["reasons"])
 
+    def test_claim_scope_audit_invalidates_after_verdict_changes(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "verdict audit", "--base", base], text=True).strip()
+        claim = {"claim": "c", "url": "https://x"}
+        with open(os.path.join(run, "claims.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(claim) + "\n")
+        verify_path = os.path.join(run, "verify.jsonl")
+        with open(verify_path, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(dict(claim, verdict="unsupported")) + "\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        subprocess.check_call([sys.executable, rep, "write-brief", "--run", run,
+                               "--text", "# Audited\nClaim c."], stdout=subprocess.DEVNULL)
+        subprocess.check_call([sys.executable, rep, "audit-claims", "--run", run,
+                               "--auditor", "fresh-context-test-verifier"],
+                              stdout=subprocess.DEVNULL)
+        with open(verify_path, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(dict(claim, verdict="supported")) + "\n")
+        changed = json.loads(subprocess.check_output(
+            [sys.executable, rep, "score", "--run", run], text=True))
+        self.assertFalse(changed["citation_complete"])
+        self.assertIsNone(changed["citation_accuracy"])
+        self.assertIn("verify_changed_after_audit", changed["claim_scope_audit"]["reasons"])
+
+    def test_claim_scope_accepts_declared_multi_url_claim(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "multi url audit", "--base", base], text=True).strip()
+        claim = {"claim": "c", "urls": ["https://unreadable", "https://readable"]}
+        with open(os.path.join(run, "claims.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(claim) + "\n")
+        with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"claim": "c", "url": "https://readable",
+                                 "verdict": "supported"}) + "\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        subprocess.check_call([sys.executable, rep, "write-brief", "--run", run,
+                               "--text", "# Audited\nClaim c."], stdout=subprocess.DEVNULL)
+        subprocess.check_call([sys.executable, rep, "audit-claims", "--run", run,
+                               "--auditor", "fresh-context-test-verifier"],
+                              stdout=subprocess.DEVNULL)
+        scored = json.loads(subprocess.check_output(
+            [sys.executable, rep, "score", "--run", run], text=True))
+        self.assertTrue(scored["citation_complete"])
+
+    def test_claim_scope_refuses_malformed_jsonl_instead_of_skipping_it(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "malformed audit", "--base", base], text=True).strip()
+        with open(os.path.join(run, "claims.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write('{"claim":"c","url":"https://x"}\nnot-json\n')
+        with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"claim": "c", "url": "https://x",
+                                 "verdict": "supported"}) + "\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        subprocess.check_call([sys.executable, rep, "write-brief", "--run", run,
+                               "--text", "# Audited\nClaim c."], stdout=subprocess.DEVNULL)
+        proc = subprocess.run([sys.executable, rep, "audit-claims", "--run", run,
+                               "--auditor", "fresh-context-test-verifier"],
+                              capture_output=True, text=True)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("claims.jsonl line 2 is invalid JSON", proc.stderr)
+        self.assertFalse(os.path.exists(os.path.join(run, "claim_audit.json")))
+
+    def test_legacy_run_keeps_row_only_score_compatibility(self):
+        run = tempfile.mkdtemp()
+        with open(os.path.join(run, "run.json"), "w", encoding="utf-8") as fh:
+            json.dump({"topic": "legacy", "version": "aletheia-research 0.4.3"}, fh)
+        os.makedirs(os.path.join(run, "tree"))
+        with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"claim": "c", "url": "https://x",
+                                 "verdict": "supported"}) + "\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        scored = json.loads(subprocess.check_output(
+            [sys.executable, rep, "score", "--run", run], text=True))
+        self.assertTrue(scored["citation_complete"])
+        self.assertEqual(scored["citation_accuracy"], 1.0)
+        self.assertFalse(scored["claim_scope_audit"]["required"])
+
     def test_broken_citation_blocks_completion(self):
         base = tempfile.mkdtemp()
         run = subprocess.check_output(
