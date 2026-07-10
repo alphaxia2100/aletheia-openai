@@ -27,7 +27,7 @@ Versioning is [SemVer](https://semver.org/); each notable change bumps minor/pat
 
 ---
 
-## aletheia-research 0.5.0-dev2 — 2026-07-10 (bilevel intelligence-in-the-loop — EXPERIMENT branch)
+## aletheia-research 0.5.0-dev3 — 2026-07-10 (bilevel intelligence-in-the-loop — EXPERIMENT branch)
 
 Experimental line on branch `aletheia-0.5-bilevel` (stable stays 0.4.3). Design:
 `docs/aletheia-0.5-bilevel-design.md` — replace hardcoded judgment heuristics (subject regex, CLASS_W,
@@ -53,10 +53,30 @@ outer loop** measured on the held-out, κ-calibrated eval. Grounded in deep-alet
   "measure before removing" stance; brick-1's read-floor invariant guards both paths. SKILL.md step 3 +
   the worker contract now default to candidates→judge→read. (investigate() refactored into reusable
   `_gather`/`_read_floor`/`_execute_reads`; +3 regression tests; suite 142 green.)
+- **Brick 2.1 — fix triage read-linkage (found by inspecting the first eval, not by the green score).**
+  In `read_picks`, `ranked` and `read_pool` deserialized from the persisted manifest as SEPARATE object
+  graphs, so `_read_ok`/`_read_file` set on the picked records never reached the `ranked` records written
+  to `sources.jsonl`: triage-path runs wrote the note files but left `sources.jsonl` showing 0 reads,
+  corrupting read-based scoring and the independence report (the brief itself was fine — reads happened,
+  claims verified). Fixed by rebuilding the read pool as a VIEW over `ranked` (`sel ⊆ pool ⊆ ranked`,
+  shared objects). Regression test now asserts `_read_ok`/`_read_file` persist to `sources.jsonl`, not
+  just the return value. Known remaining limitation: if the agent reads via `read.py` directly instead of
+  `read --pick`, those reads still bypass tree bookkeeping (pre-existing; the one-shot path or `--pick`
+  is the tracked route).
+- **First measurement (v0.5.0-dev2 candidate vs git-pinned v0.4.3), held-out eval, deep tier, Opus judge,
+  3 blind trials/topic — PROVISIONAL, not a declared win.** Candidate took 8/9 blind pairwise trials
+  (per-topic 3/3: even-glasses, robovac-pets, seed-oils) and grounded more distinct claim-tied origins on
+  all three (14/14/9 vs 10/10/7) at equal (perfect) citation accuracy; on robovac reads shifted toward
+  Reddit/HN owner reports (16 vs 5) and away from Bing blogs (10 vs 25) — the thesis firing. BUT the
+  calibration gate is NOT cleared: n=3 topics → Wilson 95% CI [0.44, 1.00] (lower bound < 0.5, under-
+  powered) AND the judge is UNCALIBRATED (no human anchor labels → κ=null). Per the rule, brick 2 stays
+  provisional until human anchor labels (κ≥0.6) + more held-out topics clear the CI — ideally re-run on
+  dev3 (dev2 had the read-linkage bug, so dev2's objective read-metrics were conservative/understated).
+  Artifacts: `runs/eval/2026-07-10-brick2-vs-v043/` (results.json, anchor.jsonl, gen/ briefs).
 - Next bricks (not yet in): the EVOI/VOC metacognitive controller (deepen/decompose/spawn-sub-Aletheia/
   commit; retire budget arithmetic into a monotonic bound), then the outer human-gated meta-loop — each
   MEASURED vs 0.4.3 on the held-out eval before the next; nothing ships past a step that didn't measurably
-  win. **Brick 2 itself is pending that measurement (task: eval vs v0.4.3) before it is called a win.**
+  win.
 
 ## aletheia-research 0.4.3 — 2026-07-09 (efficacy + compatibility audit)
 

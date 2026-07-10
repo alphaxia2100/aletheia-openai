@@ -593,7 +593,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     def test_tiers_scale_and_version(self):
         base = tempfile.mkdtemp()
         q, dp = self._init("quick", base), self._init("deep", base)
-        self.assertEqual(q["version"], "aletheia-research 0.5.0-dev2")
+        self.assertEqual(q["version"], "aletheia-research 0.5.0-dev3")
         self.assertEqual(q["thoroughness"], "quick")
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
@@ -1260,6 +1260,12 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertEqual(res["reads_ok"], 2)                    # only the two picks were read
         self.assertEqual(res["round"], 1)                       # round bumped once
         self.assertFalse(os.path.exists(inv._triage_path(node)))  # manifest consumed after read
+        # LINKAGE regression (the audited triage bug): the reads must persist to sources.jsonl with
+        # _read_ok, not just appear in the return value — else scoring/independence over READ sources
+        # is silently wrong. (Bug cause: ranked vs read_pool deserialized as separate object graphs.)
+        srcs = [json.loads(l) for l in open(os.path.join(node, "sources.jsonl")) if l.strip()]
+        self.assertGreaterEqual(sum(1 for r in srcs if r.get("_read_ok")), 2)
+        self.assertGreaterEqual(sum(1 for r in srcs if r.get("_read_file")), 2)
 
     def test_read_picks_read_floor_when_agent_picks_nothing(self):
         # the read-floor invariant holds in the agent path too: empty/invalid picks must not silently

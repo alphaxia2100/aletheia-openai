@@ -671,22 +671,30 @@ def read_picks(node: str, picks: List[str] = None, pick_idx: List[int] = None,
     if not payload:
         raise SystemExit("no pending candidates for %s; run `investigate.py candidates --node <N>` "
                          "first (the triage manifest is consumed after each read)" % node)
+    # CRITICAL: the picked/floor records MUST be the same objects as those in `ranked`, because
+    # _execute_reads sets _read_ok/_read_file on the picks and then persists `ranked` to sources.jsonl.
+    # payload["ranked"] and payload["read_pool"] deserialize as SEPARATE object graphs, so selecting
+    # from read_pool would silently drop the read linkage from the saved records (the audited triage
+    # bug: notes written but sources.jsonl showed 0 reads). Rebuild the pool as a view over `ranked`.
+    ranked = payload["ranked"]
+    pool_urls = {r.get("url", "") for r in payload["read_pool"] if r.get("url")}
+    pool = [r for r in ranked if r.get("url", "") in pool_urls]      # shared objects with `ranked`
     ctx = {"query": payload["query"], "chans": payload["chans"], "per": payload["per"],
-           "round_no": payload["round_no"], "ranked": payload["ranked"], "recs": payload["recs"],
-           "uniq": payload["uniq"], "read_pool": payload["read_pool"],
+           "round_no": payload["round_no"], "ranked": ranked, "recs": payload["recs"],
+           "uniq": payload["uniq"], "read_pool": pool,
            "prev_read": payload["prev_read"], "reads": payload["reads"]}
-    by_url = {r.get("url", ""): r for r in payload["read_pool"]}
+    by_url = {r.get("url", ""): r for r in pool}
     sel, seen = [], set()
     for u in (picks or []):
         r = by_url.get(u.strip())
         if r and r.get("url") not in seen:
             seen.add(r.get("url")); sel.append(r)
     for i in (pick_idx or []):
-        if 0 <= i < len(payload["ranked"]):
-            r = payload["ranked"][i]
+        if 0 <= i < len(ranked):
+            r = ranked[i]
             if r.get("url") in by_url and r.get("url") not in seen:
                 seen.add(r.get("url")); sel.append(r)
-    sel = _read_floor(node, payload["read_pool"], sel, ctx["reads"])
+    sel = _read_floor(node, pool, sel, ctx["reads"])
     res = _execute_reads(node, ctx, sel, timeout)
     try:
         os.remove(_triage_path(node))   # one manifest per round; consumed on read

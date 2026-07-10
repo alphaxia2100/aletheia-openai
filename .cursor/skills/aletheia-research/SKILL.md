@@ -1,14 +1,14 @@
 ---
 name: aletheia-research
 description: >-
-  Aletheia Research — deep, high-scrutiny research surveyor (v0.5.0-dev2). Use whenever Codex needs to
+  Aletheia Research — deep, high-scrutiny research surveyor (v0.5.0-dev3). Use whenever Codex needs to
   research, survey, fact-check, map, get an accurate picture of a topic, or anchor a decision in
   evidence. Frames competing perspectives, runs wide primary-first investigations, judges source
   independence, attacks the leading conclusion, states gaps, and verifies every load-bearing claim.
   Supports quick through unlimited/max effort and user summaries or full agent artifact bundles.
 ---
 
-# Aletheia Research 0.5.0-dev2 — deep, multi-perspective research surveyor
+# Aletheia Research 0.5.0-dev3 — deep, multi-perspective research surveyor
 
 An accurate, un-anchored picture of a field. A bare LLM anchors on its priors, searches to confirm
 them, cites nothing, and is stale. Aletheia beats it by **surveying widely and for real**: competing
