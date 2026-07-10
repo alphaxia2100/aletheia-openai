@@ -142,3 +142,13 @@ Append entries; do not rewrite history. A reversal adds a new entry that names t
 - Decision: retain v2.1 as a materially stronger experimental harness, not a release selector.
   Cryptographic/external provenance, semantic completeness, independently calibrated thresholds, and
   authenticated remote judge execution remain necessary before a new held-out run.
+
+## D017 — stop at the external-blindness boundary
+
+- Completion audit: checkpoint, isolation, research, candidate mechanisms, caps, verification, logs,
+  and reproducibility are proved; an independently labeled matched architecture A/B is missing.
+- Repeated blocker: for three consecutive goal turns, the only valid release path has required a new
+  topic/rubric set and authenticated labels held outside this developer context. The original set is
+  contaminated, and generating its replacement here would destroy the property it must test.
+- Decision: stop before the 3,600-second ceiling, keep the goal incomplete, and require external state
+  rather than substitute structural tests or self-authored labels for empirical accuracy evidence.
