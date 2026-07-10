@@ -5,7 +5,12 @@
 //   candidate: {name, scripts_dir},   // (baseline integrity: never point at edited working files)
 //   topics:    [{id, topic}],         // held-out subset from scripts/eval/topics.jsonl
 //   tier:      "deep",                // fixed across versions (fair, affordable); NOT max
-//   judge_model: "sonnet",            // MUST differ from the generator model (kills self-preference)
+//   judge_model: "opus",              // use the STRONGEST judge (judging quality is HARDER than
+//                                     // generating it). Do NOT weaken the judge for "disjointness":
+//                                     // here both briefs are the SAME generator model (only the skill
+//                                     // version differs), so there is no self-preference axis; bias is
+//                                     // handled by blinding + position-randomization + human kappa, not
+//                                     // by downgrading the judge. (Optionally ensemble the top models.)
 //   trials:    3,                     // pairwise judge trials, position-randomized
 //   out:       "runs/eval/<ts>"       // where briefs + results.json + anchor.jsonl land
 // }
@@ -42,9 +47,10 @@ const gen = await parallel(
       `Run the aletheia-research skill (scripts at ${v.scripts_dir}/.cursor/skills/aletheia-research/scripts, ` +
       `SKILL at ${v.scripts_dir}/.cursor/skills/aletheia-research/SKILL.md) at thoroughness ${tier}, verbosity user, ` +
       `--base ${out}/gen on the topic: "${t.topic}". Execute the full loop (doctor, frame, decompose, investigate, ` +
-      `synthesize+independence, adversary, verify to completion, write brief.md). Then run its report.py score. ` +
+      `synthesize+independence, adversary, verify to completion, write brief.md). Then score the run with the SHARED ` +
+      `scorer (one instrument for BOTH versions): python3 ${A.scorer} score --run <run_dir>. ` +
       `Return ONLY JSON: {"version":"${v.name}","topic_id":"${t.id}","run_dir":"<the run dir>","brief_path":"<run>/brief.md",` +
-      `"objective":<the report.py score object>}. Do NOT summarize the brief.`,
+      `"objective":<the shared-scorer JSON>}. Do NOT summarize the brief.`,
       { label: `gen:${v.name}:${t.id}`, phase: 'Generate',
         schema: { type: 'object', additionalProperties: true, required: ['version', 'topic_id', 'brief_path'],
                   properties: { version: {}, topic_id: {}, run_dir: {}, brief_path: {}, objective: {} } } }
