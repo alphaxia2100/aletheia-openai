@@ -1,13 +1,14 @@
 ---
 name: aletheia-research-accuracy
 description: >-
-  Experimental accuracy-first Aletheia research surveyor (v0.6.0-accuracy.1). Use when the user
+  Experimental accuracy-first Aletheia research surveyor (v0.6.0-accuracy.2). Use when the user
   explicitly invokes $aletheia-research-accuracy or requests maximum-accuracy, high-stakes research
   with auditable claim-to-span evidence. Enforces a one-hour/640-read ceiling, uses atomic claim and
-  evidence state, preserves contradictions, and independently verifies the complete final answer.
+  evidence state, preserves contradictions, records a tamper-evident execution chronology, and
+  independently verifies the complete final answer.
 ---
 
-# Aletheia Research Accuracy 0.6.0-accuracy.1
+# Aletheia Research Accuracy 0.6.0-accuracy.2
 
 An accurate, un-anchored picture of a field. A bare LLM anchors on its priors, searches to confirm
 them, cites nothing, and is stale. Aletheia beats it by **surveying widely and for real**: competing
@@ -33,9 +34,9 @@ if [ ! -d "$A" ]; then
 fi
 [ -d "$A" ] || { echo "aletheia-research-accuracy is not installed" >&2; exit 1; }
 AL="$(cd -P "$A/../.." && pwd)"
-python3 "$AL/channel-retrieval/scripts/doctor.py"     # confirm channels live (keys auto-load from repo .env)
 ```
-**Surface channel health (do NOT skip).** `doctor.py` runs a real query per channel, so a channel that
+**Surface and persist channel health (do NOT skip).** Step 1 runs `capture_health.py`, which invokes
+the real channel doctor and saves its JSON result inside the run. A channel that
 is reachable but returns nothing shows as `warn` (degraded) and a broken one as `down`. If any core
 channel is `warn`/`down`, **tell the user up front**, route around it (use a healthy same-role channel),
 and **list the affected channels in the brief's Gaps**. Never silently survey on a degraded toolkit —
@@ -43,7 +44,8 @@ missing a channel narrows source variety and the user should know.
 Scripts: `treestate.py` (shared-artifact store: tree/budget/thoroughness), `investigate.py` (leaf engine:
 `candidates`=ranked manifest for agent triage · `read --pick`=read your picks · one-shot=deterministic
 gate fallback; multi-round), `router.py` (channel routing), `rank.py` (authority
-ranking), `synthesize.py` (bottom-up merge + independence + `--gate`), `verify.py` (citation gate),
+ranking), `tracked_read.py` (cap-reserved direct/full/decisive reads), `capture_health.py` (persisted
+preflight), `synthesize.py` (bottom-up merge + independence + `--gate`), `verify.py` (citation gate),
 `report.py` (output assembler: `bundle` = full files for agents, `outline` = artifact inventory).
 Do NOT fall back to plain web search — the point is the channels (Brave/OpenAlex/arXiv/Reddit/HN/
 Stack Exchange/GitHub/YouTube + real-browser reads) that reach current, diverse, authenticated sources.
@@ -98,20 +100,32 @@ Pass it at init (`treestate.py init … --verbosity agent`). It changes the FINA
    640 run-wide read attempts; every engine search/read is reserved before network I/O.
 6. **Atomic support graph.** Claims link to exact spans in SHA-bound artifacts, contradictions remain
    disputed, and fresh challenge plus confirmation probes are required for epistemic completion.
+7. **Tamper-evident execution log.** A locked, hash-chained `run-events.jsonl` joins lifecycle,
+   workers/models, decisions, retained candidate manifests, selections, reads/failures, artifacts,
+   verification, and termination. Missing or untracked actions fail the structural grade.
+8. **Fail-closed integration.** Root synthesis and final completion cannot bypass an unresolved claim
+   ledger; final claims must map exactly back to verified ledger claims and source URLs.
 
 ## The loop (do every step)
 
 ### 1. Frame the portfolio + init (anti-anchoring — load-bearing)
 ```bash
-RUN=$(python3 "$A/treestate.py" init "<topic>" --slug "<slug>")            # DEFAULT = accuracy
+RUN=$(python3 "$A/treestate.py" init "<EXACT USER RESEARCH REQUEST>" --slug "<slug>") # DEFAULT=accuracy
+python3 "$A/capture_health.py" --run "$RUN"                                # persisted preflight
+python3 "$A/treestate.py" log --run "$RUN" --event writer_registered \
+  --data '{"worker_id":"orchestrator","model":"<actual model>","context_id":"<chat/run id>"}'
 # smaller bounded passes: --thoroughness quick|standard|deep|exhaustive
 # if a calling AGENT invoked this skill, add: --verbosity agent           # -> full-files bundle at the end
 ```
-Default is `accuracy`: stop at convergence, 3,600 seconds, or 640 read attempts/artifacts. Only pass a
+`request.md` preserves the exact request; never initialize from a lossy paraphrase. Tell the user any
+degraded channels reported by `channel-health.json` before searching. Default is `accuracy`: stop at
+convergence, 3,600 seconds, or 640 reserved read attempts. Only pass a
 smaller tier when the user explicitly wants it. Write **4–6 competing
 framings** into `$RUN/portfolio.md` BEFORE searching: mainstream/consensus (to test, not serve),
 ≥1 heterodox, ≥1 practitioner/field-report, ≥1 orthogonal reframe, and name one **leading** framing
 for the adversary. Commit to none.
+After writing the portfolio, register the agent-authored artifact:
+`python3 "$A/treestate.py" artifact --run "$RUN" --path portfolio.md --kind hypothesis_portfolio`.
 **Force the diversity structurally — don't trust one model's imagination.** Asking one model to "be
 heterodox" mode-collapses to near-copies (confirmed: Persona-Generators 2602.03545, Verbalized-Sampling
 2510.01171). So a framing is real only if it is **grounded in a different SOURCE BASE**: give each
@@ -179,7 +193,9 @@ counters and artifact counts to prove the intended path executed and enforce sea
 in A/Bs—manual primary chasing and uncapped rereads are real cost, not free work.
 Repeat only while the bounded node has scrutiny rounds remaining; `unlimited`/`max` continue to
 convergence. If evidence marks a load-bearing read `TRUNCATED`, re-read it without the cap:
-`python3 "$AL/channel-retrieval/scripts/read.py" URL --outdir "<NODE_DIR>/notes/full" --max-chars 0`.
+`python3 "$A/tracked_read.py" URL --node "<NODE_DIR>" --kind full --max-chars 0 --why "<gap>"`.
+Every direct, decisive, verification, or uncapped reread must use `tracked_read.py`; calling the raw
+reader inside an accuracy run creates an untracked artifact and fails read accounting.
 The agent bundle includes nested `notes/full` and `notes/decisive` artifacts.
 **Scoped channels (each run fires only what the question needs).** `investigate.py` calls `router.py`
 to pick a SMALL, domain-appropriate set — biomed→europepmc/openalex (not arXiv), CS→arxiv/openalex
@@ -201,6 +217,16 @@ treating snippets as untrusted); **pulls a variety of distinct sources**; **hunt
 for its sub-question; **chases primaries** (no secondhand citations); writes `<NODE_DIR>/findings.md` (3–8 claims, each with the
 **primary URL** + one-line quote + class; corroborated vs single-origin; disconfirming evidence; and
 **what's missing** — the gaps). Workers are independent; they write artifacts, not big blobs back.
+Before dispatch and after completion, append `agent_dispatched` / `agent_completed` with
+`treestate.py log`, including a stable `worker_id`, exact node, role, and actual model identifier
+(or the explicit value `host-default-unspecified`). Missing model or completion records fail the run:
+```bash
+python3 "$A/treestate.py" log --run "$RUN" --event agent_dispatched --node "<NODE_DIR>" \
+  --data '{"worker_id":"<id>","model":"<model>","role":"<framing>"}'
+# ... worker runs ...
+python3 "$A/treestate.py" log --run "$RUN" --event agent_completed --node "<NODE_DIR>" \
+  --data '{"worker_id":"<id>","model":"<model>","status":"completed"}'
+```
 
 ### 3a. Build the atomic claim/evidence/span ledger (before prose synthesis)
 
@@ -221,6 +247,12 @@ python3 "$L" verify-evidence --run "$RUN" --id E1 --result verified \
 python3 "$L" next --run "$RUN"       # disputed/unsupported/load-bearing gaps first
 ```
 
+The headline conclusion is also load-bearing, even when it is an inference rather than a directly
+quoted fact. Declare it with `--kind inferential --depends-on C1,C2,... --required-origins 0`, then
+have a fresh argument auditor record `verify-inference` with the exact premises, assumptions,
+strongest counterarguments, and `verified|rejected|underdetermined` result. An underdetermined net
+sign must remain “unknown”; it cannot be converted into “probably positive” during prose synthesis.
+
 Evidence records are immutable; corrections append a new verdict. Verified support plus verified
 contradiction makes a claim `disputed` and forces an adjudication query. Claim-specific independent
 origins are enforced, unlike run-wide source counts. Before drafting, run `ledger.py audit` and
@@ -230,13 +262,15 @@ load-bearing blocker that remains at the cap must be surfaced as unresolved, nev
 Stopping is separate from drafting. After all blockers close, a fresh challenger must use a different
 query/channel/origin strategy, followed by one confirmation pass. Record both with `ledger.py probe`.
 Any later claim, evidence, or verdict invalidates those probes. A hard-cap stop is recorded with
-`ledger.py terminate` and reported as budget exhaustion, never epistemic completion.
+`ledger.py terminate`; convergence with an unresolvable evidence gap uses
+`ledger.py terminate --reason evidence_exhausted`. Both permit an honest partial deliverable but never
+epistemic completion or a `complete` lifecycle state.
 
 ### 4. Synthesize bottom-up, with enforced back-and-forth
 Deepest nodes first. `python3 "$A/synthesize.py" --node "<NODE_DIR>" --gate` — if it exits 3, a child
 is thin/unanswered: **ask it** (`treestate.py ask …`) and let it **answer from its already-gathered
-sources** (`treestate.py answer …`) before you author. Then write `<NODE_DIR>/findings.md` yourself
-from the verified ledger context
+sources** (`treestate.py answer …`) before you author. Then author from the verified ledger context
+and persist through `treestate.py findings --node <NODE_DIR> --file <draft>`
 (single-threaded), honoring the independence report (high echo ⇒ don't treat convergence as truth).
 
 ### 5. Judge independence + attack the leading conclusion
@@ -250,7 +284,9 @@ but 1 origin echoed 40×", which voice_key alone scores as independent). **Low e
 ### 6. Verify every load-bearing claim (must complete)
 First write the **complete draft answer** to `$RUN/brief.md` using step 7's sections; verification must
 cover the answer the user will actually receive, not an earlier findings file. Extract every
-load-bearing factual claim from that draft → `$RUN/claims.jsonl` (`{"claim":"…","url":"…"}`):
+load-bearing empirical **or inferential** claim from that draft → `$RUN/claims.jsonl`. Every row must map to the atomic
+ledger with the exact canonical claim text and a URL verified for that claim:
+`{"claim_id":"C1","claim":"<exact ledger canonical_text>","url":"<verified support URL>"}`.
 ```bash
 python3 "$A/verify.py" --claims "$RUN/claims.jsonl" --node "$RUN/tree/root" --out "$RUN/verify.jsonl"
 ```
@@ -268,9 +304,12 @@ selection** (self-preference/verbosity bias is real — the writer grades its ow
 self-check, and it must state that limitation.
 
 After applying the verdicts to the draft, the independent verifier must read the **entire final
-`brief.md` plus `claims.jsonl`**, add every omitted load-bearing claim, and repeat verification for
-those additions. Only then attest the exact final artifacts (identify the verifier; report how many
-claims it added):
+`brief.md` plus `claims.jsonl`**, add every omitted load-bearing empirical, inferential, forecast, or
+normative claim, and repeat verification for
+those additions. If it finds a new claim, first declare that exact atomic claim in the ledger, attach
+and verify its exact-span evidence, regenerate `claims.jsonl`, and rerun verification; an added final
+claim that bypasses the ledger blocks completion. Only then attest the exact final artifacts (identify
+the verifier; report how many claims it added):
 ```bash
 python3 "$A/report.py" audit-claims --run "$RUN" \
   --auditor "<fresh-context verifier/model>" --added-claims <N>
@@ -289,6 +328,9 @@ dropped citation can't vanish). A run with claims still `awaiting_llm_check`, an
 missing, or a post-audit edit has NO headline accuracy: finish the pass. Headline
 `independent_origins` is over finally cited claim sources; retrieval breadth stays separate under
 `retrieved_*` and never counts as corroboration.
+`citation_complete` alone is not run completion. `completion.ready` additionally requires an
+epistemically complete ledger, exact final-claim reconciliation, valid run log, preserved prompt and
+channel health, matched read accounting, worker lifecycle records, and time-cap compliance.
 
 ### 7. Answer, grounded — scaled to the VERBOSITY
 Finalize `$RUN/brief.md` **before the step-6 claim-scope attestation** (author it directly; or use
@@ -327,9 +369,15 @@ external dependency; the brief + the run dir are the output.
 `findings.md`. `run.json` fingerprints the complete executable runtime (skill plus channel/provenance
 dependencies), separately fingerprints channel configuration, and records Git commit/dirty state when
 available; use those fields—not the display version alone—to pin A/Bs.
+`run-events.jsonl` is the canonical ordered audit spine; `treestate.py audit-log --run "$RUN"` verifies
+its sequence and hash chain. Per-round `manifests/*.json` retain the actual alternatives shown to the
+selector, so later evaluation can distinguish a retrieval miss from a bad selection. Specialized
+`telemetry.jsonl`, `decisions.jsonl`, `runtime-ledger.json`, and `claim-ledger.jsonl` remain detailed
+views, but they no longer have to be joined by timestamps to reconstruct the run.
 Fully resumable — after a crash/interrupt re-run `frontier --run "$RUN" --resumable`
 (re-picks pending + mid-round `active` + unanswered nodes, so nothing in flight is silently skipped).
-`run.json.state` advances through `framing → investigating → synthesized → briefed/complete`.
+`run.json.state` advances through `framing → investigating → synthesized → briefed → complete`, or
+`synthesized_with_gaps` / `delivered_with_gaps` after an explicit unresolved termination.
 
 ## Rules
 Channel **classes**: `evidence` citable · `lead_gen` (search/HN/Reddit) → **find & cite the primary**

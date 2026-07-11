@@ -17,6 +17,8 @@ Usage:  synthesize.py --node NODE_DIR
 from __future__ import annotations
 
 import argparse
+import hashlib
+import importlib.util
 import json
 import os
 import sys
@@ -26,8 +28,25 @@ from typing import Any, Dict, List
 HERE = os.path.dirname(os.path.realpath(__file__))
 PROV = os.path.join(HERE, "..", "..", "provenance-audit", "scripts")
 sys.path.insert(0, PROV)
+sys.path.insert(0, HERE)
 import dedupe  # noqa: E402
 import provenance_graph as pg  # noqa: E402  (structural shared-origin clustering)
+import treestate  # noqa: E402
+
+_LOCAL_RUNTIME_TREESTATE = None
+
+
+def _runtime_ts():
+    global _LOCAL_RUNTIME_TREESTATE
+    if all(hasattr(treestate, name) for name in ("_write_text", "log_run_event", "_find_run")):
+        return treestate
+    if _LOCAL_RUNTIME_TREESTATE is None:
+        spec = importlib.util.spec_from_file_location(
+            "aletheia_accuracy_synthesis_treestate", os.path.join(HERE, "treestate.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _LOCAL_RUNTIME_TREESTATE = module
+    return _LOCAL_RUNTIME_TREESTATE
 
 
 def _read_json(p, d=None):
@@ -155,11 +174,20 @@ def synthesis_input(node: str) -> Dict[str, Any]:
     # Search hits are leads, not corroborating evidence. Base synthesis independence on what was
     # actually read; retain retrieved_n for observability. Legacy/imported packs without read flags
     # fall back to all records rather than reporting an empty evidence set.
-    basis = read_sources if read_sources else all_sources
+    runtime = _runtime_ts()
+    run = runtime._find_run(node)
+    cfg = runtime._read_json(os.path.join(run, "run.json"), {}) if run else {}
+    strict = (str((cfg or {}).get("version") or "").startswith("aletheia-research-accuracy ")
+              and (cfg or {}).get("thoroughness") in {"accuracy", "unlimited", "max"})
+    read_trace_missing = bool(strict and all_sources and not read_sources)
+    basis = read_sources if read_sources else ([] if read_trace_missing else all_sources)
     indep = independence(basis)
     indep["retrieved_n"] = len(all_sources)
     indep["retrieved_unique_n"] = len(_unique_source_instances(all_sources))
-    indep["basis"] = "read_sources" if read_sources else "all_sources_no_read_flags"
+    indep["basis"] = ("read_sources" if read_sources else
+                      "invalid_missing_read_flags" if read_trace_missing else
+                      "all_sources_no_read_flags")
+    indep["read_trace_missing"] = read_trace_missing
 
     lines = ["# Synthesis input — %s" % st.get("qid", "node"), "",
              "**Question:** %s" % st.get("question", ""), "",
@@ -181,10 +209,19 @@ def synthesis_input(node: str) -> Dict[str, Any]:
     if thin:
         lines += ["## Thin children (consider a top-down clarification via treestate ask)",
                   ", ".join(thin), ""]
-    with open(os.path.join(node, "synthesis_input.md"), "w", encoding="utf-8") as fh:
-        fh.write("\n".join(lines) + "\n")
+    path = os.path.join(node, "synthesis_input.md")
+    payload = "\n".join(lines) + "\n"
+    runtime._write_text(path, payload)
+    if run and (cfg or {}).get("run_id"):
+        runtime.log_run_event(node, "synthesis_input_written", actor="runtime",
+                              component="synthesis",
+                              data={"artifact": os.path.relpath(path, run),
+                                    "sha256": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+                                    "children": len(kids), "thin": thin,
+                                    "unresolved": unresolved,
+                                    "independence_basis": indep["basis"]})
     return {"node": node, "children": len(kids), "thin": thin, "unresolved": unresolved,
-            "independence": indep}
+            "read_trace_missing": read_trace_missing, "independence": indep}
 
 
 def main(argv=None) -> int:
@@ -195,6 +232,10 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     res = synthesis_input(args.node)
     print(json.dumps(res, indent=2))
+    if args.gate and res.get("read_trace_missing"):
+        sys.stderr.write("BLOCKED: accuracy run has retrieved sources but no persisted successful-read "
+                         "flags; synthesis would treat search hits as evidence.\n")
+        return 4
     if args.gate and res.get("unresolved"):
         sys.stderr.write("BLOCKED: thin+unanswered children: %s — ask them before authoring findings.\n"
                          % ", ".join(res["unresolved"]))

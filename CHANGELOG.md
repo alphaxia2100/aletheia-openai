@@ -1,5 +1,24 @@
 # Changelog
 
+## aletheia-research-accuracy 0.6.0-accuracy.2 — 2026-07-11 (observability hardening)
+
+- Adds a locked, hash-chained `run-events.jsonl` joining lifecycle, worker/model identity, decisions,
+  manifests, source selections, reads/failures, artifacts, verification, and termination.
+- Preserves the exact request and channel-health snapshot; retains every candidate manifest after the
+  transient triage state is consumed.
+- Fixes subprocess triage losing successful-read metadata, which made 80 engine successes appear as
+  zero engine artifacts and caused synthesis to fall back from read sources to search hits.
+- Routes full/decisive/manual and verification fallback reads through the same atomic run-wide cap;
+  untracked artifacts now fail accounting.
+- Locks and atomically upserts the shared source index so parallel workers cannot lose provenance and
+  later read metadata reaches the global record.
+- Blocks root synthesis without either epistemic ledger completion or an explicit partial-result
+  termination. Final claims must map exactly to verified ledger claims/URLs before run completion.
+- Hardens `grade_accuracy_run.py` against the first real candidate run's false B: full elapsed time,
+  logging, manifests, read identity, claim reconciliation, and lifecycle consistency are now graded.
+- Adds integration regressions, including a real no-network end-to-end 100/A trace; 178/178 tests
+  pass on the development branch.
+
 ## aletheia-research-accuracy 0.6.0-accuracy.1 — 2026-07-11 (experimental candidate)
 
 - Composes the runtime hard-cap ledger and atomic claim/evidence/span ledger on a dedicated branch.

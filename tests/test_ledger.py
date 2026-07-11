@@ -123,6 +123,30 @@ class TestClaimEvidenceLedger(unittest.TestCase):
         self.assertEqual(state["claims"]["C1"]["status"], "unresolved")
         self.assertTrue(any("hash changed" in e for e in state["errors"]))
 
+    def test_load_bearing_inference_requires_supported_premises_and_independent_verdict(self):
+        self.claim("C1"); self.evidence("E1", "C1", origin="doi:one"); self.verify("E1")
+        self.claim("C2"); self.evidence("E2", "C2", origin="doi:two"); self.verify("E2")
+        ledger.append_event(self.run, {"event": "claim_declared", "claim_id": "C3",
+            "canonical_text": "The intervention probably helped overall.",
+            "scope": "overall judgment", "claim_kind": "inferential",
+            "importance": "load_bearing", "required_origins": 0,
+            "depends_on_claim_ids": ["C1", "C2"], "check_requirements": []})
+        self.assertEqual(ledger.materialize(self.run)["claims"]["C3"]["status"], "unresolved")
+        ledger.append_event(self.run, {"event": "inference_verified", "claim_id": "C3",
+            "result": "underdetermined", "verifier": "independent-argument-auditor",
+            "premise_claim_ids": ["C1", "C2"], "assumptions": "unknown counterfactual",
+            "counterarguments": "benefits and harms are not commensurately measured",
+            "why": "supported premises do not identify the net sign"})
+        self.assertEqual(ledger.materialize(self.run)["claims"]["C3"]["status"], "unresolved")
+        ledger.append_event(self.run, {"event": "inference_verified", "claim_id": "C3",
+            "result": "verified", "verifier": "independent-argument-auditor",
+            "premise_claim_ids": ["C1", "C2"], "assumptions": "stated assumptions",
+            "counterarguments": "strongest alternative addressed",
+            "why": "the premises and explicit assumptions entail the calibrated conclusion"})
+        self.assertEqual(ledger.materialize(self.run)["claims"]["C3"]["status"], "supported")
+        self.evidence("E4", "C1", relation="contradicts", origin="doi:four"); self.verify("E4")
+        self.assertEqual(ledger.materialize(self.run)["claims"]["C3"]["status"], "unresolved")
+
 
 if __name__ == "__main__":
     unittest.main()

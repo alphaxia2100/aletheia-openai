@@ -15,8 +15,9 @@ class TestAccuracyRunGrader(unittest.TestCase):
     def test_complete_mechanism_trace_scores_100_without_claiming_truth(self):
         run = tempfile.mkdtemp()
         files = {
-            "run.json": {"version": "aletheia-research-accuracy 0.6.0-accuracy.1",
+            "run.json": {"version": "aletheia-research-accuracy 0.6.0-accuracy.2",
                          "thoroughness": "accuracy",
+                         "state": "complete",
                          "limits": {"max_seconds": 3600, "max_reads_per_round": 40,
                                     "max_read_attempts": 640},
                          "implementation": {"runtime_sha256": "a" * 64, "git_dirty": False}},
@@ -37,7 +38,22 @@ class TestAccuracyRunGrader(unittest.TestCase):
                 return {"citation_complete": True, "citation_accuracy": 1.0,
                         "citation_coverage": 1.0, "citation_denominator": 2,
                         "claim_scope_audit": {"valid": True},
-                        "runtime": {"retrieval_passes": 2, "read_artifacts": 3}}
+                        "final_claim_reconciliation": {"valid": True},
+                        "completion": {"ready": True, "blockers": []},
+                        "observability": {
+                            "elapsed_seconds": 12.5,
+                            "request_preserved": True,
+                            "channel_health_preserved": True,
+                            "agent_lifecycle": {"valid": True},
+                            "manifest_integrity": {"valid": True},
+                            "read_accounting": {"valid": True, "reserved_attempts": 3,
+                                                "logged_attempts": 3}},
+                        "runtime": {"retrieval_passes": 2, "read_artifacts": 3,
+                                    "reads_ok": 3, "engine_read_artifacts": 3}}
+            if script == grader.TREESTATE:
+                return {"chain_valid": True, "missing_required_events": [],
+                        "event_counts": {"candidate_manifest_persisted": 2,
+                                         "sources_selected": 2}}
             if command == "audit":
                 return {"claims": 2, "ready_for_synthesis": True,
                         "epistemically_complete": True}

@@ -1,4 +1,4 @@
 interface:
   display_name: "Aletheia Research Accuracy"
-  short_description: "Maximum-accuracy research with claim-to-span verification"
-  default_prompt: "Use $aletheia-research-accuracy for an accuracy-first survey, preserve disagreement, and verify every load-bearing claim against exact source spans."
+  short_description: "Maximum-accuracy research with auditable claim-to-span verification"
+  default_prompt: "Use $aletheia-research-accuracy for an accuracy-first survey, preserve disagreement, log the complete execution trace, and verify every load-bearing claim against exact source spans."

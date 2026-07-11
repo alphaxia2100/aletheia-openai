@@ -593,7 +593,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     def test_tiers_scale_and_version(self):
         base = tempfile.mkdtemp()
         q, dp = self._init("quick", base), self._init("deep", base)
-        self.assertEqual(q["version"], "aletheia-research-accuracy 0.6.0-accuracy.1")
+        self.assertEqual(q["version"], "aletheia-research-accuracy 0.6.0-accuracy.2")
         self.assertEqual(q["thoroughness"], "quick")
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
@@ -655,7 +655,8 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     def test_verbosity_agent_recorded_and_bundle_has_full_files(self):
         base = tempfile.mkdtemp()
         run = subprocess.check_output(
-            [sys.executable, self.T, "init", "bundle topic", "--verbosity", "agent", "--base", base],
+            [sys.executable, self.T, "init", "bundle topic", "--verbosity", "agent",
+             "--budget", "8", "--base", base],
             text=True).strip()
         self.assertEqual(read_json(os.path.join(run, "run.json"))["verbosity"], "agent")
         subprocess.check_call([sys.executable, self.T, "findings", "--node",
@@ -1012,7 +1013,8 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         # bundle into an empty result — it must degrade gracefully and still return every artifact.
         base = tempfile.mkdtemp()
         run = subprocess.check_output(
-            [sys.executable, self.T, "init", "corrupt topic", "--base", base], text=True).strip()
+            [sys.executable, self.T, "init", "corrupt topic", "--budget", "8", "--base", base],
+            text=True).strip()
         subprocess.check_call([sys.executable, self.T, "findings", "--node",
                                os.path.join(run, "tree", "root"), "--text", "SURVIVOR_MARKER"],
                               stdout=subprocess.DEVNULL)

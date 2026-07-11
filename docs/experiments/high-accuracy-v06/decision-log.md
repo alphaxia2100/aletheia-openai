@@ -175,3 +175,36 @@ Append entries; do not rewrite history. A reversal adds a new entry that names t
   not copied or committed.
 - Channel health at install: 13/15 live. Brave is degraded with HTTP 402 and Stack Exchange is down
   with HTTP 400; the accuracy run must disclose and route around both.
+
+## D020 — reject fragmented artifacts as “proper logging”
+
+- Forward-run finding: the run contained runtime reservations, node decisions, retrieval telemetry,
+  and a claim ledger, but no canonical ordered chronology or stable join keys. Reconstructing one run
+  required timestamp archaeology across incompatible schemas; prompt, health, models, manifests, and
+  completion were missing.
+- Decision: add one locked, hash-chained run event stream as the audit spine. Keep specialized logs as
+  detailed projections, not as substitutes for end-to-end provenance.
+- Consequence: an old run without the stream remains auditable as incomplete and is never backfilled
+  with invented events.
+
+## D021 — invalidate the first run's old B structural grade
+
+- Reproduction: `32b389a` run had 141 read artifacts, 86 reservations, zero persisted engine-read
+  flags, an unresolved 0/2-origin load-bearing claim, 9 ledger claims versus 21 final claims, and a
+  `complete` lifecycle state.
+- Decision: grade coherent execution rather than independent file presence. Add gates for manifests,
+  read identity, full elapsed time, exact claim reconciliation, terminal consistency, and unified-log
+  integrity.
+- Result: the preserved run changes from 85/B to 25/F structurally. This is an evaluator correction,
+  not a retroactive degradation of the answer text.
+
+## D022 — make the answer's inference part of the epistemic state
+
+- Forward-run finding: a branch said the net sign was not identified and a categorical verdict would
+  exceed the evidence; the final answer nevertheless said “probably helped.” The conclusion was not
+  in the 21-row factual claim set.
+- Decision: add typed inferential/normative/forecast claims. They depend on explicit empirical premise
+  IDs and require a fresh verifier to record assumptions, counterarguments, and a verified/rejected/
+  underdetermined argument verdict.
+- Consequence: source-span accuracy remains necessary for premises but can no longer certify a
+  conclusion that no source directly entails.

@@ -23,6 +23,7 @@ import json
 import os
 import re
 import sys
+import time
 from typing import Any, Dict, List
 
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -32,6 +33,7 @@ _PROV = os.path.join(HERE, "..", "..", "provenance-audit", "scripts")
 for _p in (HERE, _PROV):
     sys.path.insert(0, _p)
 import treestate  # noqa: E402
+import ledger  # noqa: E402
 try:
     import provenance_graph as _pg  # noqa: E402  (structural independence)
     import dedupe as _dedupe  # noqa: E402
@@ -212,7 +214,8 @@ def audit_claim_scope(run: str, auditor: str, added_claims: int = 0,
     payload = {
         "status": "complete",
         "auditor": auditor,
-        "attestation": ("Auditor read the final brief, added every omitted load-bearing factual claim, "
+        "attestation": ("Auditor read the final brief, added every omitted load-bearing empirical or "
+                        "inferential claim, "
                         "and checked the final claim/url set against verify.jsonl."),
         "claim_count": len(claims),
         "added_claims": added_claims,
@@ -223,7 +226,88 @@ def audit_claim_scope(run: str, auditor: str, added_claims: int = 0,
         "created": treestate._now(),
     }
     treestate._write_json(os.path.join(run, "claim_audit.json"), payload)
+    treestate.log_run_event(run, "claim_scope_audit_completed", actor=auditor,
+                            component="report",
+                            data={"claim_count": len(claims), "added_claims": added_claims,
+                                  "artifact": "claim_audit.json",
+                                  "sha256": _file_sha256(os.path.join(run, "claim_audit.json"))})
     return payload
+
+
+def _strict_accuracy_run(run: str) -> bool:
+    cfg = _cfg(run)
+    return (str(cfg.get("version") or "").startswith("aletheia-research-accuracy ")
+            and cfg.get("thoroughness") in {"accuracy", "unlimited", "max"})
+
+
+def _canon_url(url: str) -> str:
+    if _dedupe is not None:
+        try:
+            return str(_dedupe.canonical_url(url or ""))
+        except Exception:  # noqa: BLE001
+            pass
+    return str(url or "").split("#", 1)[0].rstrip("/").lower()
+
+
+def _claim_reconciliation(run: str) -> Dict[str, Any]:
+    """Prove that final-answer claims did not bypass the atomic claim/evidence ledger."""
+    required = _strict_accuracy_run(run)
+    if not required:
+        return {"required": False, "valid": True, "final_claims": 0, "mapped_claims": 0,
+                "issues": [], "unrepresented_load_bearing_claim_ids": []}
+    try:
+        final_rows = _strict_jsonl_dicts(os.path.join(run, "claims.jsonl"), "claims.jsonl")
+        state = ledger.materialize(run)
+        led_audit = ledger.audit(run)
+    except (ValueError, OSError) as exc:
+        return {"required": True, "valid": False, "final_claims": 0, "mapped_claims": 0,
+                "issues": [str(exc)], "unrepresented_load_bearing_claim_ids": []}
+    claims = state.get("claims") or {}
+    evidence = state.get("evidence") or {}
+    verdicts = state.get("verdicts") or {}
+    supported_urls: Dict[str, set] = {}
+    for eid, ev in evidence.items():
+        verdict = verdicts.get(eid) or {}
+        if (ev.get("relation_to_claim") == "supports" and ev.get("artifact_valid") is True
+                and verdict.get("result") == "verified"):
+            supported_urls.setdefault(str(ev.get("claim_id")), set()).add(
+                _canon_url(str(ev.get("source_url") or "")))
+    issues, represented = [], set()
+    for index, row in enumerate(final_rows, 1):
+        claim_id = str(row.get("claim_id") or "").strip()
+        if not claim_id:
+            issues.append("final claim %d has no claim_id" % index)
+            continue
+        if claim_id not in claims:
+            issues.append("final claim %d references unknown ledger claim %s" % (index, claim_id))
+            continue
+        represented.add(claim_id)
+        final_text = " ".join(str(row.get("claim") or "").split())
+        ledger_text = " ".join(str(claims[claim_id].get("canonical_text") or "").split())
+        if final_text != ledger_text:
+            issues.append("final claim %d text differs from ledger claim %s" % (index, claim_id))
+        urls = {_canon_url(url) for url in _claim_urls(row)}
+        allowed_urls = set(supported_urls.get(claim_id, set()))
+        if (claims[claim_id].get("claim_kind") or "empirical") != "empirical":
+            for premise in claims[claim_id].get("depends_on_claim_ids") or []:
+                allowed_urls.update(supported_urls.get(premise, set()))
+        if not urls:
+            issues.append("final claim %d has no source URL" % index)
+        elif not urls.issubset(allowed_urls):
+            issues.append("final claim %d cites URL not verified for ledger claim %s" %
+                          (index, claim_id))
+    required_ids = {cid for cid, claim in claims.items()
+                    if claim.get("importance") == "load_bearing"}
+    unrepresented = sorted(required_ids - represented)
+    if unrepresented:
+        issues.append("load-bearing ledger claims absent from final claim set: %s" %
+                      ", ".join(unrepresented))
+    if led_audit.get("epistemically_complete") is not True:
+        issues.append("claim ledger is not epistemically complete")
+    return {"required": True, "valid": bool(final_rows) and not issues,
+            "final_claims": len(final_rows), "mapped_claims": len(represented),
+            "ledger_claims": len(claims), "issues": issues,
+            "unrepresented_load_bearing_claim_ids": unrepresented}
 
 
 def _runtime_telemetry(run: str) -> Dict[str, Any]:
@@ -285,6 +369,107 @@ def _runtime_telemetry(run: str) -> Dict[str, Any]:
         "engine_read_artifacts": len(read_artifacts & engine_artifacts),
         "direct_or_manual_read_artifacts": len(read_artifacts - engine_artifacts),
     }
+
+
+def _observability(run: str, runtime: Dict[str, Any]) -> Dict[str, Any]:
+    """Audit whether cost, selection, and lifecycle claims can be replayed from durable evidence."""
+    cfg = _cfg(run)
+    required = _strict_accuracy_run(run)
+    run_log = treestate.audit_run_events(run)
+    try:
+        events = treestate._read_run_events(run)
+    except ValueError:
+        events = []
+    completed = [row for row in events if row.get("event") == "source_read_completed"]
+    failed = [row for row in events if row.get("event") == "source_read_failed"]
+    logged_artifacts = {str((row.get("data") or {}).get("artifact") or "")
+                        for row in completed if (row.get("data") or {}).get("artifact")}
+    actual_artifacts = set()
+    for node in _nodes_depth_first(run):
+        for _rel, path in _note_files(os.path.join(node, "notes")):
+            actual_artifacts.add(os.path.relpath(path, run))
+    runtime_ledger = treestate._read_json(os.path.join(run, "runtime-ledger.json"), {}) or {}
+    reserved = int(runtime_ledger.get("read_attempts_reserved", 0) or 0)
+    logged_attempts = len(completed) + len(failed)
+    untracked = sorted(actual_artifacts - logged_artifacts)
+    missing_artifacts = sorted(logged_artifacts - actual_artifacts)
+    request_path = os.path.join(run, "request.md")
+    request_hash = _file_sha256(request_path)
+    request_valid = bool(request_hash and request_hash == cfg.get("request_sha256"))
+    health_path = os.path.join(run, "channel-health.json")
+    health_events = [row for row in events if row.get("event") == "channel_health_captured"]
+    health_hash = _file_sha256(health_path)
+    health_valid = bool(health_hash and any(
+        str((row.get("data") or {}).get("sha256") or "") == health_hash for row in health_events))
+    manifest_events = [row for row in events if row.get("event") == "candidate_manifest_persisted"]
+    invalid_manifests = []
+    for row in manifest_events:
+        data = row.get("data") or {}
+        rel = str(data.get("artifact") or "")
+        expected = str(data.get("sha256") or "")
+        if not rel or not expected or _file_sha256(os.path.join(run, rel)) != expected:
+            invalid_manifests.append(rel or "<missing path>")
+    manifest_integrity_valid = not invalid_manifests
+    dispatched = [row for row in events if row.get("event") == "agent_dispatched"]
+    completed_agents = [row for row in events if row.get("event") == "agent_completed"]
+    writers = [row for row in events if row.get("event") == "writer_registered"]
+    dispatch_ids = {str((row.get("data") or {}).get("worker_id") or "") for row in dispatched}
+    complete_ids = {str((row.get("data") or {}).get("worker_id") or "") for row in completed_agents}
+    dispatch_ids.discard(""); complete_ids.discard("")
+    agent_required = len(_nodes_depth_first(run)) > 1
+    missing_model = [str((row.get("data") or {}).get("worker_id") or "?") for row in dispatched
+                     if not str((row.get("data") or {}).get("model") or "").strip()]
+    writer_valid = any(str((row.get("data") or {}).get("worker_id") or "").strip()
+                       and str((row.get("data") or {}).get("model") or "").strip()
+                       and str((row.get("data") or {}).get("context_id") or "").strip()
+                       for row in writers)
+    agent_lifecycle_valid = (not agent_required or
+                             (bool(dispatch_ids) and dispatch_ids <= complete_ids
+                              and not missing_model and len(dispatch_ids) == len(dispatched)
+                              and writer_valid))
+    started = float(cfg.get("started_epoch") or 0)
+    if cfg.get("finished_epoch"):
+        end = float(cfg.get("finished_epoch"))
+    elif cfg.get("state") in {"complete", "delivered_with_gaps", "terminated", "failed"}:
+        try:
+            end = os.path.getmtime(os.path.join(run, "run.json"))
+        except OSError:
+            end = started
+    else:
+        end = time.time()
+    elapsed = round(max(0.0, end - started), 3) if started else 0.0
+    max_seconds = float((cfg.get("limits") or {}).get("max_seconds") or 0)
+    read_accounting_valid = (reserved == logged_attempts and not untracked
+                             and not missing_artifacts)
+    log_valid = (run_log.get("chain_valid") is True
+                 and not run_log.get("missing_required_events"))
+    valid = (not required or (log_valid and read_accounting_valid and request_valid
+                              and health_valid and agent_lifecycle_valid and manifest_integrity_valid
+                              and (not max_seconds or elapsed <= max_seconds)))
+    return {"required": required, "valid": valid, "run_log": run_log,
+            "request_preserved": request_valid, "channel_health_preserved": health_valid,
+            "manifest_integrity": {"valid": manifest_integrity_valid,
+                                   "manifests": len(manifest_events),
+                                   "invalid_artifacts": invalid_manifests[:25]},
+            "agent_lifecycle": {"required": agent_required, "valid": agent_lifecycle_valid,
+                                "dispatched": len(dispatched), "completed": len(completed_agents),
+                                "writer_registered": writer_valid,
+                                "missing_completion_worker_ids": sorted(dispatch_ids - complete_ids),
+                                "missing_model_worker_ids": missing_model},
+            "elapsed_seconds": elapsed, "max_seconds": max_seconds,
+            "read_accounting": {"valid": read_accounting_valid,
+                                "reserved_attempts": reserved,
+                                "logged_attempts": logged_attempts,
+                                "logged_successes": len(completed),
+                                "logged_failures": len(failed),
+                                "read_artifacts": len(actual_artifacts),
+                                "untracked_artifact_count": len(untracked),
+                                "untracked_artifacts": untracked[:25],
+                                "missing_logged_artifact_count": len(missing_artifacts),
+                                "missing_logged_artifacts": missing_artifacts[:25],
+                                "engine_read_artifacts": runtime.get("engine_read_artifacts", 0),
+                                "direct_or_manual_read_artifacts":
+                                    runtime.get("direct_or_manual_read_artifacts", 0)}}
 
 
 def _note_files(notes_dir: str):
@@ -477,6 +662,26 @@ def score(run: str) -> Dict[str, Any]:
     row_complete = bool(judged and blocking == 0)
     claim_scope = _claim_scope_state(run)
     complete = row_complete and claim_scope["valid"]
+    runtime = _runtime_telemetry(run)
+    observability = _observability(run, runtime)
+    reconciliation = _claim_reconciliation(run)
+    try:
+        ledger_audit = ledger.audit(run)
+    except (ValueError, OSError) as exc:
+        ledger_audit = {"epistemically_complete": False, "ready_for_synthesis": False,
+                        "errors": [str(exc)]}
+    strict = _strict_accuracy_run(run)
+    completion_blockers = []
+    if not complete:
+        completion_blockers.append("final citation/claim-scope verification is incomplete")
+    if strict and ledger_audit.get("epistemically_complete") is not True:
+        completion_blockers.append("atomic claim ledger is not epistemically complete")
+    if strict and reconciliation.get("valid") is not True:
+        completion_blockers.append("final claims are not reconciled to the atomic ledger")
+    if strict and observability.get("valid") is not True:
+        completion_blockers.append("run observability/accounting is incomplete")
+    claim_count = int(claim_scope.get("claim_count") or 0)
+    added_claims = int(claim_scope.get("added_claims") or 0)
     idx = _jsonl_dicts(os.path.join(run, "index", "sources.jsonl"))
     cited = _claim_source_records(ver, idx)
     origins = _independent_origins(cited)
@@ -490,6 +695,14 @@ def score(run: str) -> Dict[str, Any]:
         "citation_denominator": judged, "citation_complete": complete,
         "row_verification_complete": row_complete,
         "claim_scope_audit": claim_scope,
+        "claim_recall": {"added_claims": added_claims, "final_claims": claim_count,
+                         "added_claim_rate": round(added_claims / claim_count, 3)
+                                             if claim_count else None},
+        "claim_ledger_audit": ledger_audit,
+        "final_claim_reconciliation": reconciliation,
+        "observability": observability,
+        "completion": {"ready": not completion_blockers,
+                       "blockers": completion_blockers},
         "verdicts": {"supported": supported, "contradicted": contradicted, "unsupported": unsupported,
                      "off_topic": off_topic, "broken": broken, "awaiting_llm_check": awaiting},
         # Headline independence is claim-level. Retrieval breadth remains observable but cannot
@@ -500,17 +713,23 @@ def score(run: str) -> Dict[str, Any]:
         "retrieved_origin_echo_ratio": round(1 - retrieved_origins / len(idx), 3) if idx else 0,
         # Behavioral activation evidence: proves which selector ran and separates retrieval,
         # selection, attempted reads, and successful reads for matched-budget evaluations.
-        "runtime": _runtime_telemetry(run),
+        "runtime": runtime,
     }
 
 
 def write_brief(run: str, text: str) -> str:
     """Write the user-facing brief.md into the run dir. Exists as a SCRIPT so a guarded harness that
     blocks writing report `.md` files can still emit the deliverable (the audited cold-caller gap)."""
+    treestate.runtime_checkpoint(run, "before final brief write", fail_if_expired=False)
     path = os.path.join(run, "brief.md")
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(text if text.endswith("\n") else text + "\n")
-    treestate.set_run_state(run, "complete" if score(run).get("citation_complete") else "briefed")
+    payload = text if text.endswith("\n") else text + "\n"
+    treestate._write_text(path, payload)
+    treestate.log_run_event(run, "artifact_written", actor="orchestrator", component="report",
+                            data={"artifact": "brief.md", "sha256": _file_sha256(path),
+                                  "bytes": len(payload.encode("utf-8"))})
+    treestate.set_run_state(run, "briefed", actor="orchestrator",
+                            reason="brief exists; verification/completion gates remain")
+    treestate.runtime_checkpoint(run, "after final brief write", fail_if_expired=False)
     return path
 
 
@@ -545,8 +764,10 @@ def main(argv=None) -> int:
     elif args.cmd == "score":
         payload = json.dumps(score(args.run), indent=2)
         if args.output:
-            with open(args.output, "w", encoding="utf-8") as fh:
-                fh.write(payload + "\n")
+            treestate._write_text(args.output, payload + "\n")
+            treestate.log_run_event(args.run, "score_written", actor="runtime", component="report",
+                                    data={"artifact": os.path.relpath(args.output, args.run),
+                                          "sha256": _file_sha256(args.output)})
         print(payload)
     elif args.cmd == "write-brief":
         txt = _read(args.file) if args.file else args.text
@@ -558,8 +779,15 @@ def main(argv=None) -> int:
             payload = audit_claim_scope(args.run, args.auditor, args.added_claims, args.notes)
         except ValueError as exc:
             sys.stderr.write("audit-claims: %s\n" % exc); return 2
-        treestate.set_run_state(args.run, "complete" if score(args.run).get("citation_complete")
-                                else "briefed")
+        scored = score(args.run)
+        if scored.get("completion", {}).get("ready"):
+            final_state = "complete"
+        elif _strict_accuracy_run(args.run) and os.path.isfile(os.path.join(args.run, "brief.md")):
+            final_state = "delivered_with_gaps"
+        else:
+            final_state = "briefed"
+        treestate.set_run_state(args.run, final_state, actor=args.auditor,
+                                reason="; ".join(scored.get("completion", {}).get("blockers", [])))
         print(json.dumps(payload, indent=2))
     return 0
 

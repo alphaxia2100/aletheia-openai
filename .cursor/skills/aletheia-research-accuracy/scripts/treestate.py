@@ -47,10 +47,15 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
+import uuid
 from typing import Any, Dict, List, Optional
 
 NODE_FILES = ("decisions.jsonl", "questions.jsonl", "answers.jsonl", "sources.jsonl")
+RUN_EVENTS = "run-events.jsonl"
+RUN_EVENTS_LOCK = ".run-events.lock"
+RUN_EVENT_SCHEMA = 1
 
 
 def _now() -> str:
@@ -124,15 +129,198 @@ def _read_json(path: str, default: Any = None) -> Any:
 
 
 def _write_json(path: str, obj: Any) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(obj, fh, indent=2)
+    """Atomically replace JSON state so a crash cannot leave a half-written run/status file."""
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".%s." % os.path.basename(path), dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(obj, fh, indent=2)
+            fh.write("\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def _write_text(path: str, text: str) -> None:
+    """Atomically replace a text artifact and fsync it before publication."""
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".%s." % os.path.basename(path), dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 
 def _append_jsonl(path: str, obj: Dict[str, Any]) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(obj) + "\n")
+
+
+def _canonical_event(obj: Dict[str, Any]) -> bytes:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False).encode("utf-8")
+
+
+def _run_event_hash(row: Dict[str, Any]) -> str:
+    material = {k: v for k, v in row.items() if k != "event_sha256"}
+    return hashlib.sha256(_canonical_event(material)).hexdigest()
+
+
+def _read_run_events(run: str) -> List[Dict[str, Any]]:
+    path = os.path.join(run, RUN_EVENTS)
+    if not os.path.exists(path):
+        return []
+    rows: List[Dict[str, Any]] = []
+    with open(path, encoding="utf-8") as fh:
+        for lineno, line in enumerate(fh, 1):
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError as exc:
+                raise ValueError("%s line %d is invalid JSON" % (RUN_EVENTS, lineno)) from exc
+            if not isinstance(row, dict):
+                raise ValueError("%s line %d is not an object" % (RUN_EVENTS, lineno))
+            rows.append(row)
+    return rows
+
+
+def verify_run_events(rows: List[Dict[str, Any]]) -> List[str]:
+    """Verify sequence, run identity continuity, and the tamper-evident hash chain."""
+    errors: List[str] = []
+    previous = "0" * 64
+    run_id = None
+    for lineno, row in enumerate(rows, 1):
+        if row.get("seq") != lineno:
+            errors.append("line %d has seq %r" % (lineno, row.get("seq")))
+        if row.get("prev_sha256") != previous:
+            errors.append("line %d breaks the previous-hash link" % lineno)
+        actual = _run_event_hash(row)
+        if row.get("event_sha256") != actual:
+            errors.append("line %d event hash mismatch" % lineno)
+        if run_id is None:
+            run_id = row.get("run_id")
+        elif row.get("run_id") != run_id:
+            errors.append("line %d changes run_id" % lineno)
+        previous = str(row.get("event_sha256") or "")
+    return errors
+
+
+def audit_run_events(run: str) -> Dict[str, Any]:
+    """Machine-readable integrity/coverage summary for the unified execution chronology."""
+    run = os.path.abspath(run)
+    cfg = _read_json(os.path.join(run, "run.json"), {}) or {}
+    try:
+        rows = _read_run_events(run)
+        errors = verify_run_events(rows)
+    except ValueError as exc:
+        rows, errors = [], [str(exc)]
+    counts: Dict[str, int] = {}
+    for row in rows:
+        key = str(row.get("event") or "unknown")
+        counts[key] = counts.get(key, 0) + 1
+    required = {"run_initialized", "node_created"}
+    if cfg.get("state") in {"complete", "delivered_with_gaps", "terminated", "failed"}:
+        required.add("run_state_changed")
+    missing = sorted(required - set(counts))
+    return {
+        "schema_version": RUN_EVENT_SCHEMA,
+        "run_id": cfg.get("run_id"),
+        "events": len(rows),
+        "chain_valid": bool(rows) and not errors,
+        "errors": errors,
+        "missing_required_events": missing,
+        "event_counts": dict(sorted(counts.items())),
+        "last_elapsed_seconds": max(
+            [float(row.get("elapsed_seconds", 0) or 0) for row in rows] or [0.0]),
+        "last_event_sha256": rows[-1].get("event_sha256") if rows else None,
+    }
+
+
+def log_run_event(run_or_node: str, event: str, actor: str = "runtime",
+                  component: str = "treestate", data: Optional[Dict[str, Any]] = None,
+                  node: str = "", correlation_id: str = "") -> Dict[str, Any]:
+    """Append one canonical event to the run-wide locked, hash-chained audit spine.
+
+    Specialized files (claim ledger, telemetry, human decisions) remain useful views. This stream is
+    the ordered join key that makes the complete execution replayable without timestamp archaeology.
+    """
+    candidate = os.path.abspath(run_or_node)
+    run = candidate if os.path.isfile(os.path.join(candidate, "run.json")) else _find_run(candidate)
+    if not run:
+        raise ValueError("run.json not found above %s" % run_or_node)
+    cfg = _read_json(os.path.join(run, "run.json"), {}) or {}
+    run_id = str(cfg.get("run_id") or "")
+    if not run_id:
+        raise ValueError("run_id missing from run.json")
+    target_node = os.path.abspath(node or candidate)
+    node_rel = ""
+    if target_node != os.path.abspath(run) and target_node.startswith(os.path.abspath(run) + os.sep):
+        node_rel = os.path.relpath(target_node, run)
+    lock_path = os.path.join(run, RUN_EVENTS_LOCK)
+    with open(lock_path, "a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        rows = _read_run_events(run)
+        errors = verify_run_events(rows)
+        if errors:
+            raise ValueError("refusing to append to corrupt run log: " + "; ".join(errors))
+        epoch = time.time()
+        started = float(cfg.get("started_epoch") or epoch)
+        row: Dict[str, Any] = {
+            "schema_version": RUN_EVENT_SCHEMA,
+            "seq": len(rows) + 1,
+            "event_id": "%s:%06d" % (run_id, len(rows) + 1),
+            "run_id": run_id,
+            "timestamp": _now(),
+            "timestamp_epoch": epoch,
+            "elapsed_seconds": round(max(0.0, epoch - started), 3),
+            "event": str(event),
+            "component": str(component),
+            "actor": str(actor),
+            "node": node_rel,
+            "correlation_id": str(correlation_id or ""),
+            "data": data or {},
+            "prev_sha256": rows[-1]["event_sha256"] if rows else "0" * 64,
+        }
+        row["event_sha256"] = _run_event_hash(row)
+        with open(os.path.join(run, RUN_EVENTS), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        return row
+
+
+def record_artifact(run_or_node: str, path: str, actor: str = "orchestrator",
+                    kind: str = "artifact") -> Dict[str, Any]:
+    """Hash and register an agent-authored file that is not emitted by an instrumented script."""
+    candidate = os.path.abspath(run_or_node)
+    run = candidate if os.path.isfile(os.path.join(candidate, "run.json")) else _find_run(candidate)
+    if not run:
+        raise ValueError("run.json not found above %s" % run_or_node)
+    target = os.path.abspath(path if os.path.isabs(path) else os.path.join(run, path))
+    if not target.startswith(os.path.abspath(run) + os.sep) or not os.path.isfile(target):
+        raise ValueError("artifact must be an existing file inside the run")
+    with open(target, "rb") as fh:
+        content = fh.read()
+    return log_run_event(run_or_node, "artifact_registered", actor=actor, component="artifact",
+                         data={"kind": kind, "artifact": os.path.relpath(target, run),
+                               "bytes": len(content),
+                               "sha256": hashlib.sha256(content).hexdigest()})
 
 
 # ---------------------------------------------------------------- node primitives
@@ -151,32 +339,54 @@ def _init_node_dir(node: str, qid: str, question: str, budget: float, depth: int
                  "- parent: %s\n\n## Objective\n_(orchestrator fills: what to find, output "
                  "schema, channel hints, boundaries)_\n" %
                  (qid, question, role, budget, depth, parent or "(root)"))
+    run = _find_run(node)
+    if run:
+        log_run_event(node, "node_created", actor="orchestrator", component="treestate",
+                      data={"qid": qid, "question": question, "budget": round(budget, 3),
+                            "depth": depth, "role": role, "parent": parent})
 
 
 def set_status(node: str, state: Optional[str] = None, **fields: Any) -> Dict[str, Any]:
     st = _read_json(os.path.join(node, "status.json"), {}) or {}
+    before = dict(st)
     if state:
         st["state"] = state
     for k, v in fields.items():
         st[k] = v
     st["updated"] = _now()
     _write_json(os.path.join(node, "status.json"), st)
+    changed = {key: st.get(key) for key in st if before.get(key) != st.get(key) and key != "updated"}
+    if changed and _find_run(node):
+        log_run_event(node, "node_state_changed", actor="runtime", component="treestate",
+                      data={"before_state": before.get("state"), "after_state": st.get("state"),
+                            "changed": changed})
     return st
 
 
-def set_run_state(run: str, state: str) -> Dict[str, Any]:
+def set_run_state(run: str, state: str, actor: str = "runtime", reason: str = "") -> Dict[str, Any]:
     """Persist the run lifecycle; node status alone is not enough for resume/observability."""
     path = os.path.join(run, "run.json")
     cfg = _read_json(path, {}) or {}
+    before = cfg.get("state")
     cfg["state"] = state
     cfg["updated"] = _now()
+    if state in {"complete", "delivered_with_gaps", "terminated", "failed"}:
+        finished = time.time()
+        cfg["finished_epoch"] = finished
+        cfg["elapsed_seconds"] = round(max(0.0, finished - float(cfg.get("started_epoch") or finished)), 3)
     _write_json(path, cfg)
+    log_run_event(run, "run_state_changed", actor=actor, component="treestate",
+                  data={"from": before, "to": state, "reason": reason,
+                        "elapsed_seconds": cfg.get("elapsed_seconds")})
     return cfg
 
 
 def log_decision(node: str, actor: str, decision: str, why: str = "") -> None:
     _append_jsonl(os.path.join(node, "decisions.jsonl"),
                   {"t": _now(), "actor": actor, "decision": decision, "why": why})
+    if _find_run(node):
+        log_run_event(node, "decision_recorded", actor=actor, component="orchestrator",
+                      data={"decision": decision, "why": why})
 
 
 # ---------------------------------------------------------------- run + tree
@@ -263,8 +473,12 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
             suffix += 1
     os.makedirs(os.path.join(run, "index"))
     started_epoch = time.time()
+    run_id = uuid.uuid4().hex
+    request_text = str(topic).strip() + "\n"
+    request_sha256 = hashlib.sha256(request_text.encode("utf-8")).hexdigest()
     _write_json(os.path.join(run, "run.json"), {
-        "topic": topic, "created": _now(), "version": "aletheia-research-accuracy 0.6.0-accuracy.1",
+        "run_id": run_id, "topic": topic, "request_sha256": request_sha256,
+        "created": _now(), "version": "aletheia-research-accuracy 0.6.0-accuracy.2",
         "implementation": _implementation_metadata(),
         "thoroughness": tier, "verbosity": verbosity,
         "budget": budget, "unit": unit, "max_depth": max_depth,
@@ -278,10 +492,18 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
         "schema_version": 1, "started_epoch": started_epoch,
         "search_attempts": 0, "read_attempts_reserved": 0,
     })
-    with open(os.path.join(run, "portfolio.md"), "w", encoding="utf-8") as fh:
-        fh.write("# Hypothesis portfolio — %s\n\n_(orchestrator writes 4-6 competing "
-                 "framings here before any search)_\n" % topic)
+    _write_text(os.path.join(run, "request.md"), request_text)
+    _write_text(os.path.join(run, "portfolio.md"),
+                "# Hypothesis portfolio — %s\n\n_(orchestrator writes 4-6 competing "
+                "framings here before any search)_\n" % topic)
     open(os.path.join(run, "index", "sources.jsonl"), "a", encoding="utf-8").close()
+    log_run_event(run, "run_initialized", actor="orchestrator", component="treestate",
+                  data={"topic": topic, "request_sha256": request_sha256,
+                        "version": "aletheia-research-accuracy 0.6.0-accuracy.2",
+                        "thoroughness": tier,
+                        "limits": {"max_seconds": max_seconds,
+                                   "max_reads_per_round": reads_per_round,
+                                   "max_read_attempts": max_read_attempts}})
     _init_node_dir(os.path.join(run, "tree", "root"), "root", topic, budget, 0, "root", None)
     return run
 
@@ -323,13 +545,56 @@ def reserve_runtime(node: str, kind: str, amount: int = 1, detail: str = "") -> 
             ledger["termination_reason"] = reason
             ledger["terminated_epoch"] = time.time()
             _write_json(ledger_path, ledger)
+            if cfg.get("run_id"):
+                log_run_event(node, "runtime_reservation", actor="runtime", component="budget",
+                              data=event)
             raise SystemExit("runtime hard cap reached (%s); stopped before network I/O" % reason)
         key = "search_attempts" if kind == "search" else "read_attempts_reserved"
         ledger[key] = int(ledger.get(key, 0) or 0) + amount
         ledger["last_event_epoch"] = time.time()
         _write_json(ledger_path, ledger)
+        if cfg.get("run_id"):
+            log_run_event(node, "runtime_reservation", actor="runtime", component="budget",
+                          data=dict(event, reserved_total=ledger[key]))
         return {"enforced": True, "kind": kind, "reserved": ledger[key],
                 "elapsed_seconds": round(elapsed, 3)}
+
+
+def runtime_checkpoint(run_or_node: str, detail: str = "", fail_if_expired: bool = False) -> Dict[str, Any]:
+    """Observe wall-clock use outside network I/O, including synthesis and verification.
+
+    Final reporting remains possible after expiry so the user receives an honest partial result, but
+    the run is marked terminated and can never be graded as epistemically complete.
+    """
+    candidate = os.path.abspath(run_or_node)
+    run = candidate if os.path.isfile(os.path.join(candidate, "run.json")) else _find_run(candidate)
+    if not run:
+        return {"enforced": False}
+    cfg = _read_json(os.path.join(run, "run.json"), {}) or {}
+    ledger_path = os.path.join(run, "runtime-ledger.json")
+    lock_path = os.path.join(run, ".runtime-ledger.lock")
+    with open(lock_path, "a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        ledger = _read_json(ledger_path, {}) or {}
+        now = time.time()
+        started = float(ledger.get("started_epoch") or cfg.get("started_epoch") or now)
+        elapsed = max(0.0, now - started)
+        maximum = float((cfg.get("limits") or {}).get("max_seconds") or ABS_MAX_SECONDS)
+        expired = elapsed >= maximum
+        if expired:
+            ledger["termination_reason"] = ledger.get("termination_reason") or "wall_clock_limit"
+            ledger["terminated_epoch"] = ledger.get("terminated_epoch") or now
+        ledger["last_checkpoint_epoch"] = now
+        ledger["last_elapsed_seconds"] = round(elapsed, 3)
+        _write_json(ledger_path, ledger)
+    payload = {"detail": detail, "elapsed_seconds": round(elapsed, 3),
+               "max_seconds": maximum, "allowed": not expired,
+               "reason": "wall_clock_limit" if expired else ""}
+    if cfg.get("run_id"):
+        log_run_event(run_or_node, "runtime_checkpoint", actor="runtime", component="budget", data=payload)
+    if expired and fail_if_expired:
+        raise SystemExit("runtime hard cap reached (wall_clock_limit)")
+    return {"enforced": True, **payload}
 
 
 def _run_cfg(node: str) -> Dict[str, Any]:
@@ -464,27 +729,70 @@ def materialize_proposal(node: str, actor: str = "orchestrator") -> List[str]:
 
 def add_sources(node: str, records: List[Dict[str, Any]]) -> int:
     """Append records to this node's sources.jsonl and to the run's global dedup index."""
-    run = _find_run(node)
-    idx_path = os.path.join(run, "index", "sources.jsonl") if run else ""
-    seen = set()
-    if idx_path and os.path.exists(idx_path):
-        with open(idx_path, encoding="utf-8") as fh:
-            for line in fh:
-                try:
-                    row = json.loads(line)
-                    if isinstance(row, dict):
-                        seen.add(_canon(row.get("url", "")))
-                except ValueError:
-                    pass
-    added = 0
     for r in records:
         _append_jsonl(os.path.join(node, "sources.jsonl"), r)
-        cu = _canon(r.get("url", ""))
-        if idx_path and cu and cu not in seen:
-            seen.add(cu)
-            rec = dict(r); rec["_node"] = os.path.relpath(node, run)
-            _append_jsonl(idx_path, rec)
-            added += 1
+    return sync_global_sources(node, records)
+
+
+def sync_global_sources(node: str, records: List[Dict[str, Any]]) -> int:
+    """Locked atomic upsert into the run-wide source index.
+
+    Parallel leaves previously raced on read-then-append dedup, while a later successful read updated
+    only the node copy. The global report could therefore disagree with the evidence actually read.
+    """
+    run = _find_run(node)
+    if not run:
+        return 0
+    idx_path = os.path.join(run, "index", "sources.jsonl")
+    lock_path = os.path.join(run, ".sources-index.lock")
+    added = 0
+    with open(lock_path, "a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        rows: List[Dict[str, Any]] = []
+        if os.path.exists(idx_path):
+            with open(idx_path, encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        row = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(row, dict):
+                        rows.append(row)
+        by_url = {_canon(row.get("url", "")): i for i, row in enumerate(rows)
+                  if _canon(row.get("url", ""))}
+        for source in records:
+            cu = _canon(source.get("url", ""))
+            if not cu:
+                continue
+            node_rel = os.path.relpath(node, run)
+            incoming = dict(source)
+            incoming["_node"] = node_rel
+            incoming["_nodes"] = [node_rel]
+            read_rel = str(source.get("_read_file") or "")
+            if read_rel:
+                incoming["_read_artifact"] = os.path.relpath(os.path.join(node, read_rel), run)
+            if cu not in by_url:
+                by_url[cu] = len(rows)
+                rows.append(incoming)
+                added += 1
+                continue
+            existing = rows[by_url[cu]]
+            nodes = set(existing.get("_nodes") or [existing.get("_node")])
+            nodes.discard(None); nodes.discard(""); nodes.add(node_rel)
+            existing["_nodes"] = sorted(nodes)
+            # Preserve discovery metadata, but promote later proof that this exact source was read.
+            for key, value in incoming.items():
+                if key.startswith("_read") or key in {"_truncated", "_resolved_url"}:
+                    existing[key] = value
+                elif key not in existing or existing.get(key) in (None, "", [], {}):
+                    existing[key] = value
+        text = "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows)
+        _write_text(idx_path, text)
+    cfg = _read_json(os.path.join(run, "run.json"), {}) or {}
+    if cfg.get("run_id"):
+        log_run_event(node, "source_index_updated", actor="runtime", component="provenance",
+                      data={"records": len(records), "new_canonical_urls": added,
+                            "index_rows": len(rows)})
     return added
 
 
@@ -501,13 +809,40 @@ def _canon(url: str) -> str:
 
 
 def write_findings(node: str, text: str) -> None:
-    with open(os.path.join(node, "findings.md"), "w", encoding="utf-8") as fh:
-        fh.write(text.rstrip() + "\n")
     run = _find_run(node)
     is_root = bool(run and os.path.abspath(node) == os.path.abspath(os.path.join(run, "tree", "root")))
-    set_status(node, state="synthesized" if is_root else "investigated")
+    ledger_gate: Dict[str, Any] = {"epistemically_complete": True}
     if is_root:
-        set_run_state(run, "synthesized")
+        cfg = _read_json(os.path.join(run, "run.json"), {}) or {}
+        strict = (str(cfg.get("version") or "").startswith("aletheia-research-accuracy ")
+                  and cfg.get("thoroughness") in {"accuracy", "unlimited", "max"})
+        if strict:
+            ledger_script = os.path.join(os.path.dirname(os.path.realpath(__file__)), "ledger.py")
+            try:
+                ledger_gate = json.loads(subprocess.check_output(
+                    [sys.executable, ledger_script, "audit", "--run", run], text=True))
+            except (OSError, subprocess.SubprocessError, ValueError) as exc:
+                raise SystemExit("cannot audit claim ledger before root synthesis: %s" %
+                                 type(exc).__name__) from exc
+            if (ledger_gate.get("epistemically_complete") is not True
+                    and not ledger_gate.get("termination_reason")):
+                raise SystemExit("root synthesis blocked: claim ledger is unresolved and has no "
+                                 "explicit termination (%s)" %
+                                 "; ".join(ledger_gate.get("blockers") or ["unknown blocker"]))
+    path = os.path.join(node, "findings.md")
+    payload = text.rstrip() + "\n"
+    _write_text(path, payload)
+    if run:
+        log_run_event(node, "artifact_written", actor="worker", component="synthesis",
+                      data={"artifact": os.path.relpath(path, run),
+                            "sha256": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+                            "bytes": len(payload.encode("utf-8"))})
+    root_state = ("synthesized" if ledger_gate.get("epistemically_complete") is True
+                  else "synthesized_with_gaps")
+    set_status(node, state=root_state if is_root else "investigated")
+    if is_root:
+        set_run_state(run, root_state, actor="orchestrator",
+                      reason=ledger_gate.get("termination_reason") or "claim ledger complete")
 
 
 def ask(child_node: str, from_node: str, question: str) -> str:
@@ -646,6 +981,21 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("tree"); p.add_argument("--run", required=True)
 
+    p = sub.add_parser("audit-log"); p.add_argument("--run", required=True)
+
+    p = sub.add_parser("log"); p.add_argument("--run", required=True)
+    p.add_argument("--event", required=True); p.add_argument("--actor", default="orchestrator")
+    p.add_argument("--component", default="orchestrator"); p.add_argument("--node", default="")
+    p.add_argument("--correlation-id", default="")
+    p.add_argument("--data", default="{}", help="JSON object with event-specific fields")
+
+    p = sub.add_parser("checkpoint"); p.add_argument("--run", required=True)
+    p.add_argument("--detail", default=""); p.add_argument("--fail-if-expired", action="store_true")
+
+    p = sub.add_parser("artifact"); p.add_argument("--run", required=True)
+    p.add_argument("--path", required=True); p.add_argument("--actor", default="orchestrator")
+    p.add_argument("--kind", default="artifact")
+
     args = ap.parse_args(argv)
 
     if args.cmd == "init":
@@ -686,6 +1036,20 @@ def main(argv=None) -> int:
             print(d)
     elif args.cmd == "tree":
         print(tree_view(args.run))
+    elif args.cmd == "audit-log":
+        print(json.dumps(audit_run_events(args.run), indent=2, sort_keys=True))
+    elif args.cmd == "log":
+        data = json.loads(args.data)
+        if not isinstance(data, dict):
+            raise SystemExit("--data must decode to a JSON object")
+        print(json.dumps(log_run_event(args.run, args.event, args.actor, args.component, data,
+                                       args.node, args.correlation_id), indent=2, sort_keys=True))
+    elif args.cmd == "checkpoint":
+        print(json.dumps(runtime_checkpoint(args.run, args.detail, args.fail_if_expired),
+                         indent=2, sort_keys=True))
+    elif args.cmd == "artifact":
+        print(json.dumps(record_artifact(args.run, args.path, args.actor, args.kind),
+                         indent=2, sort_keys=True))
     return 0
 
 

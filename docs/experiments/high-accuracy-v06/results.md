@@ -81,3 +81,15 @@ separate `aletheia-research-accuracy 0.6.0-accuracy.1` skill. It passes 172 test
 3,600-second/40-per-round/640-total envelope, fails closed on an empty ledger, and ships a structural
 run grader. It is installed beside the stable skill for a user-supplied forward test; it remains an
 experimental candidate until semantic grading is complete.
+
+## First user forward run and observability hardening
+
+The first `accuracy.1` user run completed on the home-insurance covenant question. Its narrow factual
+claims were generally strong, but the post-hoc semantic grade is 69/100 and the hardened structural
+grade is 25/F rather than the old grader's 85/B. The positive “probably helped” headline contradicted
+the causal branch's “not identified” finding and was absent from the claim denominator.
+
+The run exposed missing unified provenance, transient manifests, lost engine-read flags, unreserved
+manual/verification reads, partial elapsed-time accounting, unreconciled 9-vs-21 claim sets, an
+unresolved ledger marked complete, and an unlocked global source index. These are addressed on
+`codex/accuracy-observability-v06` as `0.6.0-accuracy.2`; see `first-forward-run-audit.md`.

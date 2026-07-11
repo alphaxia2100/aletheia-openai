@@ -37,9 +37,11 @@ flowchart TD
 
 ## Skills
 
-> **Experimental accuracy candidate: `aletheia-research-accuracy` 0.6.0-accuracy.1.** It installs
+> **Experimental accuracy candidate: `aletheia-research-accuracy` 0.6.0-accuracy.2.** It installs
 > alongside the stable `aletheia-research` 0.5.0-openai.1 checkpoint and adds hard runtime ceilings
-> plus atomic claim-to-span evidence state. Invoke it explicitly as `$aletheia-research-accuracy`.
+> plus atomic claim-to-span evidence state, a tamper-evident unified run log, persisted source-choice
+> manifests, and fail-closed ledger/final-answer reconciliation. Invoke it explicitly as
+> `$aletheia-research-accuracy`.
 >
 > **Stable OpenAI/Codex skill: `aletheia-research` 0.5.0-openai.1.** The stable flagship is the deep, multi-perspective tree
 > surveyor — built off **deep-aletheia 0.2** (which won a blind LLM-judge on completeness, source
@@ -49,7 +51,7 @@ flowchart TD
 
 | Skill | Role |
 |-------|------|
-| **`aletheia-research-accuracy` 0.6.0-accuracy.1** | **Experimental accuracy line.** One-hour/640-read ceiling, atomic claim-to-span evidence, contradiction state, and independent stop probes. |
+| **`aletheia-research-accuracy` 0.6.0-accuracy.2** | **Experimental accuracy line.** One-hour/640-read ceiling, atomic claim-to-span evidence, tamper-evident execution logging, persisted selection manifests, contradiction state, and independent stop probes. |
 | **`aletheia-research` 0.5.0-openai.1** | **Current OpenAI/Codex line.** Topic-relative capped source triage, final-brief claim-scope verification, and reproducible runtime traces; defaults to unbounded convergence. |
 | `deep-aletheia` 0.2 | *Frozen — direct ancestor of aletheia-research 0.3; eval baseline.* |
 | `surveyor` 0.1 | *Retired 2026-07-08 — eval baseline (single-agent).* |

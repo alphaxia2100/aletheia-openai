@@ -39,6 +39,32 @@ import dedupe  # noqa: E402
 import read as readmod  # noqa: E402
 import _http  # noqa: E402  (keywordize, for 0-result relaxation)
 
+_LOCAL_RUNTIME_TREESTATE = None
+
+
+def _runtime_ts():
+    """Always use this specialization's runtime hooks despite a host `treestate` module collision."""
+    global _LOCAL_RUNTIME_TREESTATE
+    required = ("log_run_event", "runtime_checkpoint", "reserve_runtime", "_write_text")
+    if all(hasattr(treestate, name) for name in required):
+        return treestate
+    if _LOCAL_RUNTIME_TREESTATE is None:
+        path = os.path.join(os.path.dirname(__file__), "treestate.py")
+        spec = importlib.util.spec_from_file_location("aletheia_accuracy_runtime_treestate", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _LOCAL_RUNTIME_TREESTATE = module
+    return _LOCAL_RUNTIME_TREESTATE
+
+
+def _log_event(node: str, event: str, **kwargs):
+    runtime = _runtime_ts()
+    run = runtime._find_run(node)
+    cfg = runtime._read_json(os.path.join(run, "run.json"), {}) if run else {}
+    if run and (cfg or {}).get("run_id"):
+        return runtime.log_run_event(node, event, **kwargs)
+    return None
+
 MAX_READ_CHARS = 40000   #: read cap; a read that hits it is flagged `_truncated` (no silent cut-off)
 MAX_TRIAGE_GATHERS = 2   #: initial manifest + one tighter requery; no hidden unbounded search loop
 _ARXIV = re.compile(
@@ -368,8 +394,8 @@ def _save_read(node: str, url: str, text: str, method: str, truncated: bool = Fa
     trunc = " TRUNCATED at %d chars — re-read with a larger cap if a claim rests on the tail" % \
         MAX_READ_CHARS if truncated else ""
     resolved = " resolved=%s" % resolved_url if resolved_url and resolved_url != url else ""
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write("<!-- %s (via %s)%s%s -->\n\n%s" % (url, method, resolved, trunc, text))
+    _runtime_ts()._write_text(path, "<!-- %s (via %s)%s%s -->\n\n%s" %
+                              (url, method, resolved, trunc, text))
     return path
 
 
@@ -466,6 +492,7 @@ def _merge_existing_read_metadata(node: str, records: List[Dict[str, Any]]) -> i
         with open(os.path.join(node, "sources.jsonl"), "w", encoding="utf-8") as fh:
             for row in existing:
                 fh.write(json.dumps(row) + "\n")
+        _runtime_ts().sync_global_sources(node, [row for row in existing if row.get("_read_file")])
     return changed
 
 
@@ -476,14 +503,7 @@ def _run_cfg(node: str) -> Dict[str, Any]:
 
 def _reserve_runtime(node: str, kind: str, amount: int, detail: str) -> dict:
     """Use the co-located ledger even if an embedding preloaded a same-named module."""
-    fn = getattr(treestate, "reserve_runtime", None)
-    if fn is None:
-        path = os.path.join(os.path.dirname(__file__), "treestate.py")
-        spec = importlib.util.spec_from_file_location("aletheia_research_runtime_treestate", path)
-        local = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(local)
-        fn = local.reserve_runtime
-    return fn(node, kind, amount, detail)
+    return _runtime_ts().reserve_runtime(node, kind, amount, detail)
 
 
 def _telemetry_path(node: str) -> str:
@@ -501,6 +521,10 @@ def _append_telemetry(node: str, event: Dict[str, Any]) -> None:
     row.update(event)
     with open(_telemetry_path(node), "a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, sort_keys=True) + "\n")
+    _log_event(node, str(event.get("event") or "investigation_telemetry"),
+               actor="runtime", component="investigate", data=row,
+               correlation_id="%s:round-%s" % (
+                   os.path.basename(node), event.get("round", "?")))
 
 
 def _round_cap(status: Dict[str, Any], cfg: Dict[str, Any]):
@@ -544,6 +568,10 @@ def _gather(node: str, query: str = "", channels: List[str] = None, limit: int =
 
     _reserve_runtime(node, "search", 1, "round %d query=%s" % (round_no, query))
     recs, per = retrieve(query, chans, limit, timeout)
+    _log_event(node, "search_completed", actor="runtime", component="retrieval",
+               data={"round": round_no, "query": query, "channels": chans,
+                     "per_channel": per, "retrieved": len(recs)},
+               correlation_id="%s:round-%d" % (os.path.basename(node), round_no))
     # dedupe at the WORK level (arXiv id / DOI / canonical url) so versions don't duplicate
     uniq = _dedupe_records(recs)
     root_topic = cfg.get("topic", "")
@@ -613,13 +641,32 @@ def _execute_reads(node: str, ctx: Dict[str, Any], sel: List[Dict[str, Any]],
             r["_read_ok"] = ok
             r["_truncated"] = truncated
             r["_resolved_url"] = resolved_url
-            read_meta.append({"url": u, "chars": len(txt), "method": method, "ok": ok,
-                              "truncated": truncated,
-                              "resolved_url": resolved_url,
-                              "t": round(time.time() - t0, 1), "title": r.get("title", "")})
+            r["_read_content_sha256"] = hashlib.sha256(txt.encode("utf-8")).hexdigest()
+            # `read --pick` reloads ranked/read_pool as distinct JSON objects. Copy the resulting
+            # metadata back into ranked before persistence; otherwise every successful engine read
+            # looks manual and synthesis cannot distinguish read sources from search hits.
+            for ranked_row in ranked:
+                if ranked_row.get("url") == u:
+                    for key in ("_read_file", "_read_ok", "_truncated", "_resolved_url",
+                                "_read_content_sha256"):
+                        ranked_row[key] = r.get(key)
+            elapsed = round(time.time() - t0, 1)
+            meta = {"url": u, "chars": len(txt), "method": method, "ok": ok,
+                    "truncated": truncated, "resolved_url": resolved_url,
+                    "t": elapsed, "title": r.get("title", ""),
+                    "artifact": os.path.relpath(path, _runtime_ts()._find_run(node)),
+                    "content_sha256": r["_read_content_sha256"]}
+            read_meta.append(meta)
+            _log_event(node, "source_read_completed", actor="runtime",
+                       component="reader", data=dict(meta, round=round_no),
+                       correlation_id="%s:round-%d" % (os.path.basename(node), round_no))
         except Exception as e:  # noqa: BLE001
-            read_meta.append({"url": u, "chars": 0, "method": "FAIL", "ok": False,
-                              "err": type(e).__name__, "t": round(time.time() - t0, 1)})
+            meta = {"url": u, "chars": 0, "method": "FAIL", "ok": False,
+                    "err": type(e).__name__, "message": str(e)[:240],
+                    "t": round(time.time() - t0, 1), "round": round_no}
+            read_meta.append(meta)
+            _log_event(node, "source_read_failed", actor="runtime", component="reader", data=meta,
+                       correlation_id="%s:round-%d" % (os.path.basename(node), round_no))
 
     # node-level dedup across rounds: add_sources only deduped the GLOBAL index, so repeated
     # rounds duplicated this node's sources.jsonl and corrupted independence math. Add only
@@ -668,6 +715,11 @@ def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
            if not _note_exists(node, r.get("url", ""))]
     before_floor = len(sel)
     sel = _read_floor(node, ctx["read_pool"], sel, ctx["reads"])
+    _log_event(node, "sources_selected", actor="deterministic-selector", component="investigate",
+               data={"round": ctx["round_no"], "urls": [r.get("url") for r in sel],
+                     "why": "rank/class selector%s" %
+                            (" plus relevance-safe floor" if before_floor == 0 and sel else "")},
+               correlation_id="%s:round-%d" % (os.path.basename(node), ctx["round_no"]))
     return _execute_reads(node, ctx, sel, timeout, selection_mode="deterministic",
                           floor_engaged=(before_floor == 0 and bool(sel)))
 
@@ -701,6 +753,35 @@ def _manifest(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                     "score": r.get("score", 0), "relnorm": r.get("_relnorm", 0),
                     "subject_hits": r.get("_subject_hits"), "snippet": _snippet(r)})
     return out
+
+
+def _persist_manifest(node: str, ctx: Dict[str, Any], attempt: int,
+                      manifest: List[Dict[str, Any]]) -> tuple[str, str]:
+    """Keep the exact source-choice menu after `.triage.json` is consumed.
+
+    Without this artifact, a later audit can see what was read but cannot determine whether the agent
+    ignored a stronger candidate that was available at selection time.
+    """
+    directory = os.path.join(node, "manifests")
+    os.makedirs(directory, exist_ok=True)
+    created_epoch = time.time()
+    filename = "round-%03d-attempt-%02d-%016d.json" % (
+        ctx["round_no"], attempt, int(created_epoch * 1_000_000))
+    path = os.path.join(directory, filename)
+    payload = {"schema_version": 1, "created_epoch": created_epoch, "round": ctx["round_no"],
+               "attempt": attempt, "query": ctx["query"], "channels": ctx["chans"],
+               "per_channel": ctx["per"], "reads_ceiling": ctx["reads"],
+               "candidates": manifest}
+    _runtime_ts()._write_json(path, payload)
+    with open(path, "rb") as fh:
+        digest = hashlib.sha256(fh.read()).hexdigest()
+    run = _runtime_ts()._find_run(node)
+    _log_event(node, "candidate_manifest_persisted", actor="runtime", component="investigate",
+               data={"round": ctx["round_no"], "attempt": attempt,
+                     "artifact": os.path.relpath(path, run), "sha256": digest,
+                     "candidates": len(manifest)},
+               correlation_id="%s:round-%d" % (os.path.basename(node), ctx["round_no"]))
+    return path, digest
 
 
 def gather_candidates(node: str, query: str = "", channels: List[str] = None,
@@ -746,10 +827,17 @@ def gather_candidates(node: str, query: str = "", channels: List[str] = None,
         "read_pool": ctx["read_pool"], "prev_read": ctx["prev_read"], "attempt": attempt})
     pool_urls = {r.get("url", "") for r in ctx["read_pool"]}
     manifest = [m for m in _manifest(ctx["ranked"]) if m["url"] in pool_urls]  # only still-readable
+    manifest_path, manifest_sha256 = _persist_manifest(node, ctx, attempt, manifest)
+    payload = treestate._read_json(_triage_path(node), {}) or {}
+    payload["manifest_path"] = os.path.relpath(manifest_path, node)
+    payload["manifest_sha256"] = manifest_sha256
+    _runtime_ts()._write_json(_triage_path(node), payload)
     return {"node": node, "round": ctx["round_no"], "query": ctx["query"], "channels": ctx["chans"],
             "per_channel": {k: v["n"] for k, v in ctx["per"].items()},
             "reads_suggested": ctx["reads"], "gather_attempt": attempt,
-            "gather_attempt_cap": MAX_TRIAGE_GATHERS, "candidates": manifest,
+            "gather_attempt_cap": MAX_TRIAGE_GATHERS,
+            "manifest": os.path.relpath(manifest_path, _runtime_ts()._find_run(node)),
+            "manifest_sha256": manifest_sha256, "candidates": manifest,
             "note": ("JUDGE which to read for THIS question's epistemology (consumer/product/lived-"
                      "experience -> forums/video/reddit ARE primary; science -> peer-review/regulators; "
                      "current events -> reporting). reads_suggested is a CEILING, not a target; never "
@@ -794,6 +882,12 @@ def read_picks(node: str, picks: List[str] = None, pick_idx: List[int] = None,
     treestate.log_decision(node, "agent-triage",
                            "round %d: agent selected %d source(s)" % (ctx["round_no"], len(sel)),
                            why or "topic-relative source judgment")
+    _log_event(node, "sources_selected", actor="agent-triage", component="investigate",
+               data={"round": ctx["round_no"], "urls": [r.get("url") for r in sel],
+                     "why": why or "topic-relative source judgment",
+                     "manifest": payload.get("manifest_path"),
+                     "manifest_sha256": payload.get("manifest_sha256")},
+               correlation_id="%s:round-%d" % (os.path.basename(node), ctx["round_no"]))
     res = _execute_reads(node, ctx, sel, timeout, selection_mode="agent")
     try:
         os.remove(_triage_path(node))   # one manifest per round; consumed on read
@@ -813,6 +907,11 @@ def reject_candidates(node: str, timeout: float = 30.0, why: str = "") -> dict:
     ctx = _ctx_from_triage(payload)
     treestate.log_decision(node, "agent-triage",
                            "round %d: agent rejected all candidates" % ctx["round_no"], why)
+    _log_event(node, "sources_rejected", actor="agent-triage", component="investigate",
+               data={"round": ctx["round_no"], "why": why,
+                     "manifest": payload.get("manifest_path"),
+                     "manifest_sha256": payload.get("manifest_sha256")},
+               correlation_id="%s:round-%d" % (os.path.basename(node), ctx["round_no"]))
     res = _execute_reads(node, ctx, [], timeout, selection_mode="agent", abstained=True)
     try:
         os.remove(_triage_path(node))

@@ -10,12 +10,32 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import importlib.util
 import json
 import os
 import re
 import sys
 from contextlib import contextmanager
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import treestate  # noqa: E402
+
+_LOCAL_RUNTIME_TREESTATE = None
+
+
+def _runtime_ts():
+    global _LOCAL_RUNTIME_TREESTATE
+    if all(hasattr(treestate, name) for name in ("runtime_checkpoint", "log_run_event")):
+        return treestate
+    if _LOCAL_RUNTIME_TREESTATE is None:
+        spec = importlib.util.spec_from_file_location(
+            "aletheia_accuracy_ledger_treestate",
+            os.path.join(os.path.dirname(os.path.realpath(__file__)), "treestate.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _LOCAL_RUNTIME_TREESTATE = module
+    return _LOCAL_RUNTIME_TREESTATE
 
 try:  # POSIX Codex/Claude/Cursor hosts
     import fcntl
@@ -30,6 +50,8 @@ RELATIONS = {"supports", "contradicts", "qualifies", "background"}
 IMPORTANCE = {"load_bearing", "supporting"}
 RESULTS = {"verified", "rejected"}
 CHECKS = {"polarity", "scope", "numeric", "temporal"}
+CLAIM_KINDS = {"empirical", "inferential", "normative", "forecast"}
+INFERENCE_RESULTS = {"verified", "rejected", "underdetermined"}
 
 
 def _canonical(obj: Dict[str, Any]) -> bytes:
@@ -94,6 +116,11 @@ def append_event(run: str, event: Dict[str, Any]) -> Dict[str, Any]:
     run = os.path.abspath(run)
     if not os.path.exists(os.path.join(run, "run.json")):
         raise ValueError("run.json not found in %s" % run)
+    cfg = _runtime_ts()._read_json(os.path.join(run, "run.json"), {}) or {}
+    observed = bool(cfg.get("run_id"))
+    if observed and event.get("event") != "termination":
+        _runtime_ts().runtime_checkpoint(run, "before claim-ledger %s" % event.get("event"),
+                                         fail_if_expired=True)
     with _locked(run):
         rows = _read_rows(run)
         chain_errors = verify_chain(rows)
@@ -107,7 +134,14 @@ def append_event(run: str, event: Dict[str, Any]) -> Dict[str, Any]:
             fh.write(json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n")
             fh.flush()
             os.fsync(fh.fileno())
-        return row
+    if observed:
+        _runtime_ts().log_run_event(run, "claim_ledger_event", actor=str(
+            event.get("verifier") or event.get("actor") or "orchestrator"), component="claim-ledger",
+            data={"ledger_event": row.get("event"), "ledger_seq": row.get("seq"),
+                  "ledger_event_sha256": row.get("event_sha256"),
+                  "claim_id": row.get("claim_id"), "evidence_id": row.get("evidence_id"),
+                  "result": row.get("result"), "reason": row.get("reason")})
+    return row
 
 
 def _ids(value: str) -> List[str]:
@@ -132,6 +166,7 @@ def reduce_state(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     claims: Dict[str, Dict[str, Any]] = {}
     evidence: Dict[str, Dict[str, Any]] = {}
     verdicts: Dict[str, Dict[str, Any]] = {}
+    inference_verdicts: Dict[str, Dict[str, Any]] = {}
     probes, termination = [], None
     errors = list(verify_chain(rows))
     last_substantive_seq = 0
@@ -159,13 +194,24 @@ def reduce_state(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
                 errors.append("verdict references unknown evidence %s" % eid)
             verdicts[eid] = row
             last_substantive_seq = row["seq"]
+        elif kind == "inference_verified":
+            cid = row.get("claim_id")
+            if cid not in claims:
+                errors.append("inference verdict references unknown claim %s" % cid)
+            inference_verdicts[cid] = row
+            last_substantive_seq = row["seq"]
         elif kind == "stop_probe":
             probes.append(row)
         elif kind == "termination":
             termination = row
         else:
             errors.append("unknown ledger event %r" % kind)
+    for cid, claim in claims.items():
+        for dependency in claim.get("depends_on_claim_ids") or []:
+            if dependency not in claims:
+                errors.append("claim %s depends on unknown claim %s" % (cid, dependency))
     return {"claims": claims, "evidence": evidence, "verdicts": verdicts,
+            "inference_verdicts": inference_verdicts,
             "probes": probes, "termination": termination, "errors": errors,
             "last_substantive_seq": last_substantive_seq}
 
@@ -219,7 +265,10 @@ def materialize(run: str) -> Dict[str, Any]:
         passing = [e for e in linked if _edge_passes(claim, e, state["verdicts"].get(e["evidence_id"]))]
         supports = [e for e in passing if e.get("relation_to_claim") == "supports"]
         contradicts = [e for e in passing if e.get("relation_to_claim") == "contradicts"]
-        if supports and contradicts:
+        kind = claim.get("claim_kind") or "empirical"
+        if kind != "empirical":
+            status = "unresolved"
+        elif supports and contradicts:
             status = "disputed"
         elif supports:
             status = "supported"
@@ -233,8 +282,37 @@ def materialize(run: str) -> Dict[str, Any]:
                              contradict_evidence_ids=[e["evidence_id"] for e in contradicts],
                              independent_origin_keys=origins,
                              linked_evidence_ids=[e["evidence_id"] for e in linked])
+    # Conclusions are arguments over verified premises. A source span cannot directly certify
+    # "probably helped overall" or another synthesis judgment, so those claims need an independent
+    # inference verdict and every declared premise must itself remain supported.
+    for _ in range(max(1, len(rendered))):
+        changed = False
+        for cid, claim in rendered.items():
+            if (claim.get("claim_kind") or "empirical") == "empirical":
+                continue
+            inference = state["inference_verdicts"].get(cid) or {}
+            dependencies = list(claim.get("depends_on_claim_ids") or [])
+            dep_states = [rendered.get(dep, {}).get("status") for dep in dependencies]
+            if inference.get("result") == "rejected":
+                status = "contradicted"
+            elif (inference.get("result") == "verified" and dependencies
+                  and all(value == "supported" for value in dep_states)):
+                status = "supported"
+            else:
+                status = "unresolved"
+            origins = sorted({origin for dep in dependencies
+                              for origin in rendered.get(dep, {}).get("independent_origin_keys", [])})
+            if claim.get("status") != status or claim.get("independent_origin_keys") != origins:
+                claim["status"] = status
+                claim["independent_origin_keys"] = origins
+                changed = True
+            claim["inference_verdict"] = inference or None
+            claim["premise_statuses"] = dict(zip(dependencies, dep_states))
+        if not changed:
+            break
     return {"schema_version": SCHEMA_VERSION, "chain_valid": not verify_chain(rows),
             "claims": rendered, "evidence": evidence, "verdicts": state["verdicts"],
+            "inference_verdicts": state["inference_verdicts"],
             "probes": state["probes"], "termination": state["termination"],
             "errors": state["errors"] + artifact_errors,
             "last_substantive_seq": state["last_substantive_seq"],
@@ -253,8 +331,9 @@ def audit(run: str) -> Dict[str, Any]:
             continue
         if claim["status"] != "supported":
             blockers.append("%s is %s" % (cid, claim["status"]))
-        required = int(claim.get("required_origins", 1) or 1)
-        if len(claim["independent_origin_keys"]) < required:
+        required = int(claim.get("required_origins", 1) or 0)
+        if ((claim.get("claim_kind") or "empirical") == "empirical"
+                and len(claim["independent_origin_keys"]) < required):
             blockers.append("%s has %d/%d required independent supporting origins" %
                             (cid, len(claim["independent_origin_keys"]), required))
     last = state["last_substantive_seq"]
@@ -326,6 +405,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p = sub.add_parser("add-claim"); p.add_argument("--run", required=True)
     p.add_argument("--id", required=True); p.add_argument("--text", required=True)
     p.add_argument("--scope", required=True); p.add_argument("--importance", choices=sorted(IMPORTANCE), required=True)
+    p.add_argument("--kind", choices=sorted(CLAIM_KINDS), default="empirical")
     p.add_argument("--required-origins", type=int, default=1); p.add_argument("--valid-time", default="")
     p.add_argument("--freshness", default="none"); p.add_argument("--depends-on", default="")
     p.add_argument("--checks", default="polarity,scope")
@@ -344,13 +424,22 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--verifier", required=True); p.add_argument("--checks", default="polarity,scope")
     p.add_argument("--why", required=True)
 
+    p = sub.add_parser("verify-inference"); p.add_argument("--run", required=True)
+    p.add_argument("--claim", required=True)
+    p.add_argument("--result", choices=sorted(INFERENCE_RESULTS), required=True)
+    p.add_argument("--verifier", required=True); p.add_argument("--premises", required=True)
+    p.add_argument("--assumptions", required=True); p.add_argument("--counterarguments", required=True)
+    p.add_argument("--why", required=True)
+
     p = sub.add_parser("probe"); p.add_argument("--run", required=True)
     p.add_argument("--kind", dest="probe_kind", choices=["challenger", "confirmation"], required=True)
     p.add_argument("--outcome", choices=["no_material_novelty", "found_gap"], required=True)
     p.add_argument("--actor", required=True); p.add_argument("--method", required=True)
 
     p = sub.add_parser("terminate"); p.add_argument("--run", required=True)
-    p.add_argument("--reason", choices=["budget_exhausted", "wall_clock_limit", "run_read_limit"], required=True)
+    p.add_argument("--reason", choices=["budget_exhausted", "wall_clock_limit", "run_read_limit",
+                                         "evidence_exhausted", "user_stopped", "runtime_failure"],
+                   required=True)
 
     for name in ("show", "audit", "next", "context"):
         p = sub.add_parser(name); p.add_argument("--run", required=True)
@@ -362,12 +451,22 @@ def main(argv: Optional[List[str]] = None) -> int:
             claims, _ = _existing_ids(args.run); cid = _valid_id(args.id, "claim")
             if cid in claims: raise ValueError("claim ID already exists: %s" % cid)
             if not args.text.strip() or not args.scope.strip(): raise ValueError("claim text/scope must not be empty")
-            if args.required_origins < 1: raise ValueError("required_origins must be >= 1")
+            if args.required_origins < 0: raise ValueError("required_origins must be >= 0")
+            if args.kind == "empirical" and args.required_origins < 1:
+                raise ValueError("empirical claims require at least one independent origin")
+            dependencies = _ids(args.depends_on)
+            if args.kind != "empirical" and not dependencies:
+                raise ValueError("non-empirical claims require --depends-on premises")
+            missing_dependencies = sorted(set(dependencies) - claims)
+            if missing_dependencies:
+                raise ValueError("unknown dependency claim IDs: %s" %
+                                 ", ".join(missing_dependencies))
             row = append_event(args.run, {"event": "claim_declared", "claim_id": cid,
                 "canonical_text": args.text.strip(), "scope": args.scope.strip(),
+                "claim_kind": args.kind,
                 "importance": args.importance, "required_origins": args.required_origins,
                 "valid_time": args.valid_time, "freshness_requirement": args.freshness,
-                "depends_on_claim_ids": _ids(args.depends_on),
+                "depends_on_claim_ids": dependencies,
                 "check_requirements": _checks(args.checks)})
         elif args.cmd == "add-evidence":
             claims, evidence = _existing_ids(args.run); eid = _valid_id(args.id, "evidence")
@@ -395,6 +494,20 @@ def main(argv: Optional[List[str]] = None) -> int:
             row = append_event(args.run, {"event": "evidence_verified", "evidence_id": args.id,
                 "result": args.result, "verifier": args.verifier,
                 "checks_completed": _checks(args.checks), "why": args.why})
+        elif args.cmd == "verify-inference":
+            state = reduce_state(_read_rows(args.run))
+            claim = state["claims"].get(args.claim)
+            if not claim: raise ValueError("unknown claim ID: %s" % args.claim)
+            if (claim.get("claim_kind") or "empirical") == "empirical":
+                raise ValueError("empirical claims use exact-span evidence, not inference verdicts")
+            premises = _ids(args.premises)
+            declared = list(claim.get("depends_on_claim_ids") or [])
+            if set(premises) != set(declared) or len(premises) != len(declared):
+                raise ValueError("--premises must exactly match the claim's declared dependencies")
+            row = append_event(args.run, {"event": "inference_verified", "claim_id": args.claim,
+                "result": args.result, "verifier": args.verifier, "premise_claim_ids": premises,
+                "assumptions": args.assumptions, "counterarguments": args.counterarguments,
+                "why": args.why})
         elif args.cmd == "probe":
             row = append_event(args.run, {"event": "stop_probe", "probe_kind": args.probe_kind,
                 "outcome": args.outcome, "actor": args.actor, "method": args.method})

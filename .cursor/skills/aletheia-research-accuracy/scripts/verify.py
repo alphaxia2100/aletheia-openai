@@ -34,13 +34,16 @@ import json
 import os
 import re
 import sys
+import time
 from typing import Any, Dict, List, Optional
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 CH = os.path.join(HERE, "..", "..", "channel-retrieval", "scripts")
 sys.path.insert(0, CH)
+sys.path.insert(0, HERE)
 import rerank  # noqa: E402  (tokenize)
 import read as readmod  # noqa: E402
+import treestate  # noqa: E402
 
 RELEVANT = 0.30    # at/above: clearly on-topic
 BORDERLINE = 0.08  # readable but low overlap: could be a paraphrase — route to the LLM, do NOT drop
@@ -91,10 +94,37 @@ def _source_text(url: str, node, reads_dir, timeout: float) -> str:
                 return fh.read()
         except OSError:
             pass
-    try:  # fall back to a live read
-        txt, _ = readmod.read_url(url, timeout, 40000, False)
+    start = time.time()
+    try:  # fall back to a live read, but never outside the accuracy run's cap/provenance
+        run = treestate._find_run(node) if node else ""
+        if run:
+            treestate.runtime_checkpoint(node, "before verification fallback read",
+                                         fail_if_expired=True)
+            treestate.reserve_runtime(node, "read", 1, "verification fallback: %s" % url)
+        txt, method = readmod.read_url(url, timeout, 40000, False)
+        if run and not txt.strip():
+            raise RuntimeError("verification fallback returned no usable content")
+        if run and txt.strip():
+            directory = os.path.join(node, "notes", "verification")
+            os.makedirs(directory, exist_ok=True)
+            path = os.path.join(directory, hashlib.sha1(url.encode()).hexdigest()[:10] + ".md")
+            treestate._write_text(path, "<!-- source: %s (via %s; tracked=verification) -->\n\n%s" %
+                                  (url, method, txt))
+            data = {"url": url, "kind": "verification", "method": method, "ok": True,
+                    "chars": len(txt), "seconds": round(time.time() - start, 3),
+                    "artifact": os.path.relpath(path, run),
+                    "content_sha256": hashlib.sha256(txt.encode("utf-8")).hexdigest()}
+            treestate.log_run_event(node, "source_read_completed", actor="runtime",
+                                    component="verify", data=data)
         return txt
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        if node and treestate._find_run(node):
+            treestate.log_run_event(node, "source_read_failed", actor="runtime",
+                                    component="verify",
+                                    data={"url": url, "kind": "verification", "ok": False,
+                                          "error": type(exc).__name__,
+                                          "message": str(exc)[:240],
+                                          "seconds": round(time.time() - start, 3)})
         return ""
 
 
@@ -146,7 +176,11 @@ def run(claims: List[Dict[str, Any]], node, reads_dir, timeout: float) -> Dict[s
     results = []
     for c in claims:
         urls = c.get("urls") or ([c["url"]] if c.get("url") else [])
-        results.append(verify_claim(c.get("claim", ""), urls, node, reads_dir, timeout))
+        result = verify_claim(c.get("claim", ""), urls, node, reads_dir, timeout)
+        for key in ("claim_id", "scope", "importance"):
+            if key in c:
+                result[key] = c[key]
+        results.append(result)
     n = len(results) or 1
     counts = {v: sum(1 for r in results if r["verdict"] == v)
               for v in ("relevant", "borderline", "off_topic", "broken")}
@@ -171,9 +205,19 @@ def main(argv=None) -> int:
         claims = [json.loads(l) for l in fh if l.strip()]
     summary = run(claims, args.node or None, args.reads_dir or None, args.timeout)
     if args.out:
-        with open(args.out, "w", encoding="utf-8") as fh:
-            for r in summary["results"]:
-                fh.write(json.dumps(r) + "\n")
+        text = "".join(json.dumps(r) + "\n" for r in summary["results"])
+        if args.node and treestate._find_run(args.node):
+            treestate._write_text(args.out, text)
+            run_dir = treestate._find_run(args.node)
+            treestate.log_run_event(args.node, "verification_pass_written", actor="runtime",
+                                    component="verify",
+                                    data={"claims": summary["n_claims"],
+                                          "counts": summary["counts"],
+                                          "artifact": os.path.relpath(args.out, run_dir),
+                                          "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()})
+        else:
+            with open(args.out, "w", encoding="utf-8") as fh:
+                fh.write(text)
     sys.stderr.write(json.dumps({k: v for k, v in summary.items() if k != "results"}, indent=2) + "\n")
     print(json.dumps(summary))
     return 0
