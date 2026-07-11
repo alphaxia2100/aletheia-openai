@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-PATH = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "ledger.py")
+PATH = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "ledger.py")
 spec = importlib.util.spec_from_file_location("aletheia_claim_ledger", PATH)
 ledger = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ledger)
@@ -25,6 +25,15 @@ class TestClaimEvidenceLedger(unittest.TestCase):
             "required_origins": origins, "valid_time": "2026-07-10",
             "freshness_requirement": "as_of", "depends_on_claim_ids": [],
             "check_requirements": checks or ["polarity", "scope"]})
+
+    def test_empty_or_supporting_only_ledger_is_not_ready(self):
+        empty = ledger.audit(self.run)
+        self.assertFalse(empty["ready_for_synthesis"])
+        self.assertIn("claim ledger is empty", empty["blockers"])
+        self.claim(importance="supporting")
+        supporting_only = ledger.audit(self.run)
+        self.assertFalse(supporting_only["ready_for_synthesis"])
+        self.assertIn("claim ledger has no load-bearing claims", supporting_only["blockers"])
 
     def evidence(self, eid="E1", cid="C1", relation="supports", origin="doi:one"):
         span = "The intervention reduced the outcome by twelve percent."

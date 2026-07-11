@@ -152,3 +152,15 @@ Append entries; do not rewrite history. A reversal adds a new entry that names t
   contaminated, and generating its replacement here would destroy the property it must test.
 - Decision: stop before the 3,600-second ceiling, keep the goal incomplete, and require external state
   rather than substitute structural tests or self-authored labels for empirical accuracy evidence.
+
+## D018 — compose a side-by-side runnable accuracy candidate
+
+- Decision: compose runtime ledger `087a228` and claim/evidence ledger `35fb82a` on
+  `codex/high-accuracy-candidate-v06`, package it as `aletheia-research-accuracy`, and install it beside
+  rather than over the stable `aletheia-research` checkpoint.
+- Default envelope: accuracy tier, 3,600 seconds, 40 reads per round, 640 run-wide read attempts,
+  maximum eight-way branching, and atomic support/contradiction state.
+- Testability: every response must expose its run path and fingerprints; `grade_accuracy_run.py`
+  checks mechanism activation and artifact integrity while explicitly declining to infer truth.
+- First integration finding: an empty ledger incorrectly passed `ready_for_synthesis`; the composed
+  smoke test caught it, and the ledger now requires at least one load-bearing claim.

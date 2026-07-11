@@ -1,6 +1,8 @@
-aletheia-research: 0.5.0-openai.1 (OpenAI/Codex specialization; mechanism-tested from 0.4.3)
+aletheia-research-accuracy: 0.6.0-accuracy.1 (experimental OpenAI/Codex accuracy specialization)
+aletheia-research: 0.5.0-openai.1 (stable checkpoint; installed separately)
 deep-aletheia: 0.2.0 (frozen — direct ancestor of aletheia-research 0.3; eval baseline)
 surveyor: 0.1.0 (retired 2026-07-08 — eval baseline; superseded by aletheia-research 0.3)
 aletheia: 1.0.0 (retired — original single-agent loop; the deep-tree flagship is now `aletheia-research`)
-# This branch's flagship is `aletheia-research` 0.5.0-openai.1. The separate Claude worktree remains
+# This branch's flagship is `aletheia-research-accuracy` 0.6.0-accuracy.1. The stable OpenAI worktree
+# remains at `aletheia-research` 0.5.0-openai.1, and the separate Claude worktree remains
 # independently versioned; Codex-only installation does not mutate Cursor or Claude skill roots.

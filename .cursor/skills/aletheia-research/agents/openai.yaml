@@ -1,4 +1,0 @@
-interface:
-  display_name: "Aletheia Research"
-  short_description: "Deep, adversarial, source-grounded research"
-  default_prompt: "Use $aletheia-research to survey this topic deeply, preserve disagreement, and verify every load-bearing claim."

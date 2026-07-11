@@ -1,6 +1,16 @@
 # Changelog
 
-Current skill:
+## aletheia-research-accuracy 0.6.0-accuracy.1 — 2026-07-11 (experimental candidate)
+
+- Composes the runtime hard-cap ledger and atomic claim/evidence/span ledger on a dedicated branch.
+- Defaults to the `accuracy` tier: 3,600 seconds, 40 reads per round, and 640 read attempts maximum.
+- Keeps discovery edges separate from verified support, binds quotes to content hashes, preserves
+  disputes, and requires independent challenge plus confirmation before epistemic completion.
+- Installs beside the stable Codex skill under `$aletheia-research-accuracy`.
+- Adds `scripts/eval/grade_accuracy_run.py` to grade mechanism activation without mislabeling it as
+  factual accuracy.
+
+Stable skill retained alongside this candidate:
 - **aletheia-research 0.5.0-openai.1** — the OpenAI/Codex specialization: topic-relative but bounded
   source triage, final-answer claim-scope verification, executable-runtime fingerprints, complete read
   accounting, and Codex-only installation. The separate Claude line is left untouched.

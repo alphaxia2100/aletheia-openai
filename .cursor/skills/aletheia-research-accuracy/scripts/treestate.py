@@ -16,7 +16,7 @@ Budget model (conserved split, contestedness-weighted):
   (max_depth/max_children/max_nodes) bound fan-out.
 
 Layout:
-  runs/aletheia-research/<ts>-<slug>/
+  runs/aletheia-research-accuracy/<ts>-<slug>/
     run.json  portfolio.md  brief.md  verify.jsonl
     index/sources.jsonl                      (global dedup / independence)
     tree/root/{spec.md,status.json,decisions.jsonl,questions.jsonl,answers.jsonl,
@@ -25,7 +25,7 @@ Layout:
 CLI (used by the orchestrator skill + subagents):
   treestate.py init "<topic>" [--slug s] [--thoroughness quick|standard|deep|exhaustive|unlimited|max]
                [--verbosity user|agent] [--budget N (explicit = custom bounded run)]
-               # default (no tier, no budget) = `unlimited`: unbounded depth/budget, stop on saturation
+               # default (no tier, no budget) = `accuracy`: agent-paced within hard ceilings
   treestate.py split  --node DIR --children '[["q1","question one"],["q2","..."]]'
   treestate.py decide --node DIR --actor NAME --why "..." "<decision>"
   treestate.py status --node DIR [--set state] [--field k=v ...]
@@ -182,13 +182,18 @@ def log_decision(node: str, actor: str, decision: str, why: str = "") -> None:
 # ---------------------------------------------------------------- run + tree
 # Thoroughness dial (callable/scaled from any session; scales effort to the question). It sets the
 # tree's budget/caps — deeper tiers spend more and split wider. `auto` = the agent picks it in SCOPE.
-#: Tiers. `unlimited` is the DEFAULT: budget/depth are effectively unbounded so the stop is no longer
+#: Tiers. `accuracy` is the DEFAULT: depth is agent-paced, while elapsed time and reads have hard
+#: ceilings. `unlimited` remains an explicit compatibility tier but is still bounded by the same
+#: absolute safety ceilings in this accuracy specialization.
 #: budget-exhaustion but AGENT-PACED CONVERGENCE — the orchestrator keeps splitting/deepening until a
 #: branch is saturated (no new distinct origins/claims). A high `max_nodes` remains as the one safety
 #: backstop (Anthropic's 50-subagent failure) — raise it, don't rely on it. The bounded tiers stay for
 #: when speed matters. `max` is the "proper flag": the same unbounded caps but run maximally (more
 #: framings, more redundancy, deeper verification) — the ~week-of-searching target vs unlimited's ~day.
 _BIG = 1_000_000.0
+ABS_MAX_SECONDS = 3600.0
+ABS_MAX_READS_PER_ROUND = 40
+ABS_MAX_READ_ATTEMPTS = 640
 THOROUGHNESS = {
     "quick":      dict(budget=8.0,  unit=4.0, max_depth=1, max_children=3, max_nodes=8),
     "standard":   dict(budget=16.0, unit=4.0, max_depth=2, max_children=3, max_nodes=16),
@@ -196,12 +201,14 @@ THOROUGHNESS = {
     "exhaustive": dict(budget=64.0, unit=4.0, max_depth=3, max_children=5, max_nodes=64),
     "unlimited":  dict(budget=_BIG, unit=4.0, max_depth=99, max_children=6, max_nodes=512),
     "max":        dict(budget=_BIG, unit=4.0, max_depth=99, max_children=8, max_nodes=2048),
+    "accuracy":   dict(budget=_BIG, unit=4.0, max_depth=99, max_children=8, max_nodes=2048,
+                       reads_per_round=40, max_read_attempts=640, max_seconds=3600.0),
 }
 
 
 def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: float = 4.0,
              max_depth: int = 3, max_children: int = 5, max_nodes: int = 40,
-             base: str = "runs/aletheia-research", thoroughness: str = "",
+             base: str = "runs/aletheia-research-accuracy", thoroughness: str = "",
              verbosity: str = "user", reads_per_round: Optional[int] = None,
              max_read_attempts: Optional[int] = None,
              max_seconds: Optional[float] = None) -> str:
@@ -219,19 +226,30 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
         raise ValueError("max_read_attempts must be positive")
     if max_seconds is not None and max_seconds <= 0:
         raise ValueError("max_seconds must be positive")
+    if reads_per_round is not None and reads_per_round > ABS_MAX_READS_PER_ROUND:
+        raise ValueError("reads_per_round exceeds accuracy hard ceiling (%d)" % ABS_MAX_READS_PER_ROUND)
+    if max_read_attempts is not None and max_read_attempts > ABS_MAX_READ_ATTEMPTS:
+        raise ValueError("max_read_attempts exceeds accuracy hard ceiling (%d)" % ABS_MAX_READ_ATTEMPTS)
+    if max_seconds is not None and max_seconds > ABS_MAX_SECONDS:
+        raise ValueError("max_seconds exceeds accuracy hard ceiling (%s)" % int(ABS_MAX_SECONDS))
     # Resolution: a named tier wins; else an EXPLICIT budget means custom (honored, for bounded/
-    # programmatic runs); else — nothing specified — default to `unlimited` (the new default).
+    # programmatic runs); else — nothing specified — default to the bounded accuracy tier.
     if thoroughness in THOROUGHNESS:
         tier = thoroughness
     elif budget is None:
-        tier = "unlimited"
+        tier = "accuracy"
     else:
         tier = thoroughness or "custom"
     if tier in THOROUGHNESS:              # tier overrides budget/caps
         t = THOROUGHNESS[tier]
         budget, unit = t["budget"], t["unit"]
         max_depth, max_children, max_nodes = t["max_depth"], t["max_children"], t["max_nodes"]
+        reads_per_round = reads_per_round or t.get("reads_per_round")
+        max_read_attempts = max_read_attempts or t.get("max_read_attempts")
+        max_seconds = max_seconds or t.get("max_seconds")
     reads_per_round = int(reads_per_round or max(3, round(unit)))
+    max_read_attempts = int(max_read_attempts or ABS_MAX_READ_ATTEMPTS)
+    max_seconds = float(max_seconds or ABS_MAX_SECONDS)
     verbosity = verbosity if verbosity in ("user", "agent") else "user"
     ts = dt.datetime.now().strftime("%Y-%m-%d-%H%M%S")
     stem = os.path.join(base, "%s-%s" % (ts, _slugify(slug or topic)))
@@ -246,7 +264,7 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
     os.makedirs(os.path.join(run, "index"))
     started_epoch = time.time()
     _write_json(os.path.join(run, "run.json"), {
-        "topic": topic, "created": _now(), "version": "aletheia-research 0.5.0-openai.1",
+        "topic": topic, "created": _now(), "version": "aletheia-research-accuracy 0.6.0-accuracy.1",
         "implementation": _implementation_metadata(),
         "thoroughness": tier, "verbosity": verbosity,
         "budget": budget, "unit": unit, "max_depth": max_depth,
@@ -572,13 +590,13 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("init"); p.add_argument("topic")
     p.add_argument("--slug", default=""); p.add_argument("--budget", type=float, default=None,
-                   help="explicit budget = a CUSTOM bounded run; omit for the `unlimited` default")
+                   help="explicit budget = a CUSTOM bounded run; omit for the `accuracy` default")
     p.add_argument("--unit", type=float, default=4.0); p.add_argument("--max-depth", type=int, default=3)
     p.add_argument("--max-children", type=int, default=5); p.add_argument("--max-nodes", type=int, default=40)
-    p.add_argument("--base", default="runs/aletheia-research")
+    p.add_argument("--base", default="runs/aletheia-research-accuracy")
     p.add_argument("--thoroughness", default="",
                    choices=sorted(THOROUGHNESS),
-                   help="quick|standard|deep|exhaustive|unlimited(default)|max (overrides budget/caps)")
+                   help="accuracy(default)|quick|standard|deep|exhaustive|unlimited|max")
     p.add_argument("--verbosity", default="user", choices=["user", "agent"],
                    help="agent = emit the FULL bundle for a calling agent; user = a multi-page summary")
     p.add_argument("--reads-per-round", type=int, default=None,

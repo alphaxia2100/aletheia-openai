@@ -1,14 +1,13 @@
 ---
-name: aletheia-research
+name: aletheia-research-accuracy
 description: >-
-  Aletheia Research — deep, high-scrutiny research surveyor (v0.5.0-openai.1). Use whenever Codex needs to
-  research, survey, fact-check, map, get an accurate picture of a topic, or anchor a decision in
-  evidence. Frames competing perspectives, runs wide primary-first investigations, judges source
-  independence, attacks the leading conclusion, states gaps, and verifies every load-bearing claim.
-  Supports quick through unlimited/max effort and user summaries or full agent artifact bundles.
+  Experimental accuracy-first Aletheia research surveyor (v0.6.0-accuracy.1). Use when the user
+  explicitly invokes $aletheia-research-accuracy or requests maximum-accuracy, high-stakes research
+  with auditable claim-to-span evidence. Enforces a one-hour/640-read ceiling, uses atomic claim and
+  evidence state, preserves contradictions, and independently verifies the complete final answer.
 ---
 
-# Aletheia Research 0.5.0-openai.1 — deep, multi-perspective research surveyor
+# Aletheia Research Accuracy 0.6.0-accuracy.1
 
 An accurate, un-anchored picture of a field. A bare LLM anchors on its priors, searches to confirm
 them, cites nothing, and is stale. Aletheia beats it by **surveying widely and for real**: competing
@@ -26,13 +25,13 @@ Installed globally by `scripts/install.sh` for Cursor, Claude Code, and Codex. P
 flagship symlink so realpath reaches the repository's sibling runtime, `.env`, and channel config;
 fall back to the other client roots when Codex is not installed.
 ```bash
-A="${CODEX_HOME:-$HOME/.codex}/skills/aletheia-research/scripts"
+A="${CODEX_HOME:-$HOME/.codex}/skills/aletheia-research-accuracy/scripts"
 if [ ! -d "$A" ]; then
   for ROOT in "$HOME/.cursor/skills" "$HOME/.claude/skills"; do
-    [ ! -d "$ROOT/aletheia-research/scripts" ] || { A="$ROOT/aletheia-research/scripts"; break; }
+    [ ! -d "$ROOT/aletheia-research-accuracy/scripts" ] || { A="$ROOT/aletheia-research-accuracy/scripts"; break; }
   done
 fi
-[ -d "$A" ] || { echo "aletheia-research is not installed" >&2; exit 1; }
+[ -d "$A" ] || { echo "aletheia-research-accuracy is not installed" >&2; exit 1; }
 AL="$(cd -P "$A/../.." && pwd)"
 python3 "$AL/channel-retrieval/scripts/doctor.py"     # confirm channels live (keys auto-load from repo .env)
 ```
@@ -49,23 +48,24 @@ ranking), `synthesize.py` (bottom-up merge + independence + `--gate`), `verify.p
 Do NOT fall back to plain web search — the point is the channels (Brave/OpenAlex/arXiv/Reddit/HN/
 Stack Exchange/GitHub/YouTube + real-browser reads) that reach current, diverse, authenticated sources.
 
-## Thoroughness — `unlimited` is the DEFAULT (depth & budget are unbounded)
-The goal is a brief worth **a full day of manual searching** (and **a week** at `max`) — NOT a
-surface skim you could beat with five minutes of Google. So the default no longer caps effort.
+## Thoroughness — `accuracy` is the default
+The goal is the most accurate brief achievable inside the explicit one-hour and 640-read ceilings,
+not a surface skim you could beat with five minutes of search.
 | tier | budget | max_depth | when |
 |---|---|---|---|
 | `quick` | 8 | 1 | narrow, settled — you want speed, not depth |
 | `standard` | 16 | 2 | a fast bounded pass |
 | `deep` | 32 | 3 | bounded but broad |
 | `exhaustive` | 64 | 3 | bounded maximal |
-| **`unlimited`** (default) | ∞ | ∞ | **the default** — keep going until saturated (~a day) |
-| `max` | ∞ | ∞ | the "proper flag": run it maximally (~a week) |
-**With `unlimited`/`max` the stop is NOT budget-exhaustion — it is AGENT-PACED CONVERGENCE:** keep
+| **`accuracy`** (default) | ≤640 reads | 99 | accuracy-first convergence, hard stop at 1 hour |
+| `unlimited` | agent-paced | 99 | compatibility alias; accuracy hard ceilings still apply |
+| `max` | ≤640 reads | 99 | maximum branching under the same hard ceilings |
+**With `accuracy`/`unlimited`/`max`, stop at convergence or the hard ceiling, whichever comes first:** keep
 splitting broad questions and deepening leaves (more rounds, more channels, more primaries) until a
 branch is **saturated** — new rounds surface no new *distinct origins* or claims (watch the
 independence report). A high `max_nodes` (512 / 2048) is only a runaway backstop, not a target. Only
 choose a bounded tier when the user explicitly wants it fast. `auto` → judge breadth×contestedness;
-default to `unlimited` unless the question is genuinely narrow/settled (then `quick`/`standard`).
+default to `accuracy` unless the user explicitly requests a smaller tier.
 Bounded tiers spend one scrutiny unit per leaf round (`floor(node budget / unit)` rounds; quick is
 normally one). The runtime refuses extra rounds instead of silently turning a quick request into an
 unbounded run; choose a deeper tier when more rounds are needed.
@@ -94,17 +94,21 @@ Pass it at init (`treestate.py init … --verbosity agent`). It changes the FINA
    over-retrieval injects noise). Note any channels that returned nothing as a gap.
 4. **Verification runs to completion** — every load-bearing claim gets a final supported/contradicted/
    unsupported verdict and a real `citation_accuracy` (never left null). Callable via `thoroughness`.
+5. **Hard accuracy envelope.** The default tier cannot exceed 3,600 seconds, 40 reads per round, or
+   640 run-wide read attempts; every engine search/read is reserved before network I/O.
+6. **Atomic support graph.** Claims link to exact spans in SHA-bound artifacts, contradictions remain
+   disputed, and fresh challenge plus confirmation probes are required for epistemic completion.
 
 ## The loop (do every step)
 
 ### 1. Frame the portfolio + init (anti-anchoring — load-bearing)
 ```bash
-RUN=$(python3 "$A/treestate.py" init "<topic>" --slug "<slug>")            # DEFAULT = unlimited depth/budget
-# fast/bounded instead: --thoroughness quick|standard|deep|exhaustive ;  deepest (~a week): --thoroughness max
+RUN=$(python3 "$A/treestate.py" init "<topic>" --slug "<slug>")            # DEFAULT = accuracy
+# smaller bounded passes: --thoroughness quick|standard|deep|exhaustive
 # if a calling AGENT invoked this skill, add: --verbosity agent           # -> full-files bundle at the end
 ```
-Default is `unlimited` (no budget/depth cap; stop when saturated). Only pass a bounded tier if the user
-wants it fast. Write **4–6 competing
+Default is `accuracy`: stop at convergence, 3,600 seconds, or 640 read attempts/artifacts. Only pass a
+smaller tier when the user explicitly wants it. Write **4–6 competing
 framings** into `$RUN/portfolio.md` BEFORE searching: mainstream/consensus (to test, not serve),
 ≥1 heterodox, ≥1 practitioner/field-report, ≥1 orthogonal reframe, and name one **leading** framing
 for the adversary. Commit to none.
@@ -118,7 +122,7 @@ independence report (step 5), not asserted.
 
 ### 2. Decompose into a budget-weighted tree
 Split the root into the framings; a node **splits** if broad and budget allows, else it's a **leaf**.
-`cansplit` reports `max_k` (= `max_children`): the default `unlimited`/`max` allow 6/8, but bounded
+`cansplit` reports `max_k` (= `max_children`): `accuracy`/`max` allow 8, while bounded
 tiers cap at 3–5, so if you have MORE framings than `max_k`, don't exceed it — either merge related
 framings into one branch or split the root into the top branches and push the extra framings to a
 second level (depth-2). Never pass K > `max_k` (it errors by design, to avoid starving children).
@@ -188,7 +192,7 @@ The classifier is keyword-based, so if it mis-scopes (e.g. a title with no domai
 different channels (practitioner→community/forums; consensus→primaries).
 The default router uses only channels listed in `channels.json -> enabled`; explicit `--channels` is
 the deliberate override. arXiv abstract hits resolve to full HTML/PDF automatically.
-At `deep`/`exhaustive`/`unlimited`/`max` (i.e. the default and every deep tier — anytime there are
+At `accuracy`/`deep`/`exhaustive`/`unlimited`/`max` (the default and every deep tier — anytime there are
 multiple leaves), spawn one **READ-ONLY worker subagent per leaf, in parallel** using Codex's
 subagent/collaboration mechanism (or the host's equivalent),
 each given the topic + its framing + why it exists. Each worker: reads `evidence.md`+`notes/`;
@@ -307,6 +311,10 @@ as a prevalence/rate estimate. Then, by verbosity:
   numbers/caveats, and the honest gaps — the distilled equivalent of a day (or, at `max`, a week) of
   manual searching. Use `report.py outline --run "$RUN"` to make sure every branch is represented so
   nothing is silently dropped. If it reads like a five-minute Google, expand it.
+
+For every accuracy run, end the response with the absolute `$RUN` path, version, runtime SHA-256,
+`score.json` path, claim-ledger audit result, read-artifact count, elapsed/cap termination reason, and
+degraded channels. These are required evaluation artifacts, not optional implementation details.
 
 **Optional (repo-local):** if you are running inside the Aletheia repo, accrete the brief into the
 `consilient-atlas` so surveys compound (copy `brief.md` into `atlas/surveys/` and add an index row).

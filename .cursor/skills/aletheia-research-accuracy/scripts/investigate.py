@@ -505,7 +505,7 @@ def _append_telemetry(node: str, event: Dict[str, Any]) -> None:
 
 def _round_cap(status: Dict[str, Any], cfg: Dict[str, Any]):
     """Bounded tiers spend one scrutiny unit per round; unlimited/max converge without a cap."""
-    if cfg.get("thoroughness") in ("unlimited", "max"):
+    if cfg.get("thoroughness") in ("unlimited", "max", "accuracy"):
         return None
     unit = max(float(cfg.get("unit", 4) or 4), 1e-9)
     return max(1, int(float(status.get("budget", unit) or unit) // unit))

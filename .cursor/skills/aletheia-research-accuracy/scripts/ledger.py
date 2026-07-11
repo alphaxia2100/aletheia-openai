@@ -244,6 +244,10 @@ def materialize(run: str) -> Dict[str, Any]:
 def audit(run: str) -> Dict[str, Any]:
     state = materialize(run)
     blockers = list(state["errors"])
+    if not state["claims"]:
+        blockers.append("claim ledger is empty")
+    elif not any(c.get("importance") == "load_bearing" for c in state["claims"].values()):
+        blockers.append("claim ledger has no load-bearing claims")
     for cid, claim in state["claims"].items():
         if claim.get("importance") != "load_bearing":
             continue

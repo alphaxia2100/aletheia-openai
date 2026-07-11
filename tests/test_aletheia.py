@@ -474,16 +474,16 @@ class TestScoreRunDepth(unittest.TestCase):
 
 
 class TestRouterScoping(unittest.TestCase):
-    """aletheia-research's router scopes channels to the question's domain and EXCLUDES off-topic
+    """aletheia-research-accuracy's router scopes channels to the question's domain and EXCLUDES off-topic
     ones (subprocess: avoids a module-name clash with the frozen deep-aletheia `router`)."""
 
     def _route(self, q):
-        r = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "router.py")
+        r = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "router.py")
         out = subprocess.check_output([sys.executable, r, q, "--json", "--max", "6"], text=True)
         return json.loads(out)
 
     def _route_env(self, q, **updates):
-        r = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "router.py")
+        r = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "router.py")
         env = dict(os.environ, **updates)
         out = subprocess.check_output([sys.executable, r, q, "--json", "--max", "6"],
                                       text=True, env=env)
@@ -582,7 +582,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     """Aletheia's thoroughness dial sets the tree budget/caps and records the current version.
     Run via subprocess to avoid a module-name clash with the frozen deep-aletheia `treestate`."""
 
-    T = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "treestate.py")
+    T = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "treestate.py")
 
     def _init(self, tier, base):
         run = subprocess.check_output(
@@ -593,7 +593,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     def test_tiers_scale_and_version(self):
         base = tempfile.mkdtemp()
         q, dp = self._init("quick", base), self._init("deep", base)
-        self.assertEqual(q["version"], "aletheia-research 0.5.0-openai.1")
+        self.assertEqual(q["version"], "aletheia-research-accuracy 0.6.0-accuracy.1")
         self.assertEqual(q["thoroughness"], "quick")
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
@@ -614,15 +614,17 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         if a["git_commit"] is not None:
             self.assertRegex(a["git_commit"], r"^[0-9a-f]{40}$")
 
-    def test_default_is_unlimited(self):
-        # 0.4.0: no --thoroughness and no --budget -> the unlimited default (unbounded depth/budget)
+    def test_default_is_accuracy_with_hard_ceilings(self):
         run = subprocess.check_output(
             [sys.executable, self.T, "init", "test topic", "--base", tempfile.mkdtemp()],
             text=True).strip()
         c = read_json(os.path.join(run, "run.json"))
-        self.assertEqual(c["thoroughness"], "unlimited")
+        self.assertEqual(c["thoroughness"], "accuracy")
         self.assertGreaterEqual(c["budget"], 1_000_000)
         self.assertGreaterEqual(c["max_depth"], 99)
+        self.assertEqual(c["limits"], {"max_seconds": 3600.0,
+                                       "max_reads_per_round": 40,
+                                       "max_read_attempts": 640})
         self.assertEqual(c["verbosity"], "user")              # default audience
 
     def test_same_topic_initializations_never_share_a_run_directory(self):
@@ -635,14 +637,14 @@ class TestAletheia03Thoroughness(unittest.TestCase):
             text=True).strip()
         self.assertNotEqual(first, second)
 
-    def test_invalid_thoroughness_fails_instead_of_running_unlimited(self):
+    def test_invalid_thoroughness_fails_instead_of_running_accuracy(self):
         proc = subprocess.run(
             [sys.executable, self.T, "init", "topic", "--thoroughness", "quik",
              "--base", tempfile.mkdtemp()], capture_output=True, text=True)
         self.assertNotEqual(proc.returncode, 0)
 
     def test_explicit_budget_stays_custom(self):
-        # an explicit --budget is a bounded CUSTOM run, NOT overridden by the unlimited default
+        # an explicit --budget stays custom rather than becoming the accuracy tier
         run = subprocess.check_output(
             [sys.executable, self.T, "init", "t", "--budget", "32", "--base", tempfile.mkdtemp()],
             text=True).strip()
@@ -659,7 +661,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         subprocess.check_call([sys.executable, self.T, "findings", "--node",
                                os.path.join(run, "tree", "root"), "--text",
                                "UNIQUE_FINDING_MARKER with a [primary](https://x)"], stdout=subprocess.DEVNULL)
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         out = subprocess.check_output([sys.executable, rep, "bundle", "--run", run], text=True)
         self.assertIn("FULL BUNDLE", out)
         self.assertIn("UNIQUE_FINDING_MARKER", out)           # the actual file content is included verbatim
@@ -669,7 +671,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         run = subprocess.check_output(
             [sys.executable, self.T, "init", "bundle output topic", "--verbosity", "agent", "--base", base],
             text=True).strip()
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         output = os.path.join(run, "bundle.md")
         printed = subprocess.check_output(
             [sys.executable, rep, "bundle", "--run", run, "--output", output], text=True).strip()
@@ -697,7 +699,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
                                  "read_attempts": 3, "reads_ok": 2, "read_failures": 1,
                                  "floor_engaged": False, "read_seconds": 1.5}) + "\n")
             fh.write(json.dumps({"event": "triage_requery", "selection_mode": "agent"}) + "\n")
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         s = json.loads(subprocess.check_output([sys.executable, rep, "score", "--run", run], text=True))
         self.assertEqual(s["citation_precision"], round(2 / 3, 3))   # off_topic counts in denominator
         self.assertEqual(s["citation_denominator"], 3)
@@ -728,7 +730,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
             fh.write(json.dumps({"event": "investigation_round", "selection_mode": "agent",
                                  "round": 2, "retrieved": 5, "unique": 5, "eligible": 4,
                                  "selected": 2, "read_attempts": 2, "reads_ok": 2}) + "\n")
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         s = json.loads(subprocess.check_output([sys.executable, rep, "score", "--run", run], text=True))
         self.assertEqual(s["runtime"]["rounds"], 2)
         self.assertEqual(s["runtime"]["retrieval_passes"], 2)
@@ -750,7 +752,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         with open(os.path.join(node, "sources.jsonl"), "w", encoding="utf-8") as fh:
             fh.write(json.dumps({"url": "https://engine", "_read_file": "notes/engine.md",
                                  "_read_ok": True}) + "\n")
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         s = json.loads(subprocess.check_output([sys.executable, rep, "score", "--run", run], text=True))
         self.assertEqual(s["runtime"]["read_artifacts"], 2)
         self.assertEqual(s["runtime"]["engine_read_artifacts"], 1)
@@ -765,7 +767,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
             fh.write(json.dumps(claim) + "\n")
         with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
             fh.write(json.dumps(dict(claim, verdict="supported")) + "\n")
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         subprocess.check_call([sys.executable, rep, "write-brief", "--run", run,
                                "--text", "# Final brief\nSupported claim c."],
                               stdout=subprocess.DEVNULL)
@@ -788,7 +790,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
             fh.write(json.dumps(claim) + "\n")
         with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
             fh.write(json.dumps(dict(claim, verdict="supported")) + "\n")
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         subprocess.check_call([sys.executable, rep, "write-brief", "--run", run,
                                "--text", "# Audited\nClaim c."], stdout=subprocess.DEVNULL)
         subprocess.check_call([sys.executable, rep, "audit-claims", "--run", run,
@@ -814,7 +816,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         verify_path = os.path.join(run, "verify.jsonl")
         with open(verify_path, "w", encoding="utf-8") as fh:
             fh.write(json.dumps(dict(claim, verdict="unsupported")) + "\n")
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         subprocess.check_call([sys.executable, rep, "write-brief", "--run", run,
                                "--text", "# Audited\nClaim c."], stdout=subprocess.DEVNULL)
         subprocess.check_call([sys.executable, rep, "audit-claims", "--run", run,
@@ -838,7 +840,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
             fh.write(json.dumps({"claim": "c", "url": "https://readable",
                                  "verdict": "supported"}) + "\n")
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         subprocess.check_call([sys.executable, rep, "write-brief", "--run", run,
                                "--text", "# Audited\nClaim c."], stdout=subprocess.DEVNULL)
         subprocess.check_call([sys.executable, rep, "audit-claims", "--run", run,
@@ -857,7 +859,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
             fh.write(json.dumps({"claim": "c", "url": "https://x",
                                  "verdict": "supported"}) + "\n")
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         subprocess.check_call([sys.executable, rep, "write-brief", "--run", run,
                                "--text", "# Audited\nClaim c."], stdout=subprocess.DEVNULL)
         proc = subprocess.run([sys.executable, rep, "audit-claims", "--run", run,
@@ -870,12 +872,12 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     def test_legacy_run_keeps_row_only_score_compatibility(self):
         run = tempfile.mkdtemp()
         with open(os.path.join(run, "run.json"), "w", encoding="utf-8") as fh:
-            json.dump({"topic": "legacy", "version": "aletheia-research 0.4.3"}, fh)
+            json.dump({"topic": "legacy", "version": "aletheia-research-accuracy 0.4.3"}, fh)
         os.makedirs(os.path.join(run, "tree"))
         with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
             fh.write(json.dumps({"claim": "c", "url": "https://x",
                                  "verdict": "supported"}) + "\n")
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         scored = json.loads(subprocess.check_output(
             [sys.executable, rep, "score", "--run", run], text=True))
         self.assertTrue(scored["citation_complete"])
@@ -889,7 +891,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
             fh.write(json.dumps({"claim": "good", "url": "https://good", "verdict": "supported"}) + "\n")
             fh.write(json.dumps({"claim": "bad", "url": "https://dead", "verdict": "broken"}) + "\n")
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         s = json.loads(subprocess.check_output([sys.executable, rep, "score", "--run", run], text=True))
         self.assertFalse(s["citation_complete"])
         self.assertLess(s["citation_coverage"], 1.0)
@@ -919,7 +921,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
             for url in (rows[0]["url"], rows[1]["url"], rows[2]["url"]):
                 fh.write(json.dumps({"claim": "c", "url": url, "verdict": "supported"}) + "\n")
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         s = json.loads(subprocess.check_output([sys.executable, rep, "score", "--run", run], text=True))
         self.assertEqual(s["retrieved_sources"], 4)
         self.assertEqual(s["claim_sources"], 3)
@@ -940,7 +942,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
             for url in urls:
                 fh.write(json.dumps({"claim": "c", "url": url, "verdict": "supported"}) + "\n")
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         s = json.loads(subprocess.check_output([sys.executable, rep, "score", "--run", run], text=True))
         self.assertEqual(s["claim_sources"], 1)
         self.assertEqual(s["independent_origins"], 1)
@@ -959,7 +961,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
             fh.write('{"claim":"CLAIM_MARKER","url":"https://example","verdict":"supported"}\n')
         with open(os.path.join(run, "score.json"), "w", encoding="utf-8") as fh:
             fh.write('{"citation_complete":true,"score_marker":"SCORE_MARKER"}\n')
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         out = subprocess.check_output([sys.executable, rep, "bundle", "--run", run, "--reads"], text=True)
         self.assertIn("NESTED_PRIMARY_MARKER", out)
         self.assertIn("CLAIM_MARKER", out)
@@ -970,7 +972,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         base = tempfile.mkdtemp()
         run = subprocess.check_output(
             [sys.executable, self.T, "init", "brief topic", "--base", base], text=True).strip()
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         subprocess.check_call([sys.executable, rep, "write-brief", "--run", run, "--text",
                                "# Brief\nMULTIPAGE_MARKER"], stdout=subprocess.DEVNULL)
         self.assertIn("MULTIPAGE_MARKER", read_text(os.path.join(run, "brief.md")))
@@ -994,7 +996,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
             fh.write(json.dumps(claim) + "\n")
         with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
             fh.write(json.dumps(dict(claim, verdict="supported")) + "\n")
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         subprocess.check_call([sys.executable, rep, "write-brief", "--run", run,
                                "--text", "# Complete"], stdout=subprocess.DEVNULL)
         with open(os.path.join(run, "run.json"), encoding="utf-8") as fh:
@@ -1018,18 +1020,18 @@ class TestAletheia03Thoroughness(unittest.TestCase):
             fh.write(b"valid text \xff\xfe then more")        # invalid UTF-8
         with open(os.path.join(run, "tree", "root", "sources.jsonl"), "w") as fh:
             fh.write("123\n" + json.dumps({"url": "https://x", "title": "ok"}) + "\n")  # non-dict line
-        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts", "report.py")
         out = subprocess.check_output([sys.executable, rep, "bundle", "--run", run], text=True)
         self.assertIn("SURVIVOR_MARKER", out)                 # content survived the corrupt neighbors
 
 
 class TestAletheiaResearch031(unittest.TestCase):
     """0.3.1 audit fixes: weighted split, resumable frontier, structural independence,
-    _anchor de-pollution, biomed authority, code-gated citation coverage. The aletheia-research
+    _anchor de-pollution, biomed authority, code-gated citation coverage. The aletheia-research-accuracy
     scripts share module names with the frozen deep-aletheia baseline imported above, so CLI-level
     checks go through subprocess and Python-level checks load the AR modules under distinct names."""
 
-    AR = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts")
+    AR = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts")
 
     @classmethod
     def _load(cls, name, fname):
@@ -1558,6 +1560,8 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertEqual(inv._round_cap({"budget": 12}, {"unit": 4, "thoroughness": "deep"}), 3)
         self.assertIsNone(inv._round_cap({"budget": 1_000_000},
                                          {"unit": 4, "thoroughness": "unlimited"}))
+        self.assertIsNone(inv._round_cap({"budget": 1_000_000},
+                                         {"unit": 4, "thoroughness": "accuracy"}))
 
     def test_bounded_leaf_refuses_an_extra_round_before_network_io(self):
         inv = self._load("ar_investigate_round_enforcement", "investigate.py")
@@ -1614,7 +1618,7 @@ class TestAletheiaResearch031(unittest.TestCase):
     def test_citation_accuracy_null_until_coverage_complete(self):
         run = tempfile.mkdtemp()
         with open(os.path.join(run, "run.json"), "w", encoding="utf-8") as fh:
-            json.dump({"topic": "t", "version": "aletheia-research 0.3.1"}, fh)
+            json.dump({"topic": "t", "version": "aletheia-research-accuracy 0.3.1"}, fh)
         os.makedirs(os.path.join(run, "tree"))
         with open(os.path.join(run, "verify.jsonl"), "w") as fh:
             for v in ("supported", "contradicted", "relevant"):     # one still awaiting the LLM pass
@@ -1697,7 +1701,7 @@ class TestInstall(unittest.TestCase):
         env = dict(os.environ, HOME=home, CODEX_HOME=os.path.join(home, ".codex"))
         subprocess.check_call(["bash", os.path.join(ROOT, "scripts", "install.sh")], env=env,
                               stdout=subprocess.DEVNULL)
-        target = os.path.join(home, ".codex", "skills", "aletheia-research")
+        target = os.path.join(home, ".codex", "skills", "aletheia-research-accuracy")
         self.assertTrue(os.path.islink(target))
         self.assertTrue(os.path.isfile(os.path.join(target, "SKILL.md")))
         self.assertTrue(os.path.isfile(os.path.join(target, "agents", "openai.yaml")))
@@ -1724,7 +1728,7 @@ class TestInstall(unittest.TestCase):
         output = subprocess.check_output(
             ["bash", os.path.join(ROOT, "scripts", "install.sh"), "--codex-only"],
             env=env, text=True)
-        target = os.path.join(home, ".codex", "skills", "aletheia-research")
+        target = os.path.join(home, ".codex", "skills", "aletheia-research-accuracy")
         self.assertTrue(os.path.islink(target))
         self.assertEqual(read_text(cursor_marker), "unchanged")
         self.assertEqual(read_text(claude_marker), "unchanged")
@@ -1734,6 +1738,20 @@ class TestInstall(unittest.TestCase):
                                    "scripts", "doctor.py"), output)
         self.assertNotIn("~/.cursor/skills/channel-retrieval", output)
 
+    def test_accuracy_install_preserves_stable_codex_skill(self):
+        home = tempfile.mkdtemp()
+        stable = os.path.join(home, ".codex", "skills", "aletheia-research")
+        os.makedirs(stable)
+        stable_marker = os.path.join(stable, "STABLE_CHECKPOINT")
+        with open(stable_marker, "w", encoding="utf-8") as fh:
+            fh.write("addfaf6")
+        env = dict(os.environ, HOME=home, CODEX_HOME=os.path.join(home, ".codex"))
+        subprocess.check_call(["bash", os.path.join(ROOT, "scripts", "install.sh"), "--codex-only"],
+                              env=env, stdout=subprocess.DEVNULL)
+        self.assertEqual(read_text(stable_marker), "addfaf6")
+        self.assertTrue(os.path.islink(os.path.join(home, ".codex", "skills",
+                                                    "aletheia-research-accuracy")))
+
     def test_copy_install_keeps_non_secret_repo_root_pointer(self):
         home = tempfile.mkdtemp()
         env = dict(os.environ, HOME=home, CODEX_HOME=os.path.join(home, ".codex"))
@@ -1742,7 +1760,7 @@ class TestInstall(unittest.TestCase):
         marker = os.path.join(home, ".cursor", "skills", "channel-retrieval", ".aletheia-root")
         self.assertTrue(os.path.isfile(marker))
         self.assertEqual(read_text(marker).strip(), os.path.abspath(ROOT))
-        self.assertTrue(os.path.islink(os.path.join(home, ".codex", "skills", "aletheia-research")))
+        self.assertTrue(os.path.islink(os.path.join(home, ".codex", "skills", "aletheia-research-accuracy")))
 
 
 class TestKeywordizeRecall(unittest.TestCase):
@@ -1803,7 +1821,7 @@ class TestKeywordizeRecall(unittest.TestCase):
 
 
 class TestHighAccuracyRuntimeLedger(unittest.TestCase):
-    AR = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts")
+    AR = os.path.join(ROOT, ".cursor", "skills", "aletheia-research-accuracy", "scripts")
 
     @classmethod
     def _load(cls, name, fname):
@@ -1822,6 +1840,13 @@ class TestHighAccuracyRuntimeLedger(unittest.TestCase):
         self.assertEqual(cfg["limits"], {"max_seconds": 3600,
                                          "max_reads_per_round": 40,
                                          "max_read_attempts": 640})
+
+    def test_accuracy_hard_ceilings_cannot_be_overridden(self):
+        ts = self._load("runtime_ts_absolute_caps", "treestate.py")
+        for kwargs in ({"reads_per_round": 41}, {"max_read_attempts": 641},
+                       {"max_seconds": 3601}):
+            with self.assertRaises(ValueError):
+                ts.init_run("accuracy", base=tempfile.mkdtemp(), **kwargs)
 
     def test_run_read_cap_is_atomic_and_fail_closed(self):
         ts = self._load("runtime_ts_cap", "treestate.py")
