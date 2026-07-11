@@ -164,3 +164,14 @@ Append entries; do not rewrite history. A reversal adds a new entry that names t
   checks mechanism activation and artifact integrity while explicitly declining to infer truth.
 - First integration finding: an empty ledger incorrectly passed `ready_for_synthesis`; the composed
   smoke test caught it, and the ledger now requires at least one load-bearing claim.
+
+## D019 — install the candidate without replacing the checkpoint
+
+- Candidate: `aletheia-research-accuracy 0.6.0-accuracy.1` on
+  `codex/high-accuracy-candidate-v06`; 172/172 tests pass.
+- Installation: `~/.codex/skills/aletheia-research-accuracy` points to the candidate worktree, while
+  `~/.codex/skills/aletheia-research` still points to stable checkpoint `addfaf6`.
+- Environment: the candidate `.env` is a local symlink to the original Aletheia `.env`; secrets were
+  not copied or committed.
+- Channel health at install: 13/15 live. Brave is degraded with HTTP 402 and Stack Exchange is down
+  with HTTP 400; the accuracy run must disclose and route around both.

@@ -73,3 +73,11 @@ independent labels, and no matched-read end-to-end comparison exists. The next v
 freeze evaluator/candidate commits, commission an externally held replacement set and rubrics, then
 test the claim ledger first. Passage reranking, citation chasing, and outline patching remain later
 orthogonal ablations.
+
+## Runnable user-test candidate
+
+`codex/high-accuracy-candidate-v06` now composes the runtime and claim/evidence mechanisms as the
+separate `aletheia-research-accuracy 0.6.0-accuracy.1` skill. It passes 172 tests, defaults to the
+3,600-second/40-per-round/640-total envelope, fails closed on an empty ledger, and ships a structural
+run grader. It is installed beside the stable skill for a user-supplied forward test; it remains an
+experimental candidate until semantic grading is complete.
