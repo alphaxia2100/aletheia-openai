@@ -127,3 +127,5 @@ The books channel is restricted to legally-defensible sources (Google Books snip
 ## Status
 
 Built in milestones (see `.cursor/plans/` for the source plan). Each skill is independently usable.
+Production, experimental lines, immutable tags, and navigation commands are cataloged in
+[`docs/BRANCHES.md`](docs/BRANCHES.md).
