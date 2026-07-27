@@ -128,4 +128,6 @@ The books channel is restricted to legally-defensible sources (Google Books snip
 
 Built in milestones (see `.cursor/plans/` for the source plan). Each skill is independently usable.
 Production, experimental lines, immutable tags, and navigation commands are cataloged in
-[`docs/BRANCHES.md`](docs/BRANCHES.md).
+[`docs/BRANCHES.md`](docs/BRANCHES.md). The evidence-backed self-audit and current improvement
+sequence are preserved in
+[`docs/research/2026-07-27-agent-output-quality/`](docs/research/2026-07-27-agent-output-quality/README.md).

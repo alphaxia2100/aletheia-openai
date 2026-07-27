@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "auditor": "fresh-context gpt-5.6-sol subagent /root/final_scope_auditor_v3",
+  "attestation": "Auditor read the final brief, added every omitted load-bearing factual claim, and checked the final claim/url set against verify.jsonl.",
+  "claim_count": 97,
+  "added_claims": 0,
+  "brief_sha256": "3c20a5bb108e538f16c08723db9395fedfb0233211510822c1ecf424c993c84b",
+  "claims_sha256": "1e5a6354d6038d910b49239c19e51cd5dd5c1c4e7d4d7411bea9b8fedbbf3c82",
+  "verify_sha256": "739b96b1e1652deac2253c56bf5bb26c067a3233a711b9e4fc9d9f9a0c288815",
+  "notes": "V3 added zero claims after iterative independent coverage remediation expanded and reconciled the ledger to 97 claims; exact text/order/declared-source matching passed.",
+  "created": "2026-07-27T16:54:42Z"
+}

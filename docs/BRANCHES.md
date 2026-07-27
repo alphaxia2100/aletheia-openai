@@ -13,6 +13,7 @@ Inconclusive and failed branches are retained because their traces prevent repea
 |---|---|---|
 | `prod` | **production** | Stable OpenAI/Codex 0.5 runtime. Default GitHub branch. |
 | `codex/exp-field-dossier-v06` | experimental, diagnostic passed, not promoted | Agent-first progressive-disclosure dossier and content-addressed artifact map. |
+| `codex/exp-read-identity-gate-v06` | experimental, exact-defect diagnostic passed, not promoted | Typed expected/observed document identity and content gate with lossless failed-attempt provenance. |
 | `codex/accuracy-observability-v06` | experimental, not promoted | Hash-chained chronology, persisted manifests, unified read/claim provenance, terminal consistency. |
 | `codex/high-accuracy-candidate-v06` | experimental, not promoted | Side-by-side high-accuracy skill candidate. |
 | `codex/high-accuracy-aletheia-v06` | research/integration record, no-go | Accuracy architecture, evaluator audit, and promotion decision. |
@@ -39,6 +40,7 @@ Inconclusive and failed branches are retained because their traces prevent repea
 | `codex/exp-runtime-ledger-v06` | Enforced run-wide search/read/time reservations. |
 | `codex/exp-traceable-runtime` | Executable runtime and channel fingerprints. |
 | `codex/exp-accuracy-eval-v2` | Hardened accuracy evaluator and known-defect suite. |
+| `codex/exp-read-identity-gate-v06` | Rejects mismatched, blocked, shell, and unverified bodies without deleting the attempted read. |
 
 ### Planning and outline evolution
 
@@ -99,6 +101,19 @@ activation trace, observed cost, result, and promotion/rejection decision.
 - `prod`: only independently justified promotions and documentation.
 - Tags: immutable releases/checkpoints, never moving aliases.
 
-The next proposed branch is `codex/exp-read-identity-gate-v06`, derived from `prod`, to test whether
-expected/observed document identity can fail closed without rejecting valid difficult reads.
+The first two post-production experiments both passed their narrow mechanism diagnostics but remain
+unpromoted:
 
+- `codex/exp-field-dossier-v06` improves agent handoff navigation without changing research mechanics.
+- `codex/exp-read-identity-gate-v06` catches the exact wrong-body failures and preserves per-attempt
+  provenance, but still needs broad resolver-recovery and false-rejection evaluation.
+
+All local historical branches and release tags in this catalog were mirrored to GitHub on 2026-07-27.
+
+## Research record behind the next sequence
+
+The verified [2026-07-27 agent-output quality survey](research/2026-07-27-agent-output-quality/README.md)
+preserves the synthesis, 97-claim ledger, semantic verdicts, branch findings, decision logs, operational
+reproductions, and iterative independent-audit history. It recommends claim/evidence coverage and then
+retrieval/reranking as the next isolated mechanisms; that ordering is provisional project judgment,
+not a measured expected-value ranking.

@@ -1,5 +1,10 @@
 # Roadmap & durability
 
+> Historical architecture note. The current evidence-backed experiment sequence and its qualifications
+> are in the [2026-07-27 agent-output quality survey](research/2026-07-27-agent-output-quality/README.md).
+> `prod` remains skills-first; claim/evidence hardening, retrieval/reranking, revision-capable question
+> graphs, and stop cards are isolated experiments rather than established upgrades.
+
 Aletheia is intentionally **skills-only** today: portable `SKILL.md` bundles + MCP configs, orchestrated by the harness (Cursor / Claude Code) running "tools in a loop." That is the right first architecture — the independent-practitioner and academic consensus (Willison's "tools in a loop," Ronacher on avoiding heavy agent-SDK abstractions, the Agentless result) says: write the loop, add a framework only when a failure mode demands it.
 
 ## When to graduate to LangGraph / a standalone app
