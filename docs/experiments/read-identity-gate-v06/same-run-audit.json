@@ -1,0 +1,791 @@
+{
+  "candidate_rejections": 4,
+  "candidate_successful_reads": 30,
+  "content_states": {
+    "blocked": 1,
+    "complete": 17,
+    "shell": 1,
+    "truncated": 15
+  },
+  "identity_states": {
+    "mismatch": 2,
+    "unverified_identity": 1,
+    "verified_identifier": 15,
+    "verified_title": 16
+  },
+  "interpretation_limit": "Offline replay over persisted production artifacts. It measures gate activation on one run; it does not estimate open-web failure prevalence or resolver recovery rate.",
+  "production_successful_reads": 34,
+  "rejected": [
+    {
+      "candidate_read_ok": false,
+      "content_sha256": "049e4a3a3ff3723fa5ef60cd250bee74a5de8749002ba19d126a347e2c52abde",
+      "content_state": "complete",
+      "expected_identifiers": {
+        "doi": [
+          "10.1145/3772318.3791101"
+        ]
+      },
+      "identity_reason": "high-confidence fetched title conflicts with manifest title",
+      "identity_state": "mismatch",
+      "node": "tree/root/children/interface",
+      "note": "tree/root/children/interface/notes/f399bd6717.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.1016/j.jclinepi.2011.03.017"
+        ]
+      },
+      "observed_title": "GRADE guidelines: 7. Rating the quality of evidence\u2014inconsistency",
+      "production_read_ok": true,
+      "title": "PaperTrail: A Claim-Evidence Interface for Grounding Provenance in LLM-based Scholarly Q&amp;A",
+      "url": "https://doi.org/10.1145/3772318.3791101"
+    },
+    {
+      "candidate_read_ok": false,
+      "content_sha256": "e8433c52d6ce5753d843cec5d163c233c574e10c277031f4c387b2eafe6f6f3f",
+      "content_state": "truncated",
+      "expected_identifiers": {
+        "doi": [
+          "10.1145/3742413.3789079"
+        ]
+      },
+      "identity_reason": "high-confidence fetched title conflicts with manifest title",
+      "identity_state": "mismatch",
+      "node": "tree/root/children/interface",
+      "note": "tree/root/children/interface/notes/857a85841e.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.1016/j.jclinepi.2023.03.003"
+        ]
+      },
+      "observed_title": "GRADE guidance 36: updates to GRADE's approach to addressing inconsistency",
+      "production_read_ok": true,
+      "title": "From Toil to Thought: Designing for Strategic Exploration and Responsible AI in Systematic Literature Reviews",
+      "url": "https://doi.org/10.1145/3742413.3789079"
+    },
+    {
+      "candidate_read_ok": false,
+      "content_sha256": "a9ac29dd4a028d830e6f9e4d830594a14df4d76e5f1172d4057726226ec1dfa0",
+      "content_state": "blocked",
+      "expected_identifiers": {
+        "doi": [
+          "10.3310/hta14080"
+        ]
+      },
+      "identity_reason": "blocked/interstitial content contains no trusted document identity",
+      "identity_state": "unverified_identity",
+      "node": "tree/root/children/methods",
+      "note": "tree/root/children/methods/notes/c00db0537e.md",
+      "observed_identifiers": {},
+      "observed_title": "",
+      "production_read_ok": true,
+      "title": "Dissemination and publication of research findings: an updated review of related biases",
+      "url": "https://doi.org/10.3310/hta14080"
+    },
+    {
+      "candidate_read_ok": false,
+      "content_sha256": "aeb61b65eb2135c0caf5471f9f8ad4379d2066848d3647d5a22361a27a3b9c49",
+      "content_state": "shell",
+      "expected_identifiers": {
+        "arxiv": [
+          "2408.15232"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/2e3871148c.md",
+      "observed_identifiers": {
+        "arxiv": [
+          "2408.15232"
+        ]
+      },
+      "observed_title": "No HTML for '2408.15232'",
+      "production_read_ok": true,
+      "title": "[2408.15232] Into the Unknown Unknowns: Engaged Human Learning through ...",
+      "url": "https://arxiv.org/abs/2408.15232"
+    }
+  ],
+  "rows": [
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "30b8ebd28062ad47697f871407b7642af2dff917c3d61133c673eaf264810b17",
+      "content_state": "truncated",
+      "expected_identifiers": {
+        "arxiv": [
+          "2607.17598"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/interface",
+      "note": "tree/root/children/interface/notes/c7a5e86d4d.md",
+      "observed_identifiers": {
+        "arxiv": [
+          "2607.17598"
+        ]
+      },
+      "observed_title": "Is Progressive Disclosure All You Need for Long-Context Agents?",
+      "production_read_ok": true,
+      "title": "Is Progressive Disclosure All You Need for Long-Context Agents?",
+      "url": "https://arxiv.org/pdf/2607.17598v1"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "69e8c7996529425b815a36ec2dd297b87fc93b5ff290de9e7b6e12ffba782779",
+      "content_state": "complete",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/interface",
+      "note": "tree/root/children/interface/notes/56a3c7cf6e.md",
+      "observed_identifiers": {},
+      "observed_title": "The Artifact Pyramid: Progressive Disclosure for What Agents Produce",
+      "production_read_ok": true,
+      "title": "The Artifact Pyramid: Progressive Disclosure for What Agents Produce",
+      "url": "https://www.groktop.us/artifact-pyramid-progressive-disclosure/"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "c6d89d4ed6eeb6cd9499ac98512f03fed65385e82a83d98e6d4d4efb89253a6f",
+      "content_state": "truncated",
+      "expected_identifiers": {
+        "doi": [
+          "10.1145/3772318.3791157"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/interface",
+      "note": "tree/root/children/interface/notes/2eff87dc43.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.1145/3772318.3791157"
+        ]
+      },
+      "observed_title": "",
+      "production_read_ok": true,
+      "title": "Sensemaking in Multi-Agent LLM Interfaces: How Users Interpret ...",
+      "url": "https://dl.acm.org/doi/10.1145/3772318.3791157"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "8c1451ad5c73b9846a123cb5caf8dee6992d5badbfaba47a94e4c2462fb6cbda",
+      "content_state": "complete",
+      "expected_identifiers": {
+        "doi": [
+          "10.1145/3586183.3606756"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/interface",
+      "note": "tree/root/children/interface/notes/7fc2f3c236.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.1145/3586183.3606756",
+          "10.1145/3586183.3606756/suppl_file/3606756.zip"
+        ]
+      },
+      "observed_title": "",
+      "production_read_ok": true,
+      "title": "Sensecape: Enabling Multilevel Exploration and Sensemaking with Large ...",
+      "url": "https://dl.acm.org/doi/abs/10.1145/3586183.3606756"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "4477cabc1d3dac40ffa8b146fe638c5f931d03afdc3c210d5cfb4f8d0b3b6919",
+      "content_state": "truncated",
+      "expected_identifiers": {
+        "arxiv": [
+          "2403.02752"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/interface",
+      "note": "tree/root/children/interface/notes/a6934828fb.md",
+      "observed_identifiers": {
+        "arxiv": [
+          "2403.02752"
+        ]
+      },
+      "observed_title": "HINTs: Sensemaking on large collections of documents with Hypergraph visualization and INTelligent agents",
+      "production_read_ok": true,
+      "title": "HINTs: Sensemaking on large collections of documents with",
+      "url": "https://arxiv.org/html/2403.02752v2"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "16cf285e3d64faf08faea99d340ce577446cd10d337789b2646476097da354cc",
+      "content_state": "truncated",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/interface",
+      "note": "tree/root/children/interface/notes/3ea9c0d18b.md",
+      "observed_identifiers": {},
+      "observed_title": "The Eyes Have It: A Task by Data Type Taxonomy for Information Visualizations",
+      "production_read_ok": true,
+      "title": "PDF The Eyes Have It: A Task by Data Type Taxonomy for Information ... - UMD",
+      "url": "https://www.cs.umd.edu/~ben/papers/Shneiderman1996eyes.pdf"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "ceb541e7a16a652b8ae30e901e2e4209274cb2efa00141b856f873be6e6da7d7",
+      "content_state": "complete",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/interface",
+      "note": "tree/root/children/interface/notes/3f7ae699d6.md",
+      "observed_identifiers": {},
+      "observed_title": "Microsoft Word - 206CameraReadyPaper",
+      "production_read_ok": true,
+      "title": "PDF Microsoft Word - 206_Camera_Ready_Paper - Andy Matuschak",
+      "url": "https://andymatuschak.org/files/papers/Pirolli,%20Card%20-%202005%20-%20The%20sensemaking%20process%20and%20leverage%20points%20for%20analyst%20technology%20as.pdf"
+    },
+    {
+      "candidate_read_ok": false,
+      "content_sha256": "049e4a3a3ff3723fa5ef60cd250bee74a5de8749002ba19d126a347e2c52abde",
+      "content_state": "complete",
+      "expected_identifiers": {
+        "doi": [
+          "10.1145/3772318.3791101"
+        ]
+      },
+      "identity_reason": "high-confidence fetched title conflicts with manifest title",
+      "identity_state": "mismatch",
+      "node": "tree/root/children/interface",
+      "note": "tree/root/children/interface/notes/f399bd6717.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.1016/j.jclinepi.2011.03.017"
+        ]
+      },
+      "observed_title": "GRADE guidelines: 7. Rating the quality of evidence\u2014inconsistency",
+      "production_read_ok": true,
+      "title": "PaperTrail: A Claim-Evidence Interface for Grounding Provenance in LLM-based Scholarly Q&amp;A",
+      "url": "https://doi.org/10.1145/3772318.3791101"
+    },
+    {
+      "candidate_read_ok": false,
+      "content_sha256": "e8433c52d6ce5753d843cec5d163c233c574e10c277031f4c387b2eafe6f6f3f",
+      "content_state": "truncated",
+      "expected_identifiers": {
+        "doi": [
+          "10.1145/3742413.3789079"
+        ]
+      },
+      "identity_reason": "high-confidence fetched title conflicts with manifest title",
+      "identity_state": "mismatch",
+      "node": "tree/root/children/interface",
+      "note": "tree/root/children/interface/notes/857a85841e.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.1016/j.jclinepi.2023.03.003"
+        ]
+      },
+      "observed_title": "GRADE guidance 36: updates to GRADE's approach to addressing inconsistency",
+      "production_read_ok": true,
+      "title": "From Toil to Thought: Designing for Strategic Exploration and Responsible AI in Systematic Literature Reviews",
+      "url": "https://doi.org/10.1145/3742413.3789079"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "9de4bb18b7bbd30274088783e7035eae109faf91980625f7f3c40b5127dc562f",
+      "content_state": "truncated",
+      "expected_identifiers": {
+        "doi": [
+          "10.1186/s13643-020-01542-z.pdf"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/methods",
+      "note": "tree/root/children/methods/notes/bcdb6ac7c1.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.1186/s13643-020-01542-z",
+          "10.1186/s13643-020-01542-z.pdf"
+        ]
+      },
+      "observed_title": "PRISMA-S: an extension to the PRISMA Statement for Reporting Literature Searches in Systematic Reviews",
+      "production_read_ok": true,
+      "title": "PDF PRISMA-S: an extension to the PRISMA Statement for Reporting Literature ...",
+      "url": "https://link.springer.com/content/pdf/10.1186/s13643-020-01542-z.pdf"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "1beb5db5ce62fbda6f80d0046aadc77c114a3b942174eb2f37d1dd7b621ee3f7",
+      "content_state": "truncated",
+      "expected_identifiers": {
+        "doi": [
+          "10.1111/1468-0009.12210"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/methods",
+      "note": "tree/root/children/methods/notes/9932233f53.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.1111/1468-0009.12210",
+          "10.1111/1468-0009.12210digital"
+        ]
+      },
+      "observed_title": "The Mass Production of Redundant, Misleading, and Conflicted Systematic Reviews and Meta-analyses",
+      "production_read_ok": true,
+      "title": "The Mass Production of Redundant, Misleading, and Conflicted Systematic Reviews and Meta\u2010analyses",
+      "url": "https://doi.org/10.1111/1468-0009.12210"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "29f9edea3d54296eba6e7a065bd1096f3a2fa2b647e4ee1bd7d8739181c6fa3b",
+      "content_state": "complete",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/methods",
+      "note": "tree/root/children/methods/notes/66745c7d80.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.1016/j.jclinepi.2016.01.021"
+        ]
+      },
+      "observed_title": "PRESS Peer Review of Electronic Search Strategies: 2015 Guideline Statement",
+      "production_read_ok": true,
+      "title": "PRESS Peer Review of Electronic Search Strategies: 2015 Guideline ...",
+      "url": "https://www.sciencedirect.com/science/article/pii/S0895435616000585"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "41da93138ad4aaddab9dfe6019d7a67bd8661bbba2864d40a1585245ba59e428",
+      "content_state": "complete",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/methods",
+      "note": "tree/root/children/methods/notes/648b9229fe.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.1136/bmj.313.7053.342",
+          "10.1136/bmj.313.7053.342)view"
+        ],
+        "pmid": [
+          "8760743"
+        ]
+      },
+      "observed_title": "Use of the capture-recapture technique to evaluate the completeness of systematic literature searches",
+      "production_read_ok": true,
+      "title": "Use of the capture-recapture technique to evaluate the completeness of ...",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC2351754/"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "e3734b9454e824dd8d334f3e5e87800f0d22241cdbb50f6b1b04eea3b1849d8a",
+      "content_state": "truncated",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/methods",
+      "note": "tree/root/children/methods/notes/4d4f1e6369.md",
+      "observed_identifiers": {},
+      "observed_title": "How much searching is enough? Comprehensive versus optimal retrieval for technology assessments",
+      "production_read_ok": true,
+      "title": "PDF How much searching is enough? Comprehensive versus optimal retrieval ...",
+      "url": "https://www.cambridge.org/core/services/aop-cambridge-core/content/view/420FE198E07703FB1AAFE762958CFE4A/S0266462310000966a.pdf/how-much-searching-is-enough-comprehensive-versus-optimal-retrieval-for-technology-assessments.pdf"
+    },
+    {
+      "candidate_read_ok": false,
+      "content_sha256": "a9ac29dd4a028d830e6f9e4d830594a14df4d76e5f1172d4057726226ec1dfa0",
+      "content_state": "blocked",
+      "expected_identifiers": {
+        "doi": [
+          "10.3310/hta14080"
+        ]
+      },
+      "identity_reason": "blocked/interstitial content contains no trusted document identity",
+      "identity_state": "unverified_identity",
+      "node": "tree/root/children/methods",
+      "note": "tree/root/children/methods/notes/c00db0537e.md",
+      "observed_identifiers": {},
+      "observed_title": "",
+      "production_read_ok": true,
+      "title": "Dissemination and publication of research findings: an updated review of related biases",
+      "url": "https://doi.org/10.3310/hta14080"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "ff4efcee9fea8020ceef90cc3838f8a8d60293672e072cbaa4ce6f3a92353afc",
+      "content_state": "complete",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/methods",
+      "note": "tree/root/children/methods/notes/33444182e1.md",
+      "observed_identifiers": {},
+      "observed_title": "Protocol-driven search strategies and systematic reviews of complex evidence",
+      "production_read_ok": true,
+      "title": "PDF Protocol-driven search strategies and systematic reviews of complex ...",
+      "url": "https://www.nature.com/articles/6400383.pdf"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "4cd90f49b6539ec8ccdfd2237f1ed57bee1adc93989e33d8f3714b871a763758",
+      "content_state": "truncated",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/methods",
+      "note": "tree/root/children/methods/notes/615bd4477b.md",
+      "observed_identifiers": {},
+      "observed_title": "Weighted corrected covered area (wCCA): A measure of informational overlap among reviews",
+      "production_read_ok": true,
+      "title": "Weighted corrected covered area (wCCA): A measure of informational ...",
+      "url": "https://www.cambridge.org/core/journals/research-synthesis-methods/article/weighted-corrected-covered-area-wcca-a-measure-of-informational-overlap-among-reviews/E41BD8EC61447E3E559C43AB95F7964A"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "313bcc23c63c833fda39e4c0b203b5949140b6d4a8f7b3269f9c52eca1110781",
+      "content_state": "complete",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/methods",
+      "note": "tree/root/children/methods/notes/5bd0319120.md",
+      "observed_identifiers": {},
+      "observed_title": "Systematic review finds overlapping reviews were not mentioned in every other overview",
+      "production_read_ok": true,
+      "title": "Systematic review finds overlapping reviews were not mentioned in every ...",
+      "url": "https://www.jclinepi.com/article/S0895-4356(13)00481-2/pdf"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "049e4a3a3ff3723fa5ef60cd250bee74a5de8749002ba19d126a347e2c52abde",
+      "content_state": "complete",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/methods",
+      "note": "tree/root/children/methods/notes/4241dee00f.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.1016/j.jclinepi.2011.03.017"
+        ]
+      },
+      "observed_title": "GRADE guidelines: 7. Rating the quality of evidence\u2014inconsistency",
+      "production_read_ok": true,
+      "title": "GRADE guidelines: 7. Rating the quality of evidence\u2014inconsistency ...",
+      "url": "https://www.sciencedirect.com/science/article/pii/S089543561100182X"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "e8433c52d6ce5753d843cec5d163c233c574e10c277031f4c387b2eafe6f6f3f",
+      "content_state": "truncated",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/methods",
+      "note": "tree/root/children/methods/notes/80dbba6cf0.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.1016/j.jclinepi.2023.03.003"
+        ]
+      },
+      "observed_title": "GRADE guidance 36: updates to GRADE's approach to addressing inconsistency",
+      "production_read_ok": true,
+      "title": "GRADE guidance 36: updates to GRADE's approach to addressing inconsistency",
+      "url": "https://www.sciencedirect.com/science/article/pii/S089543562300046X"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "1cb61c940588c3e31d4edfe831ee4400b9ee50f90efc4e0b400b8a59b86a74e4",
+      "content_state": "truncated",
+      "expected_identifiers": {
+        "doi": [
+          "10.1186/s13012-017-0688-3"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/methods",
+      "note": "tree/root/children/methods/notes/2268312e3c.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.1186/s13012-017-0688-3",
+          "10.1186/s13012-017-0688-3.pdf",
+          "10.1186/s13012-017-0688-3/save-research"
+        ]
+      },
+      "observed_title": "Applying GRADE-CERQual to qualitative evidence synthesis findings: introduction to the series",
+      "production_read_ok": true,
+      "title": "Applying GRADE-CERQual to qualitative evidence synthesis findings ...",
+      "url": "https://link.springer.com/article/10.1186/s13012-017-0688-3"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "2830c7cdf04bcccfe587fcea2337d9a451b0f0f446d51dd4b5a9be8684f9419d",
+      "content_state": "complete",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/37ed91c908.md",
+      "observed_identifiers": {},
+      "observed_title": "How we built our multi-agent research system",
+      "production_read_ok": true,
+      "title": "How we built our multi-agent research system \\ Anthropic",
+      "url": "https://www.anthropic.com/engineering/multi-agent-research-system"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "e5b5779e1d0c63876f10e07afa70338dd49522ace4b6feb6a87f1802536c0e28",
+      "content_state": "truncated",
+      "expected_identifiers": {
+        "arxiv": [
+          "2603.07670"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/a2480951ee.md",
+      "observed_identifiers": {
+        "arxiv": [
+          "2603.07670"
+        ]
+      },
+      "observed_title": "Memory for Autonomous LLM Agents: Mechanisms, Evaluation, and Emerging Frontiers",
+      "production_read_ok": true,
+      "title": "Memory for Autonomous LLM Agents: - arXiv.org",
+      "url": "https://arxiv.org/html/2603.07670v1"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "f920534d3efc356e1a6280625c0319d06f1ecb635e1f93864dcae9a58a5b7e40",
+      "content_state": "complete",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/b7d7a05b7d.md",
+      "observed_identifiers": {},
+      "observed_title": "agent-framework/docs/features/durable-agents at main \u00b7 microsoft/agent-framework",
+      "production_read_ok": true,
+      "title": "agent-framework/docs/features/durable-agents at main - GitHub",
+      "url": "https://github.com/microsoft/agent-framework/tree/main/docs/features/durable-agents"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "429dfb8e672ddb993adee8d8b32f9b2cae29f50c26c0d4ae9ca4cb7f90102e17",
+      "content_state": "complete",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/fcb41aca04.md",
+      "observed_identifiers": {},
+      "observed_title": "Build Long-running AI agents that pause, resume, and never lose context with ADK",
+      "production_read_ok": true,
+      "title": "Build Long-running AI agents that pause, resume, and never lose context ...",
+      "url": "https://developers.googleblog.com/en/build-long-running-ai-agents-that-pause-resume-and-never-lose-context-with-adk/"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "849be7835c9088fc4dbb4f5c96e9ba6343f6a9915aa192c526fd197b47f3c97e",
+      "content_state": "complete",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/ccc7b20b1e.md",
+      "observed_identifiers": {},
+      "observed_title": "storm/README.md at main \u00b7 stanford-oval/storm",
+      "production_read_ok": true,
+      "title": "storm/README.md at main \u00b7 stanford-oval/storm \u00b7 GitHub",
+      "url": "https://github.com/stanford-oval/storm/blob/main/README.md"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "76693bf13f956bc61d95046b27072a3d18f85a03fc9b808019c1fee31081014c",
+      "content_state": "complete",
+      "expected_identifiers": {
+        "arxiv": [
+          "2402.14207"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/5ad6162428.md",
+      "observed_identifiers": {
+        "arxiv": [
+          "2402.14207"
+        ]
+      },
+      "observed_title": "",
+      "production_read_ok": true,
+      "title": "[2402.14207] Assisting in Writing Wikipedia-like Articles From Scratch ...",
+      "url": "https://arxiv.org/abs/2402.14207"
+    },
+    {
+      "candidate_read_ok": false,
+      "content_sha256": "aeb61b65eb2135c0caf5471f9f8ad4379d2066848d3647d5a22361a27a3b9c49",
+      "content_state": "shell",
+      "expected_identifiers": {
+        "arxiv": [
+          "2408.15232"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/2e3871148c.md",
+      "observed_identifiers": {
+        "arxiv": [
+          "2408.15232"
+        ]
+      },
+      "observed_title": "No HTML for '2408.15232'",
+      "production_read_ok": true,
+      "title": "[2408.15232] Into the Unknown Unknowns: Engaged Human Learning through ...",
+      "url": "https://arxiv.org/abs/2408.15232"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "dd037082ea5d04b92e5d0f41cad82ffd49631a481e6e2b5784358c1c640cc681",
+      "content_state": "truncated",
+      "expected_identifiers": {
+        "arxiv": [
+          "2606.04990"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/a6ec130625.md",
+      "observed_identifiers": {
+        "arxiv": [
+          "2606.04990"
+        ]
+      },
+      "observed_title": "From Agent Traces to Trust: A Survey of Evidence Tracing and Execution Provenance in LLM Agents",
+      "production_read_ok": true,
+      "title": "From Agent Traces to Trust: A Survey of Evidence Tracing and Execution ...",
+      "url": "https://arxiv.org/abs/2606.04990"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "87c3c58c2ecd34090e343456bde8d91b03354132326569954e31f3b73aa85ec3",
+      "content_state": "complete",
+      "expected_identifiers": {},
+      "identity_reason": "normalized manifest and fetched titles match",
+      "identity_state": "verified_title",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/011ded74c9.md",
+      "observed_identifiers": {},
+      "observed_title": "Persistence - Docs by LangChain",
+      "production_read_ok": true,
+      "title": "Persistence - Docs by LangChain",
+      "url": "https://docs.langchain.com/oss/python/langgraph/persistence"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "291656cd27bb6237fc88988530c452ef63111d4a596e399e452eaa88f4e5fac8",
+      "content_state": "complete",
+      "expected_identifiers": {
+        "doi": [
+          "10.48550/arxiv.2511.03690"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/4e3a7b903f.md",
+      "observed_identifiers": {
+        "arxiv": [
+          "2511.03690"
+        ],
+        "doi": [
+          "10.48550/arxiv.2511.03690",
+          "10.48550/arxiv.2511.03690)full-text"
+        ]
+      },
+      "observed_title": "The OpenHands Software Agent SDK: A Composable and Extensible Foundation for Production Agents",
+      "production_read_ok": true,
+      "title": "The OpenHands Software Agent SDK: A Composable and Extensible Foundation for Production Agents",
+      "url": "https://doi.org/10.48550/arxiv.2511.03690"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "1bfe84a8e1971a30c41a1f99f6a9cdf7fa719055ca99b94f9faef1eaea031100",
+      "content_state": "truncated",
+      "expected_identifiers": {
+        "arxiv": [
+          "2303.11366"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/53479fd59e.md",
+      "observed_identifiers": {
+        "arxiv": [
+          "2303.11366"
+        ]
+      },
+      "observed_title": "Reflexion: Language Agents with Verbal Reinforcement Learning",
+      "production_read_ok": true,
+      "title": "Reflexion: Language Agents with Verbal Reinforcement Learning",
+      "url": "https://arxiv.org/abs/2303.11366"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "832ae510cf333f70fb310f2a61ab08c9c2d531fd484bfffe821adc4f3e094b8b",
+      "content_state": "truncated",
+      "expected_identifiers": {
+        "arxiv": [
+          "2308.10144"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/451aff06be.md",
+      "observed_identifiers": {
+        "arxiv": [
+          "2308.10144"
+        ]
+      },
+      "observed_title": "ExpeL: LLM Agents Are Experiential Learners",
+      "production_read_ok": true,
+      "title": "ExpeL: LLM Agents Are Experiential Learners",
+      "url": "http://arxiv.org/abs/2308.10144v3"
+    },
+    {
+      "candidate_read_ok": true,
+      "content_sha256": "7964ef9a5580698e38b335c1a99211c53a275bd04259626133296b74de20d449",
+      "content_state": "complete",
+      "expected_identifiers": {
+        "doi": [
+          "10.18653/v1/2025.acl-long.1575"
+        ]
+      },
+      "identity_reason": "expected identifier occurs in trusted identity material",
+      "identity_state": "verified_identifier",
+      "node": "tree/root/children/architecture",
+      "note": "tree/root/children/architecture/notes/7709881dc9.md",
+      "observed_identifiers": {
+        "doi": [
+          "10.18653/v1/2025.acl-long.1575"
+        ]
+      },
+      "observed_title": "HiAgent: Hierarchical Working Memory Management for Solving Long-Horizon Agent Tasks with Large Language Model",
+      "production_read_ok": true,
+      "title": "HiAgent: Hierarchical Working Memory Management for Solving Long-Horizon Agent Tasks with Large Language Model",
+      "url": "https://doi.org/10.18653/v1/2025.acl-long.1575"
+    }
+  ],
+  "run": "2026-07-27-101249-aletheia-output-quality-20260727",
+  "schema_version": 1
+}

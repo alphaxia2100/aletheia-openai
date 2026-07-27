@@ -37,6 +37,7 @@ import router  # noqa: E402
 import rank as rankmod  # noqa: E402
 import dedupe  # noqa: E402
 import read as readmod  # noqa: E402
+import read_identity  # noqa: E402
 import _http  # noqa: E402  (keywordize, for 0-result relaxation)
 
 MAX_READ_CHARS = 40000   #: read cap; a read that hits it is flagged `_truncated` (no silent cut-off)
@@ -360,7 +361,8 @@ def retrieve(query: str, channels: List[str], limit: int, timeout: float):
 
 
 def _save_read(node: str, url: str, text: str, method: str, truncated: bool = False,
-               resolved_url: str = "") -> str:
+               resolved_url: str = "", identity_state: str = "",
+               content_state: str = "") -> str:
     d = os.path.join(node, "notes")
     os.makedirs(d, exist_ok=True)
     h = hashlib.sha1(url.encode()).hexdigest()[:10]
@@ -368,8 +370,24 @@ def _save_read(node: str, url: str, text: str, method: str, truncated: bool = Fa
     trunc = " TRUNCATED at %d chars — re-read with a larger cap if a claim rests on the tail" % \
         MAX_READ_CHARS if truncated else ""
     resolved = " resolved=%s" % resolved_url if resolved_url and resolved_url != url else ""
+    states = " identity=%s content=%s" % (identity_state, content_state) \
+        if identity_state or content_state else ""
+    payload = "<!-- %s (via %s)%s%s%s -->\n\n%s" % (
+        url, method, resolved, trunc, states, text)
+    # A failed identity attempt is audit evidence. A later retry must not silently overwrite it.
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                if fh.read() == payload:
+                    return path
+        except OSError:
+            pass
+        attempt = 2
+        while os.path.exists(os.path.join(d, "%s.attempt-%d.md" % (h, attempt))):
+            attempt += 1
+        path = os.path.join(d, "%s.attempt-%d.md" % (h, attempt))
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write("<!-- %s (via %s)%s%s -->\n\n%s" % (url, method, resolved, trunc, text))
+        fh.write(payload)
     return path
 
 
@@ -396,16 +414,21 @@ def _read_source(url: str, timeout: float):
         aid = m.group(1)
         candidates = ["https://arxiv.org/html/" + aid, "https://arxiv.org/pdf/" + aid]
     last_error = None
+    best_short = None
     for candidate in candidates:
         try:
             text, method = readmod.read_url(candidate, timeout, MAX_READ_CHARS, False)
             if len(text.strip()) < 1500:
+                if best_short is None or len(text) > len(best_short[0]):
+                    best_short = (text, str(method or "read"), candidate)
                 last_error = RuntimeError("short read from %s" % candidate)
                 continue
             label = str(method or "read") + (" full-text" if m else "")
             return text, label, candidate
         except Exception as exc:  # noqa: BLE001 - try arXiv PDF after HTML failure
             last_error = exc
+    if best_short is not None:
+        return best_short
     raise last_error or RuntimeError("no readable full text for %s" % url)
 
 
@@ -414,6 +437,16 @@ def _note_exists(node: str, url: str) -> bool:
         return False
     h = hashlib.sha1(url.encode()).hexdigest()[:10]
     return os.path.exists(os.path.join(node, "notes", h + ".md"))
+
+
+def _successful_read_exists(node: str, record: Dict[str, Any]) -> bool:
+    """A persisted mismatch/unverified body is not a success and may be retried."""
+    for old in _existing_records(node):
+        if _dedupe_records([record], [old]):
+            continue
+        if old.get("_read_ok"):
+            return True
+    return False
 
 
 def _existing_work_keys(node: str) -> set:
@@ -457,7 +490,9 @@ def _merge_existing_read_metadata(node: str, records: List[Dict[str, Any]]) -> i
         for new in updates:
             if _dedupe_records([new], [old]):       # still present => distinct work
                 continue
-            for key in ("_read_file", "_read_ok", "_truncated", "_resolved_url"):
+            for key in ("_read_file", "_read_ok", "_content_ok", "_identity_ok",
+                        "_identity_state", "_content_state", "_identity", "_read_sha256",
+                        "_truncated", "_resolved_url"):
                 if key in new and old.get(key) != new.get(key):
                     old[key] = new[key]
                     changed += 1
@@ -556,7 +591,7 @@ def _read_floor(node: str, read_pool: List[Dict[str, Any]], sel: List[Dict[str, 
     sel = [r for r in read_pool
            if float(r.get("_relnorm", 0) or 0) >= rankmod.REL_READ
            and str(r.get("url", "")).lower().startswith(("http://", "https://"))
-           and not _note_exists(node, r.get("url", ""))][:max(1, reads)]
+           and not _successful_read_exists(node, r)][:max(1, reads)]
     if sel:
         treestate.log_decision(node, "investigate",
                                "safe read-floor engaged: subject/entity gate returned 0; reading %d "
@@ -587,18 +622,63 @@ def _execute_reads(node: str, ctx: Dict[str, Any], sel: List[Dict[str, Any]],
         try:
             txt, method, resolved_url = _read_source(u, timeout)
             truncated = len(txt) >= MAX_READ_CHARS      # hit the cap -> tail may be missing
-            path = _save_read(node, u, txt, method, truncated, resolved_url)
-            ok = len(txt.strip()) >= 1500
+            assessment = read_identity.assess_read(r, txt, resolved_url, method, truncated)
+            path = _save_read(node, u, txt, method, truncated, resolved_url,
+                              assessment["identity_state"], assessment["content_state"])
+            ok = assessment["read_ok"]
             r["_read_file"] = os.path.relpath(path, node)
             r["_read_ok"] = ok
+            r["_content_ok"] = assessment["content_ok"]
+            r["_identity_ok"] = assessment["identity_ok"]
+            r["_identity_state"] = assessment["identity_state"]
+            r["_content_state"] = assessment["content_state"]
+            r["_identity"] = assessment["identity"]
+            r["_read_sha256"] = assessment["content_sha256"]
             r["_truncated"] = truncated
             r["_resolved_url"] = resolved_url
+            _append_telemetry(node, {
+                "event": "read_attempt",
+                "round": round_no,
+                "url": u,
+                "resolved_url": resolved_url,
+                "read_file": r["_read_file"],
+                "method": method,
+                "chars": len(txt),
+                "read_ok": ok,
+                "content_ok": assessment["content_ok"],
+                "identity_ok": assessment["identity_ok"],
+                "identity_state": assessment["identity_state"],
+                "content_state": assessment["content_state"],
+                "content_sha256": assessment["content_sha256"],
+                "identity": assessment["identity"],
+            })
             read_meta.append({"url": u, "chars": len(txt), "method": method, "ok": ok,
+                              "content_ok": assessment["content_ok"],
+                              "identity_ok": assessment["identity_ok"],
+                              "identity_state": assessment["identity_state"],
+                              "content_state": assessment["content_state"],
+                              "identity_reason": assessment["identity"]["reason"],
                               "truncated": truncated,
                               "resolved_url": resolved_url,
                               "t": round(time.time() - t0, 1), "title": r.get("title", "")})
         except Exception as e:  # noqa: BLE001
+            _append_telemetry(node, {
+                "event": "read_attempt",
+                "round": round_no,
+                "url": u,
+                "method": "FAIL",
+                "chars": 0,
+                "read_ok": False,
+                "content_ok": False,
+                "identity_ok": False,
+                "identity_state": "unverified_identity",
+                "content_state": "unreadable",
+                "error": type(e).__name__,
+            })
             read_meta.append({"url": u, "chars": 0, "method": "FAIL", "ok": False,
+                              "content_ok": False, "identity_ok": False,
+                              "identity_state": "unverified_identity",
+                              "content_state": "unreadable",
                               "err": type(e).__name__, "t": round(time.time() - t0, 1)})
 
     # node-level dedup across rounds: add_sources only deduped the GLOBAL index, so repeated
@@ -622,7 +702,13 @@ def _execute_reads(node: str, ctx: Dict[str, Any], sel: List[Dict[str, Any]],
         "selected": len(sel),
         "read_attempts": len(read_meta),
         "reads_ok": this_ok,
+        "content_reads_ok": sum(1 for m in read_meta if m.get("content_ok")),
         "read_failures": len(read_meta) - this_ok,
+        "identity_mismatches": sum(1 for m in read_meta if m.get("identity_state") == "mismatch"),
+        "identity_unverified": sum(1 for m in read_meta
+                                   if m.get("identity_state") == "unverified_identity"),
+        "identity_states": read_identity.state_counts(read_meta, "identity_state"),
+        "content_states": read_identity.state_counts(read_meta, "content_state"),
         "floor_engaged": bool(floor_engaged),
         "abstained": bool(abstained),
         "read_seconds": round(sum(float(m.get("t", 0) or 0) for m in read_meta), 1),
@@ -645,7 +731,7 @@ def investigate(node: str, query: str = "", reads: int = 0, limit: int = 8,
     read is decided by topic-relative judgment, not a fixed table (0.5 brick 2)."""
     ctx = _gather(node, query, channels, limit, timeout, reads)
     sel = [r for r in rankmod.select_reads(ctx["read_pool"], ctx["reads"])
-           if not _note_exists(node, r.get("url", ""))]
+           if not _successful_read_exists(node, r)]
     before_floor = len(sel)
     sel = _read_floor(node, ctx["read_pool"], sel, ctx["reads"])
     return _execute_reads(node, ctx, sel, timeout, selection_mode="deterministic",
@@ -819,6 +905,10 @@ def _write_evidence(node, query, ranked, sel, per, read_meta, round_no=1):
         flag = "ok" if m.get("ok") else "MISS(%s)" % m.get("method", "?")
         if m.get("truncated"):
             flag += " ⚠TRUNCATED"
+        if m.get("identity_state"):
+            flag += " identity=%s" % m.get("identity_state")
+        if m.get("content_state"):
+            flag += " content=%s" % m.get("content_state")
         excerpt = ""
         if r.get("_read_file"):
             try:
@@ -832,6 +922,7 @@ def _write_evidence(node, query, ranked, sel, per, read_meta, round_no=1):
                   "- score=%.3f rel=%.2f authority=%.1f  read=%s (%d ch)" % (
                       r.get("score", 0), r.get("_relnorm", 0), r.get("_authority", 0),
                       flag, m.get("chars", 0)),
+                  "- identity: %s" % (m.get("identity_reason") or "not established"),
                   "", "> " + (excerpt[:600] or "_(no excerpt)_"), ""]
     lines += ["### Other ranked sources this round (not read)", ""]
     for r in ranked:

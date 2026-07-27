@@ -1,0 +1,133 @@
+[
+  {
+    "id": "observed-papertrail-wrong-body",
+    "record": {
+      "url": "https://doi.org/10.1145/3772318.3791101",
+      "doi": "https://doi.org/10.1145/3772318.3791101",
+      "title": "PaperTrail: A Claim-Evidence Interface for Grounding Provenance in LLM-based Scholarly Q&A"
+    },
+    "front": "#\n\nGRADE guidelines: 7. Rating the quality of evidence—inconsistency\n\nhttps://doi.org/10.1016/j.jclinepi.2011.03.017\n\n## Abstract\nThis article deals with inconsistency of treatment effects.",
+    "expected_identity": "mismatch",
+    "expected_read_ok": false,
+    "pad": true
+  },
+  {
+    "id": "observed-toil-wrong-body",
+    "record": {
+      "url": "https://doi.org/10.1145/3742413.3789079",
+      "doi": "https://doi.org/10.1145/3742413.3789079",
+      "title": "From Toil to Thought: Designing for Strategic Exploration and Responsible AI in Systematic Literature Reviews"
+    },
+    "front": "#\n\nGRADE guidance 36: updates to GRADE's approach to addressing inconsistency\n\nhttps://doi.org/10.1016/j.jclinepi.2023.03.003\n\n## Abstract\nThis guidance updates methods for assessing inconsistency.",
+    "expected_identity": "mismatch",
+    "expected_read_ok": false,
+    "pad": true
+  },
+  {
+    "id": "matching-doi-and-title",
+    "record": {
+      "url": "https://doi.org/10.5555/12345678",
+      "doi": "10.5555/12345678",
+      "title": "Adaptive Evidence Retrieval for Complex Research Questions"
+    },
+    "front": "Title: Adaptive Evidence Retrieval for Complex Research Questions\n\nDOI: 10.5555/12345678\n\n## Abstract\nWe evaluate adaptive evidence retrieval.",
+    "expected_identity": "verified_identifier",
+    "expected_read_ok": true,
+    "pad": true
+  },
+  {
+    "id": "matching-title-without-identifier",
+    "record": {
+      "url": "https://example.org/field-report",
+      "title": "Operational Lessons from a Production Research Agent"
+    },
+    "front": "Title: Operational Lessons from a Production Research Agent\n\nThis field report describes failures, mitigations, and remaining gaps.",
+    "expected_identity": "verified_title",
+    "expected_read_ok": true,
+    "pad": true
+  },
+  {
+    "id": "abbreviated-manifest-title",
+    "record": {
+      "url": "https://example.org/adaptive-review",
+      "title": "Adaptive Search Strategies for Complex Evidence Reviews ..."
+    },
+    "front": "Title: Adaptive Search Strategies for Complex Evidence Reviews in Public Policy\n\nThis article compares protocol search and citation chaining.",
+    "expected_identity": "verified_title",
+    "expected_read_ok": true,
+    "pad": true
+  },
+  {
+    "id": "matching-title-with-multiple-cited-dois",
+    "record": {
+      "url": "https://doi.org/10.5555/87654321",
+      "doi": "10.5555/87654321",
+      "title": "Claim-Level Provenance for Deep Research Systems"
+    },
+    "front": "Title: Claim-Level Provenance for Deep Research Systems\n\nThe introduction cites https://doi.org/10.1000/alpha and https://doi.org/10.1000/beta but the publisher export omits this article's own DOI.",
+    "expected_identity": "verified_title",
+    "expected_read_ok": true,
+    "pad": true
+  },
+  {
+    "id": "readable-but-no-identity-metadata",
+    "record": {
+      "url": "https://example.org/anonymous",
+      "title": "A Named Practitioner Account of Research Failures"
+    },
+    "front": "The team encountered repeated retrieval loops and rebuilt its controller. The body has useful prose but no title, identifier, or trusted object metadata.",
+    "expected_identity": "unverified_identity",
+    "expected_read_ok": false,
+    "pad": true
+  },
+  {
+    "id": "single-conflicting-identifier-without-title",
+    "record": {
+      "url": "https://doi.org/10.5555/11112222",
+      "doi": "10.5555/11112222",
+      "title": ""
+    },
+    "front": "DOI: 10.5555/99990000\n\nThe fetched document exposes one different primary identifier and no title metadata.",
+    "expected_identity": "mismatch",
+    "expected_read_ok": false,
+    "pad": true
+  },
+  {
+    "id": "youtube-caption-direct-object",
+    "record": {
+      "url": "https://www.youtube.com/watch?v=abcDEF12345",
+      "title": "A first-hand engineering talk"
+    },
+    "front": "Welcome to the engineering talk. We describe the deployment, observed failures, and mitigations in detail.",
+    "method": "youtube captions full-text",
+    "resolved_url": "https://www.youtube.com/watch?v=abcDEF12345",
+    "expected_identity": "verified_identifier",
+    "expected_read_ok": true,
+    "pad": true
+  },
+  {
+    "id": "blocked-interstitial",
+    "record": {
+      "url": "https://example.org/blocked",
+      "title": "Expected Study"
+    },
+    "front": "Are you a robot? Please enable cookies and verify you are human.",
+    "method": "blocked",
+    "expected_identity": "unverified_identity",
+    "expected_content": "blocked",
+    "expected_read_ok": false,
+    "pad": false
+  },
+  {
+    "id": "image-only-document",
+    "record": {
+      "url": "https://example.org/scanned-report",
+      "title": "Scanned Archival Report"
+    },
+    "front": "![page 1](p1.png)\n![page 2](p2.png)\n![page 3](p3.png)\n![page 4](p4.png)",
+    "expected_identity": "unverified_identity",
+    "expected_content": "image_only",
+    "expected_read_ok": false,
+    "pad": false
+  }
+]

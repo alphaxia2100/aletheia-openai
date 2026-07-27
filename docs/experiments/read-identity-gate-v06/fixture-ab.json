@@ -1,0 +1,135 @@
+{
+  "baseline_correct": 7,
+  "baseline_false_accepts": 4,
+  "baseline_false_rejects": 0,
+  "candidate_correct": 11,
+  "candidate_false_accepts": 0,
+  "candidate_false_rejects": 0,
+  "candidate_mismatch_sensitivity": 1.0,
+  "fixture_cases": 11,
+  "interpretation_limit": "Portable exact-defect reproductions plus hand-built boundary controls; this establishes mechanism behavior, not open-web prevalence or end-to-end research-quality improvement.",
+  "rows": [
+    {
+      "baseline_correct": false,
+      "baseline_read_ok": true,
+      "candidate_content": "complete",
+      "candidate_correct": true,
+      "candidate_identity": "mismatch",
+      "candidate_read_ok": false,
+      "expected_identity": "mismatch",
+      "expected_read_ok": false,
+      "id": "observed-papertrail-wrong-body"
+    },
+    {
+      "baseline_correct": false,
+      "baseline_read_ok": true,
+      "candidate_content": "complete",
+      "candidate_correct": true,
+      "candidate_identity": "mismatch",
+      "candidate_read_ok": false,
+      "expected_identity": "mismatch",
+      "expected_read_ok": false,
+      "id": "observed-toil-wrong-body"
+    },
+    {
+      "baseline_correct": true,
+      "baseline_read_ok": true,
+      "candidate_content": "complete",
+      "candidate_correct": true,
+      "candidate_identity": "verified_identifier",
+      "candidate_read_ok": true,
+      "expected_identity": "verified_identifier",
+      "expected_read_ok": true,
+      "id": "matching-doi-and-title"
+    },
+    {
+      "baseline_correct": true,
+      "baseline_read_ok": true,
+      "candidate_content": "complete",
+      "candidate_correct": true,
+      "candidate_identity": "verified_title",
+      "candidate_read_ok": true,
+      "expected_identity": "verified_title",
+      "expected_read_ok": true,
+      "id": "matching-title-without-identifier"
+    },
+    {
+      "baseline_correct": true,
+      "baseline_read_ok": true,
+      "candidate_content": "complete",
+      "candidate_correct": true,
+      "candidate_identity": "verified_title",
+      "candidate_read_ok": true,
+      "expected_identity": "verified_title",
+      "expected_read_ok": true,
+      "id": "abbreviated-manifest-title"
+    },
+    {
+      "baseline_correct": true,
+      "baseline_read_ok": true,
+      "candidate_content": "complete",
+      "candidate_correct": true,
+      "candidate_identity": "verified_title",
+      "candidate_read_ok": true,
+      "expected_identity": "verified_title",
+      "expected_read_ok": true,
+      "id": "matching-title-with-multiple-cited-dois"
+    },
+    {
+      "baseline_correct": false,
+      "baseline_read_ok": true,
+      "candidate_content": "complete",
+      "candidate_correct": true,
+      "candidate_identity": "unverified_identity",
+      "candidate_read_ok": false,
+      "expected_identity": "unverified_identity",
+      "expected_read_ok": false,
+      "id": "readable-but-no-identity-metadata"
+    },
+    {
+      "baseline_correct": false,
+      "baseline_read_ok": true,
+      "candidate_content": "complete",
+      "candidate_correct": true,
+      "candidate_identity": "mismatch",
+      "candidate_read_ok": false,
+      "expected_identity": "mismatch",
+      "expected_read_ok": false,
+      "id": "single-conflicting-identifier-without-title"
+    },
+    {
+      "baseline_correct": true,
+      "baseline_read_ok": true,
+      "candidate_content": "complete",
+      "candidate_correct": true,
+      "candidate_identity": "verified_identifier",
+      "candidate_read_ok": true,
+      "expected_identity": "verified_identifier",
+      "expected_read_ok": true,
+      "id": "youtube-caption-direct-object"
+    },
+    {
+      "baseline_correct": true,
+      "baseline_read_ok": false,
+      "candidate_content": "blocked",
+      "candidate_correct": true,
+      "candidate_identity": "unverified_identity",
+      "candidate_read_ok": false,
+      "expected_identity": "unverified_identity",
+      "expected_read_ok": false,
+      "id": "blocked-interstitial"
+    },
+    {
+      "baseline_correct": true,
+      "baseline_read_ok": false,
+      "candidate_content": "image_only",
+      "candidate_correct": true,
+      "candidate_identity": "unverified_identity",
+      "candidate_read_ok": false,
+      "expected_identity": "unverified_identity",
+      "expected_read_ok": false,
+      "id": "image-only-document"
+    }
+  ],
+  "schema_version": 1
+}

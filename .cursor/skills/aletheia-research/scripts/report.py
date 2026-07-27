@@ -256,6 +256,13 @@ def _runtime_telemetry(run: str) -> Dict[str, Any]:
                            and (e.get("_node"), e.get("round")) not in gather_rounds]
     searches = gathers + deterministic_search + legacy_agent_search
     modes = Counter(str(e.get("selection_mode") or "unknown") for e in rounds)
+    identity_states = Counter()
+    content_states = Counter()
+    for event in rounds:
+        identity_states.update({str(k): int(v or 0)
+                                for k, v in (event.get("identity_states") or {}).items()})
+        content_states.update({str(k): int(v or 0)
+                               for k, v in (event.get("content_states") or {}).items()})
 
     def total(field: str, rows=rounds) -> int:
         return sum(int(e.get(field, 0) or 0) for e in rows)
@@ -272,7 +279,12 @@ def _runtime_telemetry(run: str) -> Dict[str, Any]:
         "selected": total("selected"),
         "read_attempts": total("read_attempts"),
         "reads_ok": total("reads_ok"),
+        "content_reads_ok": total("content_reads_ok"),
         "read_failures": total("read_failures"),
+        "identity_mismatches": total("identity_mismatches"),
+        "identity_unverified": total("identity_unverified"),
+        "identity_states": dict(sorted(identity_states.items())),
+        "content_states": dict(sorted(content_states.items())),
         "zero_selection_rounds": sum(1 for e in rounds if int(e.get("selected", 0) or 0) == 0),
         "zero_success_rounds": sum(1 for e in rounds if int(e.get("reads_ok", 0) or 0) == 0),
         "floor_engagements": sum(1 for e in rounds if e.get("floor_engaged") is True),

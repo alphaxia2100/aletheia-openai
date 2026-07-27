@@ -173,6 +173,12 @@ retrieved/eligible/selected counts, attempts/successes/failures, floor use, requ
 `read_artifacts`, separating engine-tracked from `direct_or_manual_read_artifacts`. Use both the event
 counters and artifact counts to prove the intended path executed and enforce search/read cost parity
 in A/Bs—manual primary chasing and uncapped rereads are real cost, not free work.
+Every fetched body also passes a typed semantic identity gate before `_read_ok=true`. The source row
+records `_identity_state` (`verified_identifier|verified_title|unverified_identity|mismatch`) separately
+from `_content_state` (`complete|truncated|blocked|shell|image_only|unreadable`). A mismatch or
+unverified identity is persisted for audit but excluded from successful evidence reads; inspect the
+expected/observed identifiers and titles in `_identity`, then try an alternate DOI/repository/HTML/PDF
+resolver. Never delete or overwrite the wrong body: a later retry is stored as a separate attempt.
 Repeat only while the bounded node has scrutiny rounds remaining; `unlimited`/`max` continue to
 convergence. If evidence marks a load-bearing read `TRUNCATED`, re-read it without the cap:
 `python3 "$AL/channel-retrieval/scripts/read.py" URL --outdir "<NODE_DIR>/notes/full" --max-chars 0`.

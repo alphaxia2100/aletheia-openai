@@ -13,6 +13,7 @@ Inconclusive and failed branches are retained because their traces prevent repea
 |---|---|---|
 | `prod` | **production** | Stable OpenAI/Codex 0.5 runtime. Default GitHub branch. |
 | `codex/exp-field-dossier-v06` | experimental, diagnostic passed, not promoted | Agent-first progressive-disclosure dossier and content-addressed artifact map. |
+| `codex/exp-read-identity-gate-v06` | experimental, diagnostic passed, not promoted | Typed document identity/content gate with lossless failed-attempt provenance. |
 | `codex/accuracy-observability-v06` | experimental, not promoted | Hash-chained chronology, persisted manifests, unified read/claim provenance, terminal consistency. |
 | `codex/high-accuracy-candidate-v06` | experimental, not promoted | Side-by-side high-accuracy skill candidate. |
 | `codex/high-accuracy-aletheia-v06` | research/integration record, no-go | Accuracy architecture, evaluator audit, and promotion decision. |
@@ -39,6 +40,7 @@ Inconclusive and failed branches are retained because their traces prevent repea
 | `codex/exp-runtime-ledger-v06` | Enforced run-wide search/read/time reservations. |
 | `codex/exp-traceable-runtime` | Executable runtime and channel fingerprints. |
 | `codex/exp-accuracy-eval-v2` | Hardened accuracy evaluator and known-defect suite. |
+| `codex/exp-read-identity-gate-v06` | Typed expected/observed identity gate; mismatched bodies persist but cannot count as evidence. |
 
 ### Planning and outline evolution
 
@@ -99,6 +101,5 @@ activation trace, observed cost, result, and promotion/rejection decision.
 - `prod`: only independently justified promotions and documentation.
 - Tags: immutable releases/checkpoints, never moving aliases.
 
-The next proposed branch is `codex/exp-read-identity-gate-v06`, derived from `prod`, to test whether
-expected/observed document identity can fail closed without rejecting valid difficult reads.
-
+`codex/exp-read-identity-gate-v06`, derived from `prod`, passed its exact-defect and same-run replay
+diagnostics but remains unpromoted pending broader resolver-recovery and false-rejection tests.

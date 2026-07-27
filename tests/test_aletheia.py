@@ -1415,12 +1415,15 @@ class TestAletheiaResearch031(unittest.TestCase):
         run = ts.init_run("portable appliance long term review", budget=8, unit=4,
                           base=tempfile.mkdtemp())
         node = os.path.join(run, "tree", "root")
-        cands = [{"url": "https://site%d.example/x" % i, "title": "hands-on review %d" % i,
+        cands = [{"url": "https://site%d.example/x" % i,
+                  "title": "Hands-on durability review for portable appliance model %d" % i,
                   "index_of_origin": "stub", "_class": "evidence",
                   "snippet": "real user impressions of the device " * 20} for i in range(4)]
         inv.retrieve = lambda q, ch, lim, to: (list(cands), {"stub": {"n": len(cands)}})
         ar_rank.select_reads = lambda pool, k: []               # force the relevance gate to zero
-        inv._read_source = lambda u, to: ("full read text " * 300, "stub", u)
+        inv._read_source = lambda u, to: (
+            "Title: Hands-on durability review for portable appliance model %s\n%s" %
+            (u.split("site", 1)[1].split(".", 1)[0], "full read text " * 300), "stub", u)
         inv._cfg_classes = lambda: {"stub": {"class": "evidence", "index_group": "stub"}}
         res = inv.investigate(node, channels=["stub"], reads=3)
         self.assertGreater(res["reads_ok"], 0)                  # floor engaged, not a silent zero-read
@@ -1456,11 +1459,14 @@ class TestAletheiaResearch031(unittest.TestCase):
         run = ts.init_run("portable appliance long term review", budget=8, unit=4,
                           base=tempfile.mkdtemp())
         node = os.path.join(run, "tree", "root")
-        cands = [{"url": "https://site%d.example/x" % i, "title": "hands-on review %d" % i,
+        cands = [{"url": "https://site%d.example/x" % i,
+                  "title": "Hands-on durability review for portable appliance model %d" % i,
                   "index_of_origin": "stub", "_class": "evidence", "_index_group": "stub",
                   "snippet": "real user impressions of the device " * 20} for i in range(6)]
         inv.retrieve = lambda q, ch, lim, to: (list(cands), {"stub": {"n": len(cands)}})
-        inv._read_source = lambda u, to: ("full read text " * 300, "stub", u)
+        inv._read_source = lambda u, to: (
+            "Title: Hands-on durability review for portable appliance model %s\n%s" %
+            (u.split("site", 1)[1].split(".", 1)[0], "full read text " * 300), "stub", u)
         inv._cfg_classes = lambda: {"stub": {"class": "evidence", "index_group": "stub"}}
         return inv, node
 
