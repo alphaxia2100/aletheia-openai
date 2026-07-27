@@ -43,3 +43,15 @@ transport fallback for harnesses without shared artifact access.
 - Whether transport should become a first-class `shared|inline|archive` parameter in a later branch.
 - Whether the dossier should expose generated claim cards or only link to an independent claim ledger.
 
+## 2026-07-27 — first diagnostic passes; promotion withheld
+
+Static same-run checks passed on one narrow and one broad run: every artifact hash, branch synthesis,
+and local link resolved; the entry artifact shrank 96.97% and 98.45% without inlining a full read.
+On a seven-item downstream lookup diagnostic, the flat bundle scored 6/7 and the dossier tree 7/7.
+The difference was the exact rejected-path rationale: production omitted `decisions.jsonl`, while the
+dossier exposed it. No speed claim is made because elapsed/tool counts were not instrumented equally.
+
+The adversary branch simultaneously ranked output navigation behind six epistemic/runtime
+bottlenecks. Therefore the mechanism remains experimental even though its local invariant and lookup
+tests passed. The next separate branch should address semantic read identity; promotion of this branch
+awaits the multi-topic repeated protocol in `eval-protocol.md`.
