@@ -593,7 +593,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
     def test_tiers_scale_and_version(self):
         base = tempfile.mkdtemp()
         q, dp = self._init("quick", base), self._init("deep", base)
-        self.assertEqual(q["version"], "aletheia-research 0.5.0-openai.1")
+        self.assertEqual(q["version"], "aletheia-research 0.6.0-dossier.1")
         self.assertEqual(q["thoroughness"], "quick")
         self.assertLess(q["budget"], dp["budget"])            # deeper tier spends more
         self.assertLess(q["max_depth"], dp["max_depth"])      # and splits deeper
@@ -623,7 +623,7 @@ class TestAletheia03Thoroughness(unittest.TestCase):
         self.assertEqual(c["thoroughness"], "unlimited")
         self.assertGreaterEqual(c["budget"], 1_000_000)
         self.assertGreaterEqual(c["max_depth"], 99)
-        self.assertEqual(c["verbosity"], "user")              # default audience
+        self.assertEqual(c["verbosity"], "agent")             # agent-first artifact contract
 
     def test_same_topic_initializations_never_share_a_run_directory(self):
         base = tempfile.mkdtemp()
@@ -675,6 +675,88 @@ class TestAletheia03Thoroughness(unittest.TestCase):
             [sys.executable, rep, "bundle", "--run", run, "--output", output], text=True).strip()
         self.assertEqual(printed, os.path.abspath(output))
         self.assertIn("bundle output topic", read_text(output))
+
+    def test_agent_handoff_is_layered_and_lossless_by_reference(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "layered handoff topic", "--verbosity", "agent",
+             "--base", base], text=True).strip()
+        root = os.path.join(run, "tree", "root")
+        children = [["consensus", "What does the strongest evidence support?"],
+                    ["adversary", "What could overturn the leading answer?"]]
+        subprocess.check_call([sys.executable, self.T, "split", "--node", root,
+                               "--children", json.dumps(children)], stdout=subprocess.DEVNULL)
+        consensus = os.path.join(root, "children", "consensus")
+        adversary = os.path.join(root, "children", "adversary")
+        subprocess.check_call([sys.executable, self.T, "findings", "--node", consensus,
+                               "--text", "CONSENSUS_BRANCH_MARKER " * 20], stdout=subprocess.DEVNULL)
+        subprocess.check_call([sys.executable, self.T, "findings", "--node", adversary,
+                               "--text", "ADVERSARY_BRANCH_MARKER " * 20], stdout=subprocess.DEVNULL)
+        subprocess.check_call([sys.executable, self.T, "decide", "Reject the weak shortcut",
+                               "--node", adversary, "--actor", "worker", "--why",
+                               "DECISION_TRACE_MARKER: it loses the decisive caveat"],
+                              stdout=subprocess.DEVNULL)
+        subprocess.check_call([sys.executable, self.T, "findings", "--node", root,
+                               "--text", "ROOT_SYNTHESIS_MARKER " * 20], stdout=subprocess.DEVNULL)
+        with open(os.path.join(run, "brief.md"), "w", encoding="utf-8") as fh:
+            fh.write("# Answer\n\nBRIEF_FIRST_MARKER\n")
+        claim = {"claim": "The decisive claim is supported.", "url": "https://example.org/primary"}
+        with open(os.path.join(run, "claims.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(claim) + "\n")
+        with open(os.path.join(run, "verify.jsonl"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(dict(claim, verdict="supported", fact_check="EXACT_SPAN_MARKER")) + "\n")
+        notes = os.path.join(adversary, "notes", "full")
+        os.makedirs(notes)
+        raw = "RAW_PRIMARY_SHOULD_NOT_BE_INJECTED " * 1000
+        with open(os.path.join(notes, "primary.md"), "w", encoding="utf-8") as fh:
+            fh.write(raw)
+        # A duplicate body is still addressable twice, but the manifest exposes the alias group.
+        with open(os.path.join(notes, "primary-copy.md"), "w", encoding="utf-8") as fh:
+            fh.write(raw)
+
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        payload = json.loads(subprocess.check_output(
+            [sys.executable, rep, "handoff", "--run", run], text=True))
+        dossier = read_text(payload["dossier"])
+        manifest = read_json(payload["manifest"])
+
+        self.assertLess(dossier.index("BRIEF_FIRST_MARKER"), dossier.index("CONSENSUS_BRANCH_MARKER"))
+        self.assertIn("ADVERSARY_BRANCH_MARKER", dossier)       # every branch synthesis is embedded
+        self.assertIn("DECISION_TRACE_MARKER", dossier)         # material trace is previewed
+        self.assertIn("EXACT_SPAN_MARKER", dossier)             # final claim verdict is navigable
+        self.assertNotIn("RAW_PRIMARY_SHOULD_NOT_BE_INJECTED", dossier)  # L3 remains on demand
+        self.assertEqual(manifest["schema"], "aletheia.agent-handoff.v1")
+        reads = [a for a in manifest["artifacts"] if a["role"] == "primary_read"]
+        self.assertEqual(len(reads), 2)
+        self.assertTrue(all(len(a["sha256"]) == 64 for a in reads))
+        self.assertTrue(any(set(group["paths"]) == {reads[0]["path"], reads[1]["path"]}
+                            for group in manifest["content_aliases"]))
+        self.assertEqual(payload["raw_read_artifacts"], 2)
+        self.assertGreater(payload["raw_read_bytes"], payload["dossier_bytes"])
+        checker = os.path.join(ROOT, "scripts", "eval", "handoff_check.py")
+        checked = json.loads(subprocess.check_output(
+            [sys.executable, checker, "--run", run, "--dossier", payload["dossier"],
+             "--manifest", payload["manifest"]], text=True))
+        self.assertTrue(checked["static_pass"])
+        self.assertEqual(checked["candidate"]["broken_local_links"], [])
+
+    def test_full_inline_bundle_starts_with_brief_and_includes_epistemic_trace(self):
+        base = tempfile.mkdtemp()
+        run = subprocess.check_output(
+            [sys.executable, self.T, "init", "inline fallback", "--verbosity", "agent", "--base", base],
+            text=True).strip()
+        root = os.path.join(run, "tree", "root")
+        subprocess.check_call([sys.executable, self.T, "findings", "--node", root,
+                               "--text", "LATE_FINDING_MARKER " * 10], stdout=subprocess.DEVNULL)
+        subprocess.check_call([sys.executable, self.T, "decide", "TRACE_RECORD_MARKER",
+                               "--node", root, "--why", "alternative rejected"],
+                              stdout=subprocess.DEVNULL)
+        with open(os.path.join(run, "brief.md"), "w", encoding="utf-8") as fh:
+            fh.write("EARLY_BRIEF_MARKER\n")
+        rep = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "report.py")
+        bundle = subprocess.check_output([sys.executable, rep, "bundle", "--run", run], text=True)
+        self.assertLess(bundle.index("EARLY_BRIEF_MARKER"), bundle.index("LATE_FINDING_MARKER"))
+        self.assertIn("TRACE_RECORD_MARKER", bundle)
 
     def test_report_score_ships_with_skill(self):
         # 0.4.1 parity: the headline scorer is INSIDE the skill (report.py score) — no repo/eval dep.

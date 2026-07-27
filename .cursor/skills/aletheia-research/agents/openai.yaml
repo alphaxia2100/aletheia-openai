@@ -1,4 +1,4 @@
 interface:
   display_name: "Aletheia Research"
-  short_description: "Deep, adversarial, source-grounded research"
-  default_prompt: "Use $aletheia-research to survey this topic deeply, preserve disagreement, and verify every load-bearing claim."
+  short_description: "Deep research with a navigable evidence dossier"
+  default_prompt: "Use $aletheia-research to survey this topic deeply, preserve disagreement, verify every load-bearing claim, and return the agent dossier plus artifact manifest."

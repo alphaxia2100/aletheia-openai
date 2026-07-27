@@ -1,7 +1,9 @@
 # Changelog
 
-Current skill:
-- **aletheia-research 0.5.0-openai.1** — the OpenAI/Codex specialization: topic-relative but bounded
+Branch skill:
+- **aletheia-research 0.6.0-dossier.1 (experimental)** — an agent-first, lossless-by-reference field
+  dossier over the unchanged 0.5 research mechanics. Production remains 0.5.0-openai.1 on `prod`.
+- **aletheia-research 0.5.0-openai.1 (production)** — the OpenAI/Codex specialization: topic-relative but bounded
   source triage, final-answer claim-scope verification, executable-runtime fingerprints, complete read
   accounting, and Codex-only installation. The separate Claude line is left untouched.
 
@@ -26,6 +28,21 @@ Kept runnable ONLY as eval baselines (`scripts/eval/eval_compare.py`):
 Versioning is [SemVer](https://semver.org/); each notable change bumps minor/patch and is tagged `<skill>-vX.Y.Z`.
 
 ---
+
+## aletheia-research 0.6.0-dossier.1 — 2026-07-27 (experimental agent handoff)
+
+- Adds `report.py handoff`, which atomically persists a shallow `dossier.md` and a machine-readable,
+  content-addressed `artifact-manifest.json`.
+- Places the verified brief first, embeds every branch synthesis, previews material decisions and
+  rejected paths, indexes claim verdicts, and links to evidence/full reads without injecting them.
+- Makes the agent-facing artifact contract the default; direct-human summary mode remains explicit.
+- Retains `bundle --reads` as the fully-inline fallback and makes it genuinely fuller by including
+  node specs, status, proposals, decisions, questions, and answers. The brief now appears first.
+- Isolates the reporting mechanism from retrieval, planning, and verification changes so A/B results
+  can be attributed and the branch can be rolled back cleanly.
+
+Promotion is not implied by tests or smaller context size. See `docs/experiments/field-dossier-v06/`
+for the frozen hypothesis, provenance, A/B protocol, and results.
 
 ## aletheia-research 0.5.0-openai.1 — 2026-07-10 (OpenAI/Codex specialization)
 

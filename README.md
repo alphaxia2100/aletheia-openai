@@ -37,7 +37,9 @@ flowchart TD
 
 ## Skills
 
-> **Current OpenAI/Codex skill: `aletheia-research` 0.5.0-openai.1.** The flagship is the deep, multi-perspective tree
+> **Production OpenAI/Codex skill: `aletheia-research` 0.5.0-openai.1.** This branch is the isolated
+> **0.6.0-dossier.1 experimental candidate**: the same research mechanics with an agent-first,
+> progressive-disclosure field dossier and content-addressed artifact manifest. The flagship is the deep, multi-perspective tree
 > surveyor — built off **deep-aletheia 0.2** (which won a blind LLM-judge on completeness, source
 > variety, and grounding), keeping its good parts and adding a decisive-source hunt, chase-the-primary
 > discipline, wider source variety, and a thoroughness dial. See `docs/aletheia-0.3-design.md` and the
@@ -45,7 +47,8 @@ flowchart TD
 
 | Skill | Role |
 |-------|------|
-| **`aletheia-research` 0.5.0-openai.1** | **Current OpenAI/Codex line.** Topic-relative capped source triage, final-brief claim-scope verification, and reproducible runtime traces; defaults to unbounded convergence. |
+| **`aletheia-research` 0.6.0-dossier.1** | **Experimental branch.** Agent-first `dossier.md` + `artifact-manifest.json`; raw inline bundle becomes a transport fallback. Research mechanics remain the production baseline for an isolated A/B. |
+| `aletheia-research` 0.5.0-openai.1 | **Production (`prod`; immutable production tag).** Topic-relative capped source triage, final-brief claim-scope verification, and reproducible runtime traces; defaults to unbounded convergence. |
 | `deep-aletheia` 0.2 | *Frozen — direct ancestor of aletheia-research 0.3; eval baseline.* |
 | `surveyor` 0.1 | *Retired 2026-07-08 — eval baseline (single-agent).* |
 | `aletheia` v1.0 | *Retired — original single-agent loop; superseded by `aletheia-research`.* |

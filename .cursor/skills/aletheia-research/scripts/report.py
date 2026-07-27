@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Aletheia Research — output assembler (the VERBOSITY dial).
+"""Aletheia Research — output assembler and agent handoff builder.
 
-Two audiences need very different outputs (0.4.0):
-  - `bundle` (verbosity=agent): the FULL research pack — every node's findings.md and evidence.md
-    verbatim, the source index, and with --reads the actual primaries read in full (notes/*.md). A
-    calling AGENT wants everything, not a summary; nuance lives in the raw files. This is what the
-    skill hands back when another session invoked it.
-  - the user-facing MULTI-PAGE summary is authored by the orchestrator (brief.md); `outline` here just
-    prints the tree + where every artifact is, so that synthesis is grounded and complete.
+The default agent contract is a lossless-by-reference field dossier: a shallow map embeds the final
+answer and every branch synthesis, then links to claims, evidence, decisions, and full reads. Raw
+artifacts stay available without being injected into the caller's context. `bundle` remains the
+fully-inline transport fallback for callers that cannot share a filesystem.
 
 Usage:
+  report.py handoff --run RUN_DIR [--output FILE] [--manifest FILE]
   report.py bundle  --run RUN_DIR [--reads] [--max-chars N] [--output FILE]
   report.py outline --run RUN_DIR
   report.py score   --run RUN_DIR [--output FILE]
@@ -23,7 +21,10 @@ import json
 import os
 import re
 import sys
-from typing import Any, Dict, List
+import tempfile
+from collections import Counter
+from typing import Any, Dict, List, Optional, Set
+from urllib.parse import quote
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 # sibling skills resolve via realpath (works through ~/.cursor, ~/.claude, or ~/.codex symlinks),
@@ -37,7 +38,6 @@ try:
     import dedupe as _dedupe  # noqa: E402
 except Exception:  # noqa: BLE001 — score still runs (independence degrades to identity voices)
     _pg = _dedupe = None
-from collections import Counter  # noqa: E402
 
 
 def _read(p: str, default: str = "") -> str:
@@ -80,7 +80,10 @@ def _jsonl_dicts(path: str) -> List[Dict[str, Any]]:
 def _file_sha256(path: str) -> str:
     try:
         with open(path, "rb") as fh:
-            return hashlib.sha256(fh.read()).hexdigest()
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                digest.update(chunk)
+            return digest.hexdigest()
     except OSError:
         return ""
 
@@ -300,12 +303,451 @@ def _note_files(notes_dir: str):
     return sorted(out)
 
 
+def _atomic_write(path: str, text: str) -> None:
+    """Persist a handoff artifact without exposing a half-written file to another agent."""
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".aletheia-report-", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def _portable_rel(path: str, root: str) -> str:
+    return os.path.relpath(path, root).replace(os.sep, "/")
+
+
+def _md_link(label: str, path: str, output_dir: str) -> str:
+    rel = _portable_rel(path, output_dir)
+    return "[%s](%s)" % (label, quote(rel, safe="/._-~"))
+
+
+def _md_cell(value: Any, limit: int = 260) -> str:
+    text = " ".join(str(value or "").split()).replace("|", "\\|")
+    return text if len(text) <= limit else text[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _preview(markdown: str, limit: int = 420) -> str:
+    """Return the first substantive prose paragraph, not a heading or metadata stub."""
+    for block in re.split(r"\n\s*\n", markdown or ""):
+        lines = []
+        in_fence = False
+        for raw in block.splitlines():
+            stripped = raw.strip()
+            if stripped.startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence or not stripped or stripped.startswith(("#", "<!--")):
+                continue
+            lines.append(re.sub(r"^[>*+-]\s*", "", stripped))
+        text = " ".join(lines).strip()
+        if len(text) >= 40:
+            return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+    return ""
+
+
+def _artifact_role(rel: str) -> str:
+    base = os.path.basename(rel)
+    if "/notes/" in "/" + rel or rel.startswith("notes/"):
+        return "primary_read"
+    roles = {
+        "brief.md": "final_synthesis",
+        "portfolio.md": "framing_portfolio",
+        "run.json": "run_identity",
+        "findings.md": "branch_synthesis",
+        "evidence.md": "evidence_pack",
+        "sources.jsonl": "source_index",
+        "claims.jsonl": "claim_set",
+        "verify.jsonl": "claim_verdicts",
+        "claim_audit.json": "claim_scope_audit",
+        "score.json": "run_score",
+        "decisions.jsonl": "decision_trace",
+        "questions.jsonl": "clarification_questions",
+        "answers.jsonl": "clarification_answers",
+        "telemetry.jsonl": "runtime_telemetry",
+        "status.json": "node_status",
+        "spec.md": "node_specification",
+        "proposal.json": "decomposition_proposal",
+        "bundle.md": "inline_bundle",
+        "channel-health.json": "channel_health",
+    }
+    return roles.get(base, "artifact")
+
+
+def _artifact_files(run: str, exclude: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
+    root = os.path.abspath(run)
+    excluded = {os.path.abspath(p) for p in (exclude or set())}
+    artifacts: List[Dict[str, Any]] = []
+    for directory, subdirs, files in os.walk(root):
+        subdirs[:] = sorted(d for d in subdirs if d != "__pycache__")
+        for filename in sorted(files):
+            path = os.path.abspath(os.path.join(directory, filename))
+            if path in excluded or os.path.islink(path) or not os.path.isfile(path):
+                continue
+            try:
+                size = os.path.getsize(path)
+            except OSError:
+                continue
+            rel = _portable_rel(path, root)
+            artifacts.append({
+                "path": rel,
+                "role": _artifact_role(rel),
+                "bytes": size,
+                "sha256": _file_sha256(path),
+            })
+    return artifacts
+
+
+def _node_manifest(run: str, node: str, artifact_by_path: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    status = treestate._read_json(os.path.join(node, "status.json"), {}) or {}
+    node_rel = _portable_rel(node, run)
+    prefix = node_rel.rstrip("/") + "/"
+    node_artifacts = [row for path, row in artifact_by_path.items() if path.startswith(prefix)]
+    direct = [row for row in node_artifacts
+              if not row["path"][len(prefix):].startswith("children/")]
+    sources = _jsonl_dicts(os.path.join(node, "sources.jsonl"))
+    notes = [row for row in direct if row["role"] == "primary_read"]
+    decisions = _jsonl_dicts(os.path.join(node, "decisions.jsonl"))
+    questions = _jsonl_dicts(os.path.join(node, "questions.jsonl"))
+    answers = _jsonl_dicts(os.path.join(node, "answers.jsonl"))
+    files: Dict[str, str] = {}
+    for row in direct:
+        if row["bytes"] or row["role"] in {"node_status", "node_specification"}:
+            files.setdefault(row["role"], row["path"])
+    return {
+        "qid": status.get("qid") or os.path.basename(node),
+        "path": node_rel,
+        "parent": status.get("parent"),
+        "depth": int(status.get("depth", 0) or 0),
+        "state": status.get("state"),
+        "question": status.get("question", ""),
+        "preview": _preview(_read(os.path.join(node, "findings.md"))),
+        "budget": status.get("budget"),
+        "counts": {
+            "sources": len(sources),
+            "read_sources": sum(1 for row in sources if row.get("_read_ok") is True),
+            "failed_reads": sum(1 for row in sources if row.get("_read_ok") is False),
+            "truncated_reads": sum(1 for row in sources if row.get("_truncated") is True),
+            "read_artifacts": len(notes),
+            "unique_read_bodies": len({row["sha256"] for row in notes if row.get("sha256")}),
+            "decisions": len(decisions),
+            "questions": len(questions),
+            "answers": len(answers),
+        },
+        "files": files,
+    }
+
+
+def artifact_manifest(run: str, exclude: Optional[Set[str]] = None) -> Dict[str, Any]:
+    """Build a machine-readable, content-addressed map of the complete durable run."""
+    run = os.path.abspath(run)
+    artifacts = _artifact_files(run, exclude)
+    by_path = {row["path"]: row for row in artifacts}
+    nodes = [_node_manifest(run, node, by_path) for node in _nodes_depth_first(run)]
+    by_hash: Dict[str, List[str]] = {}
+    for row in artifacts:
+        if row["bytes"] and row["sha256"]:
+            by_hash.setdefault(row["sha256"], []).append(row["path"])
+    aliases = [{"sha256": digest, "paths": paths, "bytes_each": by_path[paths[0]]["bytes"]}
+               for digest, paths in sorted(by_hash.items()) if len(paths) > 1]
+    role_counts = Counter(row["role"] for row in artifacts)
+    reads = [row for row in artifacts if row["role"] == "primary_read"]
+    unique_read_bytes = sum(next(row["bytes"] for row in reads if row["sha256"] == digest)
+                            for digest in sorted({row["sha256"] for row in reads if row["sha256"]}))
+    cfg = _cfg(run)
+    entrypoints = {name: name for name in ("brief.md", "portfolio.md", "claims.jsonl",
+                                            "verify.jsonl", "claim_audit.json", "score.json")
+                   if os.path.isfile(os.path.join(run, name))}
+    return {
+        "schema": "aletheia.agent-handoff.v1",
+        "generated_at": treestate._now(),
+        "topic": cfg.get("topic"),
+        "version": cfg.get("version"),
+        "thoroughness": cfg.get("thoroughness"),
+        "implementation": cfg.get("implementation") or {},
+        "entrypoints": entrypoints,
+        "tree": nodes,
+        "artifacts": artifacts,
+        "content_aliases": aliases,
+        "summary": {
+            "nodes": len(nodes),
+            "artifacts": len(artifacts),
+            "artifact_roles": dict(sorted(role_counts.items())),
+            "raw_read_artifacts": len(reads),
+            "raw_read_bytes": sum(row["bytes"] for row in reads),
+            "unique_raw_read_bytes": unique_read_bytes,
+            "duplicate_content_groups": len(aliases),
+        },
+    }
+
+
+def _artifact_link(label: str, rel: str, run: str, output_dir: str) -> str:
+    return _md_link(label, os.path.join(run, rel), output_dir)
+
+
+def _node_links(node: Dict[str, Any], run: str, output_dir: str, compact: bool = False) -> str:
+    labels = {
+        "branch_synthesis": "findings",
+        "evidence_pack": "evidence",
+        "source_index": "sources",
+        "decision_trace": "decisions",
+        "clarification_questions": "questions",
+        "clarification_answers": "answers",
+        "runtime_telemetry": "telemetry",
+        "node_status": "status",
+        "node_specification": "spec",
+    }
+    wanted = ("branch_synthesis", "evidence_pack", "decision_trace", "node_status") if compact \
+        else tuple(labels)
+    links = [_artifact_link(labels[role], node["files"][role], run, output_dir)
+             for role in wanted if role in node.get("files", {})]
+    return " · ".join(links) if links else "_(no node artifacts)_"
+
+
+def _key_decisions(node_dir: str, limit: int = 4) -> List[Dict[str, Any]]:
+    rows = _jsonl_dicts(os.path.join(node_dir, "decisions.jsonl"))
+    if not rows:
+        return []
+    terms = re.compile(r"\b(stop|saturat|reject|split|merge|override|reopen|defer|downgrade|adversar)", re.I)
+    material = [row for row in rows if terms.search(str(row.get("decision", "")) + " " +
+                                                    str(row.get("why", "")))
+                or str(row.get("actor", "")) not in {"investigate", "agent-triage"}]
+    chosen: List[Dict[str, Any]] = []
+    for row in material:
+        if row not in chosen:
+            chosen.append(row)
+    if len(chosen) > limit:
+        chosen = chosen[:1] + chosen[-(limit - 1):]
+    return chosen
+
+
+def _claim_index(run: str) -> List[Dict[str, Any]]:
+    claims = _jsonl_dicts(os.path.join(run, "claims.jsonl"))
+    verdicts = _jsonl_dicts(os.path.join(run, "verify.jsonl"))
+    unused = list(verdicts)
+    out = []
+    for i, claim in enumerate(claims, 1):
+        text = str(claim.get("claim") or "").strip()
+        urls = set(_claim_urls(claim))
+        pos = next((j for j, row in enumerate(unused)
+                    if str(row.get("claim") or "").strip() == text
+                    and str(row.get("url") or "").strip() in urls), None)
+        verdict = unused.pop(pos) if pos is not None else {}
+        out.append({"id": "C%03d" % i, "claim": text, "urls": sorted(urls),
+                    "verdict": verdict.get("verdict", "missing"),
+                    "fact_check": verdict.get("fact_check") or verdict.get("notes") or ""})
+    return out
+
+
+def dossier(run: str, manifest: Dict[str, Any], output_path: str,
+            manifest_path: str) -> str:
+    """Render the shallow, navigable agent entry point. Raw evidence is linked, never inlined."""
+    run = os.path.abspath(run)
+    output_dir = os.path.dirname(os.path.abspath(output_path))
+    cfg = _cfg(run)
+    brief = _read(os.path.join(run, "brief.md"))
+    portfolio = _read(os.path.join(run, "portfolio.md"))
+    root_findings = _read(os.path.join(run, "tree", "root", "findings.md"))
+    nodes = manifest.get("tree", [])
+    summary = manifest.get("summary", {})
+    manifest_sha = _file_sha256(manifest_path)
+    impl = cfg.get("implementation") or {}
+    lines: List[str] = [
+        "# Aletheia field dossier — agent handoff",
+        "",
+        "**Topic:** %s" % cfg.get("topic", ""),
+        "**Thoroughness:** %s · **Version:** %s" % (cfg.get("thoroughness"), cfg.get("version")),
+    ]
+    if impl:
+        lines.append("**Implementation:** commit=`%s` · dirty=`%s` · runtime=`%s`" % (
+            impl.get("git_commit"), impl.get("git_dirty"), impl.get("runtime_sha256")))
+    lines.append("**Manifest:** %s · `sha256:%s`" %
+                 (_md_link("artifact-manifest.json", manifest_path, output_dir), manifest_sha))
+    score_path = os.path.join(run, "score.json")
+    if os.path.isfile(score_path):
+        lines.append("**Score:** " + _md_link("score.json", score_path, output_dir))
+    lines += [
+        "",
+        "> Start at L0. Descend only when the downstream task needs a branch, claim, decision, or",
+        "> primary. This dossier is lossless **by reference**: it embeds every branch synthesis and",
+        "> content-addresses every durable artifact, but it does not inject full reads or transcripts.",
+        "",
+        "## Navigation contract",
+        "",
+        "- **L0 — answer:** the verified `brief.md`, immediately below.",
+        "- **L1 — survey map and branch syntheses:** what each branch contributes, disputes, and leaves open.",
+        "- **L2 — claims, evidence, and decisions:** exact verdicts and links to full node traces.",
+        "- **L3 — raw artifacts:** evidence packs, source indexes, full reads, telemetry, and execution state.",
+        "- Follow links downward or sideways; do not treat worker agreement as independent evidence.",
+        "",
+        "## L0 — synthesized answer",
+        "",
+    ]
+    if brief.strip():
+        lines += [brief.rstrip(), "", "Source artifact: " +
+                  _md_link("brief.md", os.path.join(run, "brief.md"), output_dir), ""]
+    elif root_findings.strip():
+        lines += ["> **Warning:** `brief.md` is missing; showing root findings as an incomplete fallback.",
+                  "", root_findings.rstrip(), ""]
+    else:
+        lines += ["> **Warning:** neither `brief.md` nor root findings exists. This handoff is incomplete.", ""]
+
+    lines += ["## L1 — survey map", "",
+              "| Branch | State | Question | Branch signal | Evidence footprint | Open |",
+              "|---|---|---|---|---:|---|"]
+    for node in nodes:
+        counts = node.get("counts", {})
+        footprint = "%s reads / %s sources / %s decisions" % (
+            counts.get("read_artifacts", 0), counts.get("sources", 0), counts.get("decisions", 0))
+        lines.append("| `%s` | %s | %s | %s | %s | %s |" % (
+            _md_cell(node.get("qid"), 60), _md_cell(node.get("state"), 40),
+            _md_cell(node.get("question")), _md_cell(node.get("preview")), footprint,
+            _node_links(node, run, output_dir, compact=True)))
+    lines.append("")
+    if portfolio.strip():
+        lines += ["### Competing framing portfolio", "", portfolio.rstrip(), "",
+                  "Source artifact: " + _md_link("portfolio.md", os.path.join(run, "portfolio.md"),
+                                                 output_dir), ""]
+
+    lines += ["## L1 — self-contained branch syntheses", "",
+              "These are the intermediate research products. Open L2/L3 links only when a claim needs",
+              "audit, a disagreement needs resolution, or a new synthesis needs more context.", ""]
+    brief_norm = brief.strip()
+    for node in nodes:
+        node_dir = os.path.join(run, node["path"])
+        findings = _read(os.path.join(node_dir, "findings.md"))
+        lines += ["### `%s` — %s" % (node.get("qid"), node.get("question", "")), "",
+                  _node_links(node, run, output_dir), ""]
+        if not findings.strip():
+            lines += ["> **Missing branch synthesis.** Inspect evidence/status before relying on this branch.", ""]
+        elif brief_norm and findings.strip() == brief_norm:
+            lines += ["_(This root synthesis is identical to L0; it is linked rather than repeated.)_", ""]
+        else:
+            lines += [findings.rstrip(), ""]
+
+    claims = _claim_index(run)
+    lines += ["## L2 — verified claim index", ""]
+    if not claims:
+        lines += ["> No structured claim set is available. Treat factual assertions as unaudited.", ""]
+    else:
+        for claim in claims:
+            lines += ["### %s — `%s`" % (claim["id"], claim["verdict"]), "", claim["claim"] or "_(empty claim)_"]
+            if claim["urls"]:
+                lines.append("- Sources: " + ", ".join("[%d](%s)" % (i + 1, url)
+                                                       for i, url in enumerate(claim["urls"])))
+            if claim["fact_check"]:
+                lines.append("- Fact-check: %s" % claim["fact_check"])
+            lines.append("")
+        lines += ["Structured artifacts: " + " · ".join(
+            link for link in [
+                _md_link("claims.jsonl", os.path.join(run, "claims.jsonl"), output_dir)
+                if os.path.isfile(os.path.join(run, "claims.jsonl")) else "",
+                _md_link("verify.jsonl", os.path.join(run, "verify.jsonl"), output_dir)
+                if os.path.isfile(os.path.join(run, "verify.jsonl")) else "",
+                _md_link("claim_audit.json", os.path.join(run, "claim_audit.json"), output_dir)
+                if os.path.isfile(os.path.join(run, "claim_audit.json")) else "",
+            ] if link), ""]
+
+    lines += ["## L2 — key epistemic decisions and rejected paths", "",
+              "Only material decisions are previewed here. Each node link exposes the complete trace.", ""]
+    any_decision = False
+    for node in nodes:
+        selected = _key_decisions(os.path.join(run, node["path"]))
+        if not selected:
+            continue
+        any_decision = True
+        lines += ["### `%s`" % node.get("qid"), ""]
+        for row in selected:
+            lines.append("- **%s:** %s — %s" % (row.get("actor", "?"), row.get("decision", ""),
+                                                row.get("why", "")))
+        decision_path = node.get("files", {}).get("decision_trace")
+        if decision_path:
+            lines += ["", "Full trace: " + _artifact_link("decisions.jsonl", decision_path, run,
+                                                            output_dir), ""]
+    if not any_decision:
+        lines += ["> No material decision records were found. This is a provenance gap.", ""]
+
+    failed = sum(int(n.get("counts", {}).get("failed_reads", 0) or 0) for n in nodes)
+    truncated = sum(int(n.get("counts", {}).get("truncated_reads", 0) or 0) for n in nodes)
+    incomplete = [n for n in nodes if n.get("state") in {"pending", "active", "needs_answer",
+                                                          "proposes_split"}]
+    non_supported = [c for c in claims if c["verdict"] != "supported"]
+    lines += ["## Warnings and unresolved state", ""]
+    warnings = []
+    if incomplete:
+        warnings.append("%d node(s) are still nonterminal: %s" %
+                        (len(incomplete), ", ".join(str(n.get("qid")) for n in incomplete)))
+    if failed:
+        warnings.append("%d source record(s) carry an explicit failed-read state" % failed)
+    if truncated:
+        warnings.append("%d source record(s) are marked truncated" % truncated)
+    if non_supported:
+        warnings.append("%d claim verdict(s) are not `supported`" % len(non_supported))
+    if summary.get("duplicate_content_groups"):
+        warnings.append("%d duplicate-content group(s) are identified in the manifest" %
+                        summary.get("duplicate_content_groups"))
+    if not warnings:
+        lines += ["- No structural warning was detected. This is not a semantic truth guarantee.", ""]
+    else:
+        lines += ["- " + item for item in warnings] + [""]
+
+    lines += ["## L3 — complete artifact inventory", "",
+              "- Nodes: **%s**" % summary.get("nodes", 0),
+              "- Addressed artifacts: **%s**" % summary.get("artifacts", 0),
+              "- Full-read artifacts: **%s** (%s bytes; %s unique-content bytes)" % (
+                  summary.get("raw_read_artifacts", 0), summary.get("raw_read_bytes", 0),
+                  summary.get("unique_raw_read_bytes", 0)),
+              "- Duplicate-content groups: **%s**" % summary.get("duplicate_content_groups", 0),
+              "- Machine map: " + _md_link("artifact-manifest.json", manifest_path, output_dir),
+              "",
+              "The manifest records every artifact path, role, byte count, and SHA-256 digest, plus",
+              "per-node counts and content aliases. Raw reads and execution traces remain outside this",
+              "default context but are reachable without relying on worker transcripts.", ""]
+    bundle_path = os.path.join(run, "bundle.md")
+    if os.path.isfile(bundle_path):
+        lines += ["Inline transport fallback: " + _md_link("bundle.md", bundle_path, output_dir), ""]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def write_handoff(run: str, output: str = "", manifest_path: str = "") -> Dict[str, Any]:
+    """Persist the manifest first, then the dossier; return hashes for a durable handoff."""
+    run = os.path.abspath(run)
+    output = os.path.abspath(output or os.path.join(run, "dossier.md"))
+    manifest_path = os.path.abspath(manifest_path or os.path.join(run, "artifact-manifest.json"))
+    excluded = {output, manifest_path}
+    manifest = artifact_manifest(run, excluded)
+    _atomic_write(manifest_path, json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
+    text = dossier(run, manifest, output, manifest_path)
+    _atomic_write(output, text)
+    return {
+        "dossier": output,
+        "manifest": manifest_path,
+        "dossier_sha256": _file_sha256(output),
+        "manifest_sha256": _file_sha256(manifest_path),
+        "dossier_bytes": os.path.getsize(output),
+        "referenced_artifacts": manifest["summary"]["artifacts"],
+        "raw_read_artifacts": manifest["summary"]["raw_read_artifacts"],
+        "raw_read_bytes": manifest["summary"]["raw_read_bytes"],
+    }
+
+
 def bundle(run: str, reads: bool = False, max_chars: int = 0) -> str:
-    """The FULL pack for an agent caller — every artifact, verbatim. `reads` also inlines the primaries
-    read in full (notes/*.md). `max_chars` optionally truncates each read (0 = no truncation)."""
+    """Fully-inline transport fallback for callers without shared artifact access.
+
+    Unlike the old pseudo-complete bundle, this includes node decisions, questions, answers, specs,
+    status, and proposals. `reads` inlines primaries; `max_chars` can cap each read.
+    """
     cfg = _cfg(run)
     L: List[str] = []
-    L.append("# Aletheia Research — FULL BUNDLE (agent verbosity)")
+    L.append("# Aletheia Research — FULL BUNDLE (inline transport fallback)")
     L.append("")
     L.append("**Topic:** %s" % cfg.get("topic", ""))
     L.append("**Thoroughness:** %s · **Verbosity:** %s · **Version:** %s"
@@ -315,8 +757,14 @@ def bundle(run: str, reads: bool = False, max_chars: int = 0) -> str:
         L.append("**Implementation:** commit=%s · dirty=%s · runtime_sha256=%s"
                  % (impl.get("git_commit"), impl.get("git_dirty"), impl.get("runtime_sha256")))
     L.append("")
-    L.append("This is the COMPLETE research artifact set — not a summary. Every node's findings and "
-             "evidence are included verbatim so no nuance is lost. Read it in full; cite the primaries.")
+    L.append("This is the fully-inline fallback for a caller that cannot open the run directory. "
+             "Prefer `report.py handoff` when artifacts are shared: it preserves the same record by "
+             "reference without forcing raw reads into context.")
+    L.append("")
+    brief = _read(os.path.join(run, "brief.md"))
+    if brief.strip():
+        L.append("## START HERE — brief.md (the synthesized answer)")
+        L.append(brief)
     L.append("")
     L.append("## Portfolio (competing framings)")
     L.append(_read(os.path.join(run, "portfolio.md"), "_(none)_"))
@@ -342,6 +790,12 @@ def bundle(run: str, reads: bool = False, max_chars: int = 0) -> str:
         if findings.strip():
             L.append("### findings.md")
             L.append(findings)
+        for artifact in ("spec.md", "status.json", "proposal.json", "decisions.jsonl",
+                         "questions.jsonl", "answers.jsonl"):
+            content = _read(os.path.join(node, artifact))
+            if content.strip():
+                L.append("### %s" % artifact)
+                L.append(content)
         evidence = _read(os.path.join(node, "evidence.md"))
         if evidence.strip():
             L.append("### evidence.md")
@@ -370,11 +824,6 @@ def bundle(run: str, reads: bool = False, max_chars: int = 0) -> str:
                     body = body[:max_chars] + "\n…[truncated]"
                 L.append("#### read primary — notes/%s" % rel)
                 L.append(body)
-    brief = _read(os.path.join(run, "brief.md"))
-    if brief.strip():
-        L.append("\n" + "=" * 90)
-        L.append("## brief.md (the synthesized answer)")
-        L.append(brief)
     return "\n".join(L) + "\n"
 
 
@@ -515,8 +964,13 @@ def write_brief(run: str, text: str) -> str:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Aletheia Research output assembler (verbosity dial).")
+    ap = argparse.ArgumentParser(description="Aletheia Research output assembler and agent handoff builder.")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    h = sub.add_parser("handoff"); h.add_argument("--run", required=True)
+    h.add_argument("--output", default="",
+                   help="dossier path (default: RUN/dossier.md)")
+    h.add_argument("--manifest", default="",
+                   help="artifact map path (default: RUN/artifact-manifest.json)")
     b = sub.add_parser("bundle"); b.add_argument("--run", required=True)
     b.add_argument("--reads", action="store_true", help="inline the primaries read in full (notes/*.md)")
     b.add_argument("--max-chars", type=int, default=0, help="truncate each read to N chars (0 = no cap)")
@@ -532,7 +986,10 @@ def main(argv=None) -> int:
     a.add_argument("--added-claims", type=int, default=0)
     a.add_argument("--notes", default="")
     args = ap.parse_args(argv)
-    if args.cmd == "bundle":
+    if args.cmd == "handoff":
+        payload = write_handoff(args.run, args.output, args.manifest)
+        print(json.dumps(payload, indent=2))
+    elif args.cmd == "bundle":
         text = bundle(args.run, args.reads, args.max_chars)
         if args.output:
             with open(args.output, "w", encoding="utf-8") as fh:

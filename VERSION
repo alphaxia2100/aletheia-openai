@@ -1,6 +1,6 @@
-aletheia-research: 0.5.0-openai.1 (OpenAI/Codex specialization; mechanism-tested from 0.4.3)
+aletheia-research: 0.6.0-dossier.1 (EXPERIMENTAL agent-first field-dossier branch; production is 0.5.0-openai.1)
 deep-aletheia: 0.2.0 (frozen — direct ancestor of aletheia-research 0.3; eval baseline)
 surveyor: 0.1.0 (retired 2026-07-08 — eval baseline; superseded by aletheia-research 0.3)
 aletheia: 1.0.0 (retired — original single-agent loop; the deep-tree flagship is now `aletheia-research`)
-# This branch's flagship is `aletheia-research` 0.5.0-openai.1. The separate Claude worktree remains
-# independently versioned; Codex-only installation does not mutate Cursor or Claude skill roots.
+# Production remains tagged `aletheia-prod-v0.5.0-openai.1`; this branch isolates the progressive-
+# disclosure handoff mechanism. The separate Claude worktree remains independently versioned.

@@ -24,7 +24,7 @@ Layout:
 
 CLI (used by the orchestrator skill + subagents):
   treestate.py init "<topic>" [--slug s] [--thoroughness quick|standard|deep|exhaustive|unlimited|max]
-               [--verbosity user|agent] [--budget N (explicit = custom bounded run)]
+               [--verbosity agent|user] [--budget N (explicit = custom bounded run)]
                # default (no tier, no budget) = `unlimited`: unbounded depth/budget, stop on saturation
   treestate.py split  --node DIR --children '[["q1","question one"],["q2","..."]]'
   treestate.py decide --node DIR --actor NAME --why "..." "<decision>"
@@ -200,7 +200,7 @@ THOROUGHNESS = {
 def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: float = 4.0,
              max_depth: int = 3, max_children: int = 5, max_nodes: int = 40,
              base: str = "runs/aletheia-research", thoroughness: str = "",
-             verbosity: str = "user") -> str:
+             verbosity: str = "agent") -> str:
     if not str(topic).strip():
         raise ValueError("topic must not be empty")
     if thoroughness and thoroughness not in THOROUGHNESS:
@@ -221,7 +221,7 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
         t = THOROUGHNESS[tier]
         budget, unit = t["budget"], t["unit"]
         max_depth, max_children, max_nodes = t["max_depth"], t["max_children"], t["max_nodes"]
-    verbosity = verbosity if verbosity in ("user", "agent") else "user"
+    verbosity = verbosity if verbosity in ("user", "agent") else "agent"
     ts = dt.datetime.now().strftime("%Y-%m-%d-%H%M%S")
     stem = os.path.join(base, "%s-%s" % (ts, _slugify(slug or topic)))
     suffix = 1
@@ -234,7 +234,7 @@ def init_run(topic: str, slug: str = "", budget: Optional[float] = None, unit: f
             suffix += 1
     os.makedirs(os.path.join(run, "index"))
     _write_json(os.path.join(run, "run.json"), {
-        "topic": topic, "created": _now(), "version": "aletheia-research 0.5.0-openai.1",
+        "topic": topic, "created": _now(), "version": "aletheia-research 0.6.0-dossier.1",
         "implementation": _implementation_metadata(),
         "thoroughness": tier, "verbosity": verbosity,
         "budget": budget, "unit": unit, "max_depth": max_depth,
@@ -513,8 +513,8 @@ def main(argv=None) -> int:
     p.add_argument("--thoroughness", default="",
                    choices=sorted(THOROUGHNESS),
                    help="quick|standard|deep|exhaustive|unlimited(default)|max (overrides budget/caps)")
-    p.add_argument("--verbosity", default="user", choices=["user", "agent"],
-                   help="agent = emit the FULL bundle for a calling agent; user = a multi-page summary")
+    p.add_argument("--verbosity", default="agent", choices=["user", "agent"],
+                   help="agent(default) = persist a navigable dossier + manifest; user = a multi-page summary")
 
     p = sub.add_parser("split"); p.add_argument("--node", required=True)
     p.add_argument("--children", required=True, help='JSON: [["qid","question"],...]')

@@ -1,14 +1,14 @@
 ---
 name: aletheia-research
 description: >-
-  Aletheia Research — deep, high-scrutiny research surveyor (v0.5.0-openai.1). Use whenever Codex needs to
+  Aletheia Research — deep, high-scrutiny research surveyor (v0.6.0-dossier.1 experimental). Use whenever Codex needs to
   research, survey, fact-check, map, get an accurate picture of a topic, or anchor a decision in
   evidence. Frames competing perspectives, runs wide primary-first investigations, judges source
   independence, attacks the leading conclusion, states gaps, and verifies every load-bearing claim.
   Supports quick through unlimited/max effort and user summaries or full agent artifact bundles.
 ---
 
-# Aletheia Research 0.5.0-openai.1 — deep, multi-perspective research surveyor
+# Aletheia Research 0.6.0-dossier.1 — agent-first, navigable research surveyor (experimental)
 
 An accurate, un-anchored picture of a field. A bare LLM anchors on its priors, searches to confirm
 them, cites nothing, and is stale. Aletheia beats it by **surveying widely and for real**: competing
@@ -16,7 +16,8 @@ perspectives, a **variety of distinct sources**, primaries read in full, the **d
 hunted down, independence judged, the leading conclusion attacked, and **gaps stated honestly** —
 every claim tied to a primary through a verification gate.
 
-**Lineage:** 0.3 is built on **deep-aletheia 0.2**, which won a blind LLM-judge over a single-agent
+**Lineage:** this experimental branch preserves the 0.5.0-openai.1 research runtime and changes the
+agent handoff contract. 0.3 was built on **deep-aletheia 0.2**, which won a blind LLM-judge over a single-agent
 design on *completeness*, *source variety*, and *groundedness to distinct primaries*. 0.3 keeps all of
 that and adds four things it was missing (see **What's new** below). Everything is files; every node
 is a directory; nothing depends on one context window.
@@ -70,18 +71,28 @@ Bounded tiers spend one scrutiny unit per leaf round (`floor(node budget / unit)
 normally one). The runtime refuses extra rounds instead of silently turning a quick request into an
 unbounded run; choose a deeper tier when more rounds are needed.
 
-## Verbosity — who is the answer FOR? (`verbosity: agent | user`, default `user`)
-Pass it at init (`treestate.py init … --verbosity agent`). It changes the FINAL output, not the research.
-- **`agent`** (a calling session/subagent used this skill): hand back the **FULL files, not a summary**
-  — run `report.py bundle --run "$RUN" --reads` and return that whole pack (every node's findings +
-  evidence + sources + the primaries read in full). Agents lose nothing to compression; nuance lives
-  in the raw artifacts.
-- **`user`** (a human asked): write a **MULTI-PAGE summary** (a few pages MINIMUM) — a genuinely
+## Handoff audience (`verbosity: agent | user`, default `agent`)
+It changes the FINAL handoff, not the research. This is an agent tool first: a human-facing answer can
+be synthesized by the calling agent from the same dossier.
+- **`agent`** (default): persist a **field dossier + machine manifest** with progressive disclosure.
+  The dossier embeds the final answer and every branch synthesis, then links to claims, decisions,
+  evidence, telemetry, and content-addressed full reads. This is lossless **by reference**, not by
+  forcing a megabyte-scale raw bundle into one context. Run `report.py handoff --run "$RUN"` and return
+  both paths plus the run directory. A caller can descend L0 answer → L1 branch → L2 claim/decision →
+  L3 full evidence as needed.
+- **`user`** (explicit): write a **MULTI-PAGE summary** (a few pages MINIMUM) — a genuinely
   nuanced synthesis, not a one-screen bottom-line. Surface the disagreements, the mechanisms, the
   caveats, the decisive sources, and the gaps. If it reads like something a few minutes of search
   would give, it has failed — it must read like a day's work distilled.
 
-## What's new (0.3 kept the good parts of deep-aletheia 0.2; 0.4 adds unlimited-default + verbosity)
+If a caller cannot access the shared run directory, use the inline transport fallback:
+`report.py bundle --run "$RUN" --reads --output "$RUN/bundle.md"`. The bundle is no longer the default.
+
+## What's new (0.6 dossier experiment; research mechanics remain the 0.5 production baseline)
+0. **Agent-first progressive disclosure.** `report.py handoff` writes `dossier.md` plus a complete,
+   content-addressed `artifact-manifest.json`. The brief is first; every branch synthesis and material
+   decision is navigable; full reads remain one link away. The old flat bundle is retained only for
+   transport without shared storage. This directly tests the observed 72-line → 9,077-line output cliff.
 1. **Hunt the DECISIVE source.** Don't just pool many primaries — actively find the *authoritative /
    settling* source (a regulator/agency opinion, a landmark systematic review/meta-analysis, an
    official standard, the largest RCT). This is the one thing the single-agent design beat 0.2 on.
@@ -101,7 +112,7 @@ Pass it at init (`treestate.py init … --verbosity agent`). It changes the FINA
 ```bash
 RUN=$(python3 "$A/treestate.py" init "<topic>" --slug "<slug>")            # DEFAULT = unlimited depth/budget
 # fast/bounded instead: --thoroughness quick|standard|deep|exhaustive ;  deepest (~a week): --thoroughness max
-# if a calling AGENT invoked this skill, add: --verbosity agent           # -> full-files bundle at the end
+# agent handoff is the default; add --verbosity user only for an explicit direct-human artifact
 ```
 Default is `unlimited` (no budget/depth cap; stop when saturated). Only pass a bounded tier if the user
 wants it fast. Write **4–6 competing
@@ -266,12 +277,12 @@ the **primary you read**; dates on time-sensitive claims. **X/YouTube are `color
 fact). **Reddit/HN are `lead_gen` by default** — cite the primary they point to; when the question is
 specifically about lived experience, a first-hand thread may be cited as a labeled case report, never
 as a prevalence/rate estimate. Then, by verbosity:
-- **`verbosity: agent`** → return the **FULL bundle**, not a summary:
-  `python3 "$A/report.py" bundle --run "$RUN" --reads --output "$RUN/bundle.md"` — persist first,
-  then hand the whole artifact (every node's findings + evidence + sources + score + primaries read
-  in full) back to the calling agent. Do not compress it. Persist-before-handoff is mandatory on
-  streamed Codex runs so a disconnected response cannot erase the completed deliverable.
-- **`verbosity: user`** (default) → deliver a **MULTI-PAGE summary (a few pages MINIMUM)**: a nuanced
+- **`verbosity: agent`** (default) → persist the progressive-disclosure handoff:
+  `python3 "$A/report.py" handoff --run "$RUN"`. Return the absolute `dossier` and `manifest` paths
+  printed by the command plus `$RUN`. The dossier embeds the exact brief and branch syntheses; the
+  manifest content-addresses the full record. Do not replace this with a few-line chat summary. If
+  shared paths are impossible, persist and return the inline fallback with `bundle --reads`.
+- **`verbosity: user`** (explicit) → deliver a **MULTI-PAGE summary (a few pages MINIMUM)**: a nuanced
   synthesis with the mechanisms, the disagreements and *why* they exist, the decisive sources, the
   numbers/caveats, and the honest gaps — the distilled equivalent of a day (or, at `max`, a week) of
   manual searching. Use `report.py outline --run "$RUN"` to make sure every branch is represented so
@@ -285,7 +296,9 @@ external dependency; the brief + the run dir are the output.
 ## Observability & resume
 `treestate.py tree --run "$RUN"` shows the whole tree (state/budget/findings). Every node has
 `decisions.jsonl`, `questions.jsonl`/`answers.jsonl`, `sources.jsonl`, `notes/`, `evidence.md`,
-`findings.md`. `run.json` fingerprints the complete executable runtime (skill plus channel/provenance
+`findings.md`. `report.py handoff` inventories those artifacts, content hashes, duplicate bodies,
+and node-level trace/read counts in `artifact-manifest.json`; `dossier.md` is the navigable entry point.
+`run.json` fingerprints the complete executable runtime (skill plus channel/provenance
 dependencies), separately fingerprints channel configuration, and records Git commit/dirty state when
 available; use those fields—not the display version alone—to pin A/Bs.
 Fully resumable — after a crash/interrupt re-run `frontier --run "$RUN" --resumable`
