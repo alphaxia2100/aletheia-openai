@@ -22,13 +22,16 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(__file__))
 import _http  # noqa: E402
+import _config  # noqa: E402
 
 
 def video_id(s: str) -> str:
@@ -40,7 +43,22 @@ def video_id(s: str) -> str:
         v = urllib.parse.parse_qs(qs).get("v", [""])[0]
         if v:
             return v[:11]
-    return s[:11] if re.fullmatch(r"[A-Za-z0-9_-]{11}", s[:11]) else s
+    return s[:11] if re.fullmatch(r"[A-Za-z0-9_-]{11}", s[:11]) else ""
+
+
+def _ytdlp_env() -> Tuple[Dict[str, str], str]:
+    """Give optional yt-dlp an empty home, not the agent's keys/cookies/configuration."""
+    home = tempfile.mkdtemp(prefix="aletheia-ytdlp-")
+    env = {"HOME": home,
+           "XDG_CONFIG_HOME": os.path.join(home, ".config"),
+           "XDG_CACHE_HOME": os.path.join(home, ".cache"),
+           "XDG_DATA_HOME": os.path.join(home, ".local", "share"),
+           "PATH": os.pathsep.join([os.path.expanduser("~/.local/bin"), os.path.expanduser("~/bin"),
+                                     "/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"])}
+    for name in ("LANG", "LC_ALL", "LC_CTYPE"):
+        if os.environ.get(name):
+            env[name] = os.environ[name]
+    return env, home
 
 
 def oembed(vid: str, timeout: float) -> Tuple[str, str]:
@@ -81,14 +99,17 @@ def whisper_fallback(vid: str, outdir: str, timeout: float) -> str:
         return ""
     safe = re.sub(r"[^A-Za-z0-9_-]", "_", vid)[:64] or "video"  # no path traversal
     audio_stub = os.path.join(outdir, safe)
+    env, isolated_home = _ytdlp_env()
     try:
         subprocess.run(
-            [sys.executable, "-m", "yt_dlp", "-x", "--audio-format", "mp3",
+            _ytdlp_argv() + ["-x", "--audio-format", "mp3",
              "-o", audio_stub + ".%(ext)s", "https://www.youtube.com/watch?v=" + vid],
-            capture_output=True, timeout=timeout, check=True)
+            capture_output=True, timeout=timeout, check=True, env=env)
     except Exception as e:  # noqa: BLE001
         sys.stderr.write("audio download failed: %s\n" % e)
         return ""
+    finally:
+        shutil.rmtree(isolated_home, ignore_errors=True)
     mp3 = audio_stub + ".mp3"
     if not os.path.exists(mp3):
         return ""
@@ -106,9 +127,8 @@ def _ytdlp_argv() -> List[str]:
     """Locate yt-dlp. Prefer the standalone binary (pipx/`--user` installs put it on
     PATH but NOT as an importable module in this interpreter, so `python -m yt_dlp`
     fails with No module named yt_dlp). Fall back to the module only if no binary."""
-    import shutil
     extra = [os.path.expanduser(p) for p in ("~/.local/bin", "~/.npm-global/bin", "~/bin")]
-    path = os.pathsep.join([os.environ.get("PATH", "")] + extra)
+    path = os.pathsep.join(extra + ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"])
     exe = shutil.which("yt-dlp", path=path)
     if not exe:
         for cand in (os.path.expanduser("~/.local/bin/yt-dlp"), "/opt/homebrew/bin/yt-dlp"):
@@ -120,10 +140,9 @@ def _ytdlp_argv() -> List[str]:
 
 def yt_search(query: str, n: int, timeout: float, latest: bool = False) -> List[str]:
     # ytsearchdate = newest-first (latest videos); ytsearch = relevance
+    _config.require_enabled("youtube")
     prefix = "ytsearchdate" if latest else "ytsearch"
-    env = dict(os.environ)
-    env["PATH"] = os.pathsep.join([env.get("PATH", "")] +
-                                  [os.path.expanduser(p) for p in ("~/.local/bin", "~/bin")])
+    env, isolated_home = _ytdlp_env()
     try:
         r = subprocess.run(
             _ytdlp_argv() + ["--dump-json", "--flat-playlist",
@@ -132,6 +151,8 @@ def yt_search(query: str, n: int, timeout: float, latest: bool = False) -> List[
     except Exception as e:  # noqa: BLE001
         sys.stderr.write("yt-dlp search failed to launch: %s\n" % e)
         return []
+    finally:
+        shutil.rmtree(isolated_home, ignore_errors=True)
     ids = []
     for line in r.stdout.splitlines():
         try:
@@ -144,6 +165,7 @@ def yt_search(query: str, n: int, timeout: float, latest: bool = False) -> List[
 
 
 def process(vid: str, outdir: str, use_whisper: bool, timeout: float) -> Optional[Dict[str, Any]]:
+    _config.require_enabled("youtube")
     title, author = oembed(vid, timeout)
     text = captions(vid)
     method = "captions"
@@ -153,7 +175,7 @@ def process(vid: str, outdir: str, use_whisper: bool, timeout: float) -> Optiona
     if not text:
         sys.stderr.write("no transcript for %s (captions gated; try --whisper)\n" % vid)
         return None
-    os.makedirs(outdir, exist_ok=True)
+    _config.ensure_private_dir(outdir)
     safe = re.sub(r"[^A-Za-z0-9_-]", "_", vid)[:64] or "video"  # no path traversal
     path = os.path.join(outdir, safe + ".txt")
     with open(path, "w", encoding="utf-8") as fh:
@@ -177,8 +199,13 @@ def main() -> int:
     ap.add_argument("--whisper", action="store_true", help="audio+faster-whisper fallback if no captions")
     ap.add_argument("--timeout", type=float, default=30.0)
     args = ap.parse_args()
+    try:
+        _config.require_enabled("youtube")
+    except PermissionError as exc:
+        sys.stderr.write("refusing YouTube capability: %s\n" % exc)
+        return 2
 
-    vids = [video_id(v) for v in args.videos]
+    vids = [vid for vid in (video_id(v) for v in args.videos) if vid]
     if args.search:
         vids += yt_search(args.search, args.limit, max(args.timeout, 60), args.latest)
     if not vids:

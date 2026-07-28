@@ -29,6 +29,9 @@ import provenance_graph as pg  # noqa: E402
 import judge_score as js  # noqa: E402  (eval measurement core: win-rate + judge-trust gate)
 import _http  # noqa: E402  (shared channel helpers: keywordize)
 import doctor  # noqa: E402  (channel health gate)
+import _agentreach  # noqa: E402  (optional browser-backed adapter boundary)
+import read as channel_read  # noqa: E402  (safe URL reader)
+import reddit as channel_reddit  # noqa: E402  (safe Reddit reader)
 import dedupe  # noqa: E402
 import rubric  # noqa: E402
 import verify  # noqa: E402  (deep-aletheia citation gate)
@@ -226,7 +229,10 @@ class TestDedupe(unittest.TestCase):
 class TestDoctor(unittest.TestCase):
     def test_http_auth_error_is_not_healthy(self):
         err = urllib.error.HTTPError("https://example.test", 401, "Unauthorized", {}, None)
-        with mock.patch.object(doctor.urllib.request, "urlopen", side_effect=err):
+        opener = mock.Mock()
+        opener.open.side_effect = err
+        with mock.patch.object(_http, "validate_public_url"), \
+                mock.patch.object(doctor.urllib.request, "build_opener", return_value=opener):
             ok, note = doctor.live("https://example.test", 1)
         self.assertFalse(ok)
         self.assertEqual(note, "HTTP 401")
@@ -237,6 +243,146 @@ class TestDoctor(unittest.TestCase):
             row = doctor.p_brave(1)
         self.assertEqual(row[2], "warn")
         self.assertIn("HTTP 401", row[4])
+
+    def test_run_does_not_probe_disabled_channels_unless_all_is_requested(self):
+        calls = []
+
+        def enabled(_timeout):
+            calls.append("enabled")
+            return ("enabled", "test", "ok", "test", "")
+
+        def disabled(_timeout):
+            calls.append("disabled")
+            return ("disabled", "test", "ok", "test", "")
+
+        probes = [("enabled", enabled), ("disabled", disabled)]
+        with mock.patch.object(doctor, "LIVE_PROBES", probes), \
+                mock.patch.object(doctor, "KEYONLY", []):
+            rows = doctor.run(1, enabled={"enabled"})
+            self.assertEqual([row[0] for row in rows], ["enabled"])
+            self.assertEqual(calls, ["enabled"])
+
+            calls.clear()
+            rows = doctor.run(1, enabled={"enabled"}, include_all=True)
+        self.assertEqual({row[0] for row in rows}, {"enabled", "disabled"})
+        self.assertEqual(set(calls), {"enabled", "disabled"})
+
+
+class TestSafeHttpBoundary(unittest.TestCase):
+    def test_rejects_private_and_nonstandard_targets_before_network_access(self):
+        for url in (
+            "http://127.0.0.1/secret",
+            "http://10.0.0.5/secret",
+            "http://[::1]/secret",
+            "https://localhost/secret",
+            "https://example.com:8443/secret",
+            "file:///etc/passwd",
+        ):
+            with self.assertRaises(ValueError, msg=url):
+                _http.validate_public_url(url)
+
+    def test_load_env_uses_allowlisted_user_config_only(self):
+        config_dir = tempfile.mkdtemp()
+        env_path = os.path.join(config_dir, ".env")
+        with open(env_path, "w", encoding="utf-8") as fh:
+            fh.write("BRAVE_API_KEY=allowed-key\nPYTHONPATH=/malicious/injection\n")
+        os.chmod(env_path, 0o600)
+        with mock.patch.dict(os.environ, {"ALETHEIA_CONFIG_DIR": config_dir}, clear=True):
+            _http.load_env()
+            self.assertEqual(os.environ.get("BRAVE_API_KEY"), "allowed-key")
+            self.assertNotIn("PYTHONPATH", os.environ)
+
+
+class TestExplicitBrowserCapability(unittest.TestCase):
+    """Browser/session use must remain an explicit, hermetically testable capability."""
+
+    def test_default_reddit_url_read_never_touches_authenticated_browser(self):
+        url = "https://www.reddit.com/r/example/comments/abc123/thread/"
+        with mock.patch.object(channel_read._http, "validate_public_url"), \
+                mock.patch.object(channel_read, "_jina", return_value="short public result") as jina, \
+                mock.patch.object(channel_read._agentreach, "reddit_read") as reddit_read, \
+                mock.patch.object(channel_read._agentreach, "browser_available") as available, \
+                mock.patch.object(channel_read._agentreach, "browser_extract") as extract:
+            text, method = channel_read.read_url(url, 1, 40000)
+        self.assertEqual((text, method), ("short public result", "jina"))
+        jina.assert_called_once_with(url, 1, 40000)
+        reddit_read.assert_not_called()
+        available.assert_not_called()
+        extract.assert_not_called()
+
+    def test_browser_flag_is_required_before_reddit_session_reader_runs(self):
+        url = "https://www.reddit.com/r/example/comments/abc123/thread/"
+        with mock.patch.dict(os.environ, {"ALETHEIA_BROWSER_CAPABILITY": "reddit.com"}, clear=False), \
+                mock.patch.object(channel_read._http, "validate_public_url"), \
+                mock.patch.object(channel_read, "_jina", side_effect=AssertionError("must not use Jina")), \
+                mock.patch.object(channel_read._agentreach, "reddit_read",
+                                  return_value=("full authenticated thread", None)) as reddit_read, \
+                mock.patch.object(channel_read._agentreach, "browser_extract") as extract:
+            text, method = channel_read.read_url(url, 1, 40000, browser=True)
+        self.assertEqual((text, method), ("full authenticated thread", "reddit-read"))
+        reddit_read.assert_called_once()
+        extract.assert_not_called()
+
+    def test_explicit_browser_failure_is_not_mislabeled_as_jina(self):
+        with mock.patch.dict(os.environ, {"ALETHEIA_BROWSER_CAPABILITY": "example.test"}, clear=False), \
+                mock.patch.object(channel_read._http, "validate_public_url"), \
+                mock.patch.object(channel_read._agentreach, "browser_available", return_value=False):
+            text, method = channel_read.read_url("https://example.test/page", 1, 40000, browser=True)
+        self.assertEqual((text, method), ("", "browser-unavailable"))
+
+    def test_default_reddit_thread_reader_uses_archive_not_session(self):
+        with tempfile.TemporaryDirectory() as outdir, \
+                mock.patch.object(channel_reddit._config, "require_enabled", return_value="reddit"), \
+                mock.patch.object(channel_reddit._agentreach, "reddit_post_id", return_value="abc123"), \
+                mock.patch.object(channel_reddit._agentreach, "reddit_read") as reddit_read, \
+                mock.patch.object(channel_reddit, "_thread_pullpush", return_value="# Public archive\nthread"):
+            rec = channel_reddit.read_thread("abc123", 5, 1, outdir)
+        self.assertIsNotNone(rec)
+        self.assertIn("via pullpush", rec["snippet"])
+        reddit_read.assert_not_called()
+
+    def test_reddit_search_only_uses_agentreach_when_browser_is_explicit(self):
+        rec = {"url": "https://www.reddit.com/r/example/comments/abc123/thread/", "title": "thread"}
+        with mock.patch.dict(os.environ, {"ALETHEIA_BROWSER_CAPABILITY": "reddit.com"}, clear=False), \
+                mock.patch.object(channel_reddit._config, "require_enabled", return_value="reddit"), \
+                mock.patch.object(channel_reddit, "_web_reddit", return_value=[]), \
+                mock.patch.object(channel_reddit, "_pullpush", return_value=[]), \
+                mock.patch.object(channel_reddit, "_arctic_shift", return_value=[]), \
+                mock.patch.object(channel_reddit, "_agentreach_backend", return_value=[rec]) as agent_backend, \
+                mock.patch.object(channel_reddit._agentreach, "reddit_backend", return_value="opencli"):
+            self.assertEqual(channel_reddit.search("test", 1, 1), [])
+            agent_backend.assert_not_called()
+            result = channel_reddit.search("test", 1, 1, browser=True)
+        self.assertEqual([row["url"] for row in result], [rec["url"]])
+        agent_backend.assert_called_once()
+
+    def test_agentreach_environment_excludes_host_secrets(self):
+        host = {
+            "HOME": "/tmp/home",
+            "PATH": "/safe/bin",
+            "BRAVE_API_KEY": "must-not-leak",
+            "TWITTER_AUTH_TOKEN": "must-not-leak",
+            "PYTHONPATH": "/host/injection",
+            "NODE_OPTIONS": "--require /host/injection.js",
+            "HTTPS_PROXY": "http://host-proxy.test",
+        }
+        with mock.patch.dict(os.environ, host, clear=True):
+            env = _agentreach._augmented_env()
+        self.assertEqual(env["HOME"], "/tmp/home")
+        self.assertNotIn("/safe/bin", env["PATH"])
+        self.assertIn("/usr/bin", env["PATH"])
+        for name in ("BRAVE_API_KEY", "TWITTER_AUTH_TOKEN", "PYTHONPATH", "NODE_OPTIONS", "HTTPS_PROXY"):
+            self.assertNotIn(name, env)
+
+    def test_agentreach_subprocess_receives_scrubbed_environment(self):
+        with mock.patch.dict(os.environ, {"HOME": "/tmp/home", "PATH": "/safe/bin",
+                                          "BRAVE_API_KEY": "must-not-leak"}, clear=True), \
+                mock.patch.object(_agentreach.subprocess, "run",
+                                  return_value=mock.Mock(stdout="ok", stderr="")) as run:
+            self.assertEqual(_agentreach._run(["fake-cli", "status"], 1), "ok")
+        env = run.call_args.kwargs["env"]
+        self.assertEqual(env["HOME"], "/tmp/home")
+        self.assertNotIn("BRAVE_API_KEY", env)
 
 
 class TestRubric(unittest.TestCase):
@@ -541,8 +687,18 @@ class TestRouterScoping(unittest.TestCase):
         self.assertIn("duckduckgo", channels)
         self.assertIn("marginalia", channels)
 
-    def test_current_events_can_route_color_channels(self):
-        channels = self._route("latest news trends announced today in 2026")["channels"]
+    def test_current_events_keep_session_and_media_channels_opt_in(self):
+        config_dir = tempfile.mkdtemp()
+        q = "latest news trends announced today in 2026"
+        channels = self._route_env(q, ALETHEIA_CONFIG_DIR=config_dir)["channels"]
+        self.assertNotIn("x", channels)
+        self.assertNotIn("youtube", channels)
+        self.assertTrue({"reddit", "hackernews"} & set(channels))
+
+        import channels as channel_preferences
+        with mock.patch.dict(os.environ, {"ALETHEIA_CONFIG_DIR": config_dir}, clear=False):
+            channel_preferences.main(["enable", "x", "youtube"])
+        channels = self._route_env(q, ALETHEIA_CONFIG_DIR=config_dir)["channels"]
         self.assertIn("x", channels)
         self.assertIn("youtube", channels)
 
@@ -1264,7 +1420,9 @@ class TestAletheiaResearch031(unittest.TestCase):
         original = youtube.captions
         youtube.captions = lambda _vid: "full caption transcript " * 200
         try:
-            text, method, resolved = inv._read_source("https://www.youtube.com/watch?v=aircAruvnKk", 1)
+            # This is a positive-path parser test; capability refusal is covered separately.
+            with mock.patch.object(inv.channel_config, "require_enabled", return_value="youtube"):
+                text, method, resolved = inv._read_source("https://www.youtube.com/watch?v=aircAruvnKk", 1)
         finally:
             youtube.captions = original
         self.assertGreater(len(text), 1500)
@@ -1280,7 +1438,9 @@ class TestAletheiaResearch031(unittest.TestCase):
         inv.readmod.read_url = lambda *a, **k: (_ for _ in ()).throw(
             AssertionError("must not read the generic YouTube webpage"))
         try:
-            text, method, resolved = inv._read_source("https://youtu.be/aircAruvnKk", 1)
+            # Keep this focused on the captions-only branch rather than the opt-in channel gate.
+            with mock.patch.object(inv.channel_config, "require_enabled", return_value="youtube"):
+                text, method, resolved = inv._read_source("https://youtu.be/aircAruvnKk", 1)
         finally:
             youtube.captions = original_captions
             inv.readmod.read_url = original_read
@@ -1486,6 +1646,39 @@ class TestAletheiaResearch031(unittest.TestCase):
         self.assertEqual(res["telemetry"]["selection_mode"], "agent")
         self.assertFalse(res["telemetry"]["floor_engaged"])
         self.assertFalse(os.path.exists(inv._triage_path(node)))  # manifest consumed after read
+
+    def test_triage_read_metadata_reaches_sources_synthesis_and_runtime_accounting(self):
+        """Agent-selected reads are evidence, not merely telemetry about a successful read.
+
+        ``gather_candidates`` serializes ``ranked`` and ``read_pool`` separately.  The selected
+        records come back from the latter, so this regression catches metadata being stranded on
+        the transient objects instead of reaching canonical ``sources.jsonl`` records.
+        """
+        inv, node = self._triage_fixture()
+        picked = ["https://site0.example/x", "https://site2.example/x"]
+        inv.gather_candidates(node, channels=["stub"])
+        result = inv.read_picks(node, picks=picked)
+        self.assertEqual(result["reads_ok"], len(picked))
+
+        rows = [json.loads(line) for line in read_text(os.path.join(node, "sources.jsonl")).splitlines()]
+        read_rows = [row for row in rows if row.get("_read_ok")]
+        self.assertEqual({row["url"] for row in read_rows}, set(picked))
+        self.assertTrue(all(row.get("_read_file") for row in read_rows))
+        self.assertTrue(all(os.path.isfile(os.path.join(node, row["_read_file"])) for row in read_rows))
+
+        syn = self._load("ar_synthesize_triage_read_provenance", "synthesize.py")
+        independence = syn.synthesis_input(node)["independence"]
+        self.assertEqual(independence["basis"], "read_sources")
+        self.assertEqual(independence["n"], len(picked))
+        self.assertEqual(independence["retrieved_n"], 6)
+
+        run = os.path.dirname(os.path.dirname(node))
+        report = os.path.join(self.AR, "report.py")
+        score = json.loads(subprocess.check_output(
+            [sys.executable, report, "score", "--run", run], text=True))
+        self.assertEqual(score["runtime"]["read_artifacts"], len(picked))
+        self.assertEqual(score["runtime"]["engine_read_artifacts"], len(picked))
+        self.assertEqual(score["runtime"]["direct_or_manual_read_artifacts"], 0)
 
     def test_read_picks_rejects_empty_selection_without_consuming_round(self):
         # An abstaining agent must not silently turn back into the fixed-table selector.
@@ -1695,7 +1888,7 @@ class TestInstall(unittest.TestCase):
     def test_installer_links_skills_for_codex(self):
         home = tempfile.mkdtemp()
         env = dict(os.environ, HOME=home, CODEX_HOME=os.path.join(home, ".codex"))
-        subprocess.check_call(["bash", os.path.join(ROOT, "scripts", "install.sh")], env=env,
+        subprocess.check_call(["bash", os.path.join(ROOT, "scripts", "install.sh"), "--allow-dirty"], env=env,
                               stdout=subprocess.DEVNULL)
         target = os.path.join(home, ".codex", "skills", "aletheia-research")
         self.assertTrue(os.path.islink(target))
@@ -1722,7 +1915,7 @@ class TestInstall(unittest.TestCase):
                 fh.write("unchanged")
         env = dict(os.environ, HOME=home, CODEX_HOME=os.path.join(home, ".codex"))
         output = subprocess.check_output(
-            ["bash", os.path.join(ROOT, "scripts", "install.sh"), "--codex-only"],
+            ["bash", os.path.join(ROOT, "scripts", "install.sh"), "--codex-only", "--allow-dirty"],
             env=env, text=True)
         target = os.path.join(home, ".codex", "skills", "aletheia-research")
         self.assertTrue(os.path.islink(target))
@@ -1730,19 +1923,84 @@ class TestInstall(unittest.TestCase):
         self.assertEqual(read_text(claude_marker), "unchanged")
         self.assertEqual(os.listdir(os.path.dirname(cursor_marker)), ["KEEP"])
         self.assertEqual(os.listdir(os.path.dirname(claude_marker)), ["KEEP"])
-        self.assertIn(os.path.join(os.path.abspath(ROOT), ".cursor", "skills", "channel-retrieval",
-                                   "scripts", "doctor.py"), output)
-        self.assertNotIn("~/.cursor/skills/channel-retrieval", output)
+        runtime = os.path.join(home, ".codex", "skills", ".aletheia-runtime")
+        self.assertTrue(os.path.isfile(os.path.join(runtime, "skills", "channel-retrieval",
+                                                    "scripts", "doctor.py")))
+        self.assertIn("mode: copy", output)
+        self.assertIn(runtime, output)
 
-    def test_copy_install_keeps_non_secret_repo_root_pointer(self):
+    def test_copy_install_keeps_a_self_contained_runtime(self):
         home = tempfile.mkdtemp()
         env = dict(os.environ, HOME=home, CODEX_HOME=os.path.join(home, ".codex"))
-        subprocess.check_call(["bash", os.path.join(ROOT, "scripts", "install.sh"), "--copy"],
+        subprocess.check_call(["bash", os.path.join(ROOT, "scripts", "install.sh"), "--copy", "--allow-dirty"],
                               env=env, stdout=subprocess.DEVNULL)
-        marker = os.path.join(home, ".cursor", "skills", "channel-retrieval", ".aletheia-root")
-        self.assertTrue(os.path.isfile(marker))
-        self.assertEqual(read_text(marker).strip(), os.path.abspath(ROOT))
-        self.assertTrue(os.path.islink(os.path.join(home, ".codex", "skills", "aletheia-research")))
+        target = os.path.join(home, ".codex", "skills", "aletheia-research")
+        runtime = os.path.join(home, ".codex", "skills", ".aletheia-runtime")
+        self.assertTrue(os.path.islink(target))
+        self.assertTrue(os.path.isfile(os.path.join(runtime, "skills", "channel-retrieval",
+                                                    "scripts", "_http.py")))
+        self.assertFalse(os.path.exists(os.path.join(runtime, "skills", "channel-retrieval",
+                                                     ".aletheia-root")))
+        self.assertFalse(os.path.realpath(target).startswith(os.path.abspath(ROOT) + os.sep))
+
+
+class TestChannelConfigurationIsolation(unittest.TestCase):
+    """Mutable channel selection must never alter the installed/repository skill bundle."""
+
+    def test_channel_preferences_are_user_scoped_and_live_for_runtime_consumers(self):
+        import _config
+        import channels
+
+        config_dir = tempfile.mkdtemp()
+        bundled_path = _config.bundled_channels_path()
+        bundled_before = read_text(bundled_path)
+        env = dict(os.environ, ALETHEIA_CONFIG_DIR=config_dir)
+
+        with mock.patch.dict(os.environ, {"ALETHEIA_CONFIG_DIR": config_dir}, clear=False):
+            self.assertEqual(_config.active_metadata()["source"], "bundled")
+            self.assertEqual(channels.main(["enable", "semantic_scholar"]), 0)
+            active = _config.load_channels()
+            self.assertIn("semantic_scholar", active["enabled"])
+            self.assertEqual(_config.active_metadata()["source"], "user")
+            self.assertTrue(os.path.isfile(_config.user_channels_path()))
+            self.assertFalse(any(name.startswith(".channels-") for name in os.listdir(config_dir)))
+
+            # `_http` must not retain a stale in-process copy after channels.py changes preferences.
+            self.assertIn("semantic_scholar", _http.load_channels()["enabled"])
+            self.assertIn("semantic_scholar", doctor._enabled_set())
+
+            self.assertEqual(channels.main(["disable", "semantic_scholar"]), 0)
+            self.assertNotIn("semantic_scholar", _config.load_channels()["enabled"])
+            self.assertEqual(channels.main(["reset"]), 0)
+            self.assertEqual(_config.load_channels()["enabled"],
+                             _config.bundled_channels()["core_default"])
+
+        self.assertEqual(read_text(bundled_path), bundled_before)
+
+        # A current Aletheia router process sees the same user overlay, not a bundled-only config.
+        with mock.patch.dict(os.environ, {"ALETHEIA_CONFIG_DIR": config_dir}, clear=False):
+            channels.main(["enable", "semantic_scholar"])
+        router_path = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "router.py")
+        routed = json.loads(subprocess.check_output(
+            [sys.executable, router_path, "how do multi-agent LLM research systems coordinate", "--json"],
+            text=True, env=env))
+        self.assertIn("semanticscholar", routed["channels"])
+
+    def test_run_fingerprint_records_effective_user_channel_preferences(self):
+        import channels
+
+        config_dir, base = tempfile.mkdtemp(), tempfile.mkdtemp()
+        env = dict(os.environ, ALETHEIA_CONFIG_DIR=config_dir)
+        with mock.patch.dict(os.environ, {"ALETHEIA_CONFIG_DIR": config_dir}, clear=False):
+            channels.main(["enable", "semantic_scholar"])
+        treestate_path = os.path.join(ROOT, ".cursor", "skills", "aletheia-research", "scripts", "treestate.py")
+        run = subprocess.check_output(
+            [sys.executable, treestate_path, "init", "topic", "--thoroughness", "quick", "--base", base],
+            text=True, env=env).strip()
+        implementation = read_json(os.path.join(run, "run.json"))["implementation"]
+        self.assertEqual(implementation["channel_config_source"], "user")
+        self.assertIn("semantic_scholar", implementation["channel_config_enabled"])
+        self.assertRegex(implementation["channel_config_sha256"], r"^[0-9a-f]{64}$")
 
 
 class TestKeywordizeRecall(unittest.TestCase):

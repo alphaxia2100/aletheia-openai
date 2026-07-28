@@ -20,10 +20,17 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 import _http  # noqa: E402
 import _agentreach  # noqa: E402
+import _config  # noqa: E402
 
 
 def search(query: str, limit: int, timeout: float):
     """Programmatic adapter used by the Aletheia leaf engine."""
+    try:
+        _config.require_enabled("x")
+        _config.require_browser_authorization("x.com")
+    except PermissionError as exc:
+        sys.stderr.write("x unavailable: %s\n" % exc)
+        return []
     records, err = _agentreach.x_search(query, limit, False, "", "", timeout)
     if err:
         sys.stderr.write("x unavailable: %s\n" % err)
@@ -39,13 +46,19 @@ def main() -> int:
     ap.add_argument("--since", default="", help="YYYY-MM-DD")
     ap.add_argument("--timeout", type=float, default=45.0)
     args = ap.parse_args()
+    try:
+        _config.require_enabled("x")
+        _config.require_browser_authorization("x.com")
+    except PermissionError as exc:
+        sys.stderr.write("refusing X capability: %s\n" % exc)
+        return 2
 
     records, err = _agentreach.x_search(args.query, args.limit, args.top, args.frm, args.since, args.timeout)
     if err:
         sys.stderr.write(
             "x unavailable: %s\n"
             "  -> log into x.com in Chrome, then `agent-reach configure --from-browser chrome`.\n"
-            "  -> or use a paid backend (GetXAPI/twitterapi.io); see .cursor/mcp.reference.md.\n" % err)
+            "  -> paid X backends are not bundled; configure a reviewed external adapter if needed.\n" % err)
     _http.emit(records)
     return 0 if records else 1
 

@@ -12,6 +12,7 @@ Inconclusive and failed branches are retained because their traces prevent repea
 | Line | Status | Purpose |
 |---|---|---|
 | `prod` | **production** | Stable OpenAI/Codex 0.5 runtime. Default GitHub branch. |
+| `codex/exp-portable-sandbox-v06` | release candidate, unpromoted | Portable copied runtime, user-scoped capabilities, private-artifact defaults, and an optional container reference. |
 | `codex/exp-field-dossier-v06` | experimental, diagnostic passed, not promoted | Agent-first progressive-disclosure dossier and content-addressed artifact map. |
 | `codex/exp-read-identity-gate-v06` | experimental, exact-defect diagnostic passed, not promoted | Typed expected/observed document identity and content gate with lossless failed-attempt provenance. |
 | `codex/accuracy-observability-v06` | experimental, not promoted | Hash-chained chronology, persisted manifests, unified read/claim provenance, terminal consistency. |
@@ -55,10 +56,26 @@ Inconclusive and failed branches are retained because their traces prevent repea
 
 | Branch | Purpose |
 |---|---|
+| `codex/exp-portable-sandbox-v06` | **Active transfer candidate.** Git-tracked runtime closure, user-scoped configuration, disabled-channel/browser gates, and a reference container. See [`PORTABILITY.md`](PORTABILITY.md). |
 | `codex/openai-aletheia-v05` | Exact validated OpenAI 0.5 development/release line. |
 | `codex/openai-aletheia` / `codex/bilevel-eval` | 0.5 design/evaluator groundwork. |
 | `codex/exp-codex-only-install` | Codex installation without changing Cursor/Claude roots. |
 | `main` | Older evaluator-foundation lineage; **not production**. |
+
+### Transfer and recovery refs
+
+These branches are preservation points, not promotion candidates. Keep them remote and immutable
+unless a recovery exercise explicitly requires a successor branch; their names carry either the
+source commit or the date so a future maintainer can tell a deliberate snapshot from a release.
+
+| Branch | Preserved state |
+|---|---|
+| `codex/archive-observable-triage-2ef287f` | Original observable-triage experiment snapshot at `2ef287f`. |
+| `codex/archive-observable-triage-e933c55` | Follow-on observable-triage snapshot at `e933c55`. |
+| `codex/archive-bilevel-local-wip-20260728` | Bilevel evaluator work in progress preserved before host transfer. |
+
+The recovery refs retain source history only. Private run artifacts, raw transcripts, `.env` files,
+browser profiles, and cookies remain outside Git; see [`PORTABILITY.md`](PORTABILITY.md#transfer-ledger-and-release-provenance).
 
 ## Release tags
 
@@ -79,12 +96,12 @@ Tags identify immutable runtime points. Branches contain experiment chronology a
 # Stable code
 git switch prod
 
-# Inspect or test one candidate
-git switch codex/exp-field-dossier-v06
+# Inspect or test the portable release candidate
+git switch codex/exp-portable-sandbox-v06
 
 # See only the candidate's history and changes
-git log --oneline prod..codex/exp-field-dossier-v06
-git diff --stat prod...codex/exp-field-dossier-v06
+git log --oneline prod..codex/exp-portable-sandbox-v06
+git diff --stat prod...codex/exp-portable-sandbox-v06
 
 # Return to production
 git switch prod
@@ -108,7 +125,16 @@ unpromoted:
 - `codex/exp-read-identity-gate-v06` catches the exact wrong-body failures and preserves per-attempt
   provenance, but still needs broad resolver-recovery and false-rejection evaluation.
 
-All local historical branches and release tags in this catalog were mirrored to GitHub on 2026-07-27.
+For a host transfer, push every reviewed named branch and tag, then verify the remote before removing
+the source checkout:
+
+```bash
+git push origin --all
+git push origin --tags
+git ls-remote --heads --tags origin
+```
+
+Review the public payload first; these commands are not permission to add private artifacts to Git.
 
 ## Research record behind the next sequence
 

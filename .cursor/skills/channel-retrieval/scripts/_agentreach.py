@@ -20,8 +20,11 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import stat
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
+
+import _config
 
 # agent-reach's CLIs land in various user bins depending on how they were installed
 # (twitter -> ~/.local/bin; opencli/mcporter -> the npm global prefix, often ~/.npm-global/bin).
@@ -33,23 +36,80 @@ _EXTRA_BINS = [
     "/opt/homebrew/bin",
 ]
 
+# Do not hand a third-party CLI every secret the calling agent happens to have in
+# its environment.  These values are enough to find its runtime and its *own*
+# user-scoped configuration/session state.  Connector credentials deliberately
+# stay out of this list; an authenticated browser/CLI should read only its own
+# configured session after the caller explicitly opts into that capability.
+_SAFE_ENV_KEYS = (
+    "HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+)
+
+_SYSTEM_PATHS = ("/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin")
+
+
+def _safe_executable(path: str) -> Optional[str]:
+    """Return an executable that is not writable by an unrelated local principal."""
+    try:
+        resolved = os.path.realpath(path)
+        info = os.stat(resolved)
+        if not stat.S_ISREG(info.st_mode) or not os.access(resolved, os.X_OK):
+            return None
+        if os.name == "posix":
+            if info.st_mode & 0o022:
+                return None
+            if info.st_uid not in (os.getuid(), 0):
+                return None
+        return resolved
+    except OSError:
+        return None
+
+
+def _safe_query(value: str, label: str) -> Tuple[str, Optional[str]]:
+    """Keep untrusted text from becoming a leading option to a third-party CLI."""
+    clean = str(value or "").strip()
+    if not clean:
+        return "", "%s is empty" % label
+    if clean.startswith("-"):
+        return "", "%s cannot begin with '-'" % label
+    return clean, None
+
 
 def find_cli(name: str) -> Optional[str]:
     """Locate an agent-reach upstream CLI on PATH or in the common user bins."""
     p = shutil.which(name)
-    if p:
-        return p
+    if p and _safe_executable(p):
+        return _safe_executable(p)
     for d in _EXTRA_BINS:
         cand = os.path.join(d, name)
-        if os.path.exists(cand):
-            return cand
+        safe = _safe_executable(cand)
+        if safe:
+            return safe
     return None
 
 
 def _augmented_env() -> Dict[str, str]:
-    """Ensure node/opencli/twitter and their runtimes resolve even from a bare PATH."""
-    env = dict(os.environ)
-    env["PATH"] = os.pathsep.join(_EXTRA_BINS + [env.get("PATH", "")])
+    """Return the minimal environment needed by an agent-reach CLI.
+
+    In particular this intentionally omits API keys, proxy variables, Python/Node
+    injection variables, and unrelated host secrets.  Browser-backed CLIs receive
+    their explicit user configuration via HOME/XDG state, not the orchestrator's
+    entire environment.
+    """
+    env = {}
+    for name in _SAFE_ENV_KEYS:
+        value = os.environ.get(name)
+        if value:
+            env[name] = value
+    # Do not inherit a potentially injected PATH.  The explicitly named adapter binary has already
+    # been validated above; this limited PATH is only for its ordinary interpreter/runtime children.
+    env["PATH"] = os.pathsep.join(_EXTRA_BINS + list(_SYSTEM_PATHS))
     return env
 
 
@@ -75,6 +135,11 @@ def x_search(query: str, limit: int = 15, top: bool = False, frm: str = "",
              since: str = "", timeout: float = 45.0):
     """Return (records, error). error is None on success, else a short reason."""
     import _http  # local import so this module is importable without side effects
+    if not _config.browser_authorized("x.com"):
+        return [], "browser session capability is not authorized for x.com"
+    query, bad_query = _safe_query(query, "query")
+    if bad_query:
+        return [], bad_query
     tw = find_cli("twitter")
     if not tw:
         return [], "twitter CLI not found (agent-reach not installed?)"
@@ -157,6 +222,13 @@ def browser_extract(url: str, timeout: float = 60.0, max_chars: int = 40000,
     browser executing the page. Returns (text, error).
     """
     import json
+    import _http
+    try:
+        _http.validate_public_url(url)
+    except ValueError as exc:
+        return "", str(exc)
+    if not _config.browser_authorized(url):
+        return "", "browser session capability is not authorized for this host"
     cli = find_cli("opencli")
     if not cli:
         return "", "opencli not installed"
@@ -189,7 +261,7 @@ def reddit_post_id(s: str) -> str:
     m = re.search(r"comments/([a-z0-9]+)", s) or re.search(r"redd\.it/([a-z0-9]+)", s)
     if m:
         return m.group(1)
-    return s  # already a bare id
+    return s.lower() if re.fullmatch(r"[a-z0-9]{3,16}", s, re.I) else ""
 
 
 def reddit_read(post: str, timeout: float = 90.0) -> Tuple[str, Optional[str]]:
@@ -198,10 +270,14 @@ def reddit_read(post: str, timeout: float = 90.0) -> Tuple[str, Optional[str]]:
     Returns (thread_markdown, error). This is the un-laundered layer, read in full.
     """
     import json
+    if not _config.browser_authorized("reddit.com"):
+        return "", "browser session capability is not authorized for reddit.com"
     cli = find_cli("opencli")
     if not cli:
         return "", "opencli not installed"
     pid = reddit_post_id(post)
+    if not pid:
+        return "", "invalid Reddit post ID or URL"
     out = _run([cli, "reddit", "read", pid, "-f", "json"], max(timeout, 90.0)).strip()
     if not out:
         return "", "opencli reddit read returned nothing (logged in?)"
@@ -237,6 +313,16 @@ def reddit_search(query: str, limit: int = 10, subreddit: str = "", timeout: flo
     """
     import _http
     import json
+    if not _config.browser_authorized("reddit.com"):
+        return [], "browser session capability is not authorized for reddit.com"
+    query, bad_query = _safe_query(query, "query")
+    if bad_query:
+        return [], bad_query
+    subreddit = str(subreddit or "").strip()
+    if subreddit.lower().startswith("r/"):
+        subreddit = subreddit[2:]
+    if subreddit and not re.fullmatch(r"[A-Za-z0-9_]{2,21}", subreddit):
+        return [], "invalid subreddit name"
     backend = reddit_backend()
     if not backend:
         return [], "no agent-reach reddit backend (opencli/rdt) installed"

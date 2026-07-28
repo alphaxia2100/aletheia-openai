@@ -1,9 +1,10 @@
-# Optional dependencies that unlock DEPTH channels. Install per need, user-level:
-#   pip install --user -r requirements-optional.txt
-# The free CORE needs NONE of these: all other channel clients + read.py are pure
-# stdlib and reach no-key HTTP APIs (read.py uses Jina Reader over plain HTTP).
+# Optional dependencies that unlock depth channels. The safe core needs none of them.
+#
+# Install only the capabilities you need in an isolated virtual environment, after reviewing the
+# package provenance. These are exact release pins captured on 2026-07-28; they are not a complete
+# hash-locked transitive closure, so a high-assurance deployment should build its own locked image.
 
-youtube-transcript-api   # YouTube captions, no key (scripts/youtube.py)
-yt-dlp                   # YouTube search + audio download (scripts/youtube.py)
-faster-whisper           # local speech-to-text fallback when a video has no captions (youtube.py --whisper)
-tldextract               # optional: exact registrable-domain in provenance dedupe (else a curated heuristic is used)
+youtube-transcript-api==1.2.4  # YouTube captions, no key (scripts/youtube.py)
+yt-dlp==2026.7.4               # YouTube search + audio download (scripts/youtube.py)
+faster-whisper==1.2.1          # local speech-to-text fallback when a video has no captions
+tldextract==5.3.1              # exact registrable-domain in provenance dedupe

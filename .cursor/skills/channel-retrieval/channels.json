@@ -1,9 +1,9 @@
 {
   "_comment": "Single source of truth for retrieval channels. 'index_group' is what independence is counted over (two channels sharing an index_group are NOT independent = fake diversity). 'class' is the default epistemic weight: evidence > lead_gen > color. Scripts (provenance_graph.py) and skills read this file.",
-  "core_default": ["brave", "duckduckgo", "marginalia", "youtube", "x", "openalex", "arxiv", "europepmc", "reddit", "hackernews", "github", "stackexchange", "wikipedia", "openlibrary"],
-  "enabled": ["brave", "duckduckgo", "marginalia", "youtube", "x", "openalex", "arxiv", "europepmc", "reddit", "hackernews", "github", "stackexchange", "wikipedia", "openlibrary"],
+  "core_default": ["brave", "duckduckgo", "marginalia", "openalex", "arxiv", "europepmc", "reddit", "hackernews", "github", "stackexchange", "wikipedia", "openlibrary"],
+  "enabled": ["brave", "duckduckgo", "marginalia", "openalex", "arxiv", "europepmc", "reddit", "hackernews", "github", "stackexchange", "wikipedia", "openlibrary"],
   "utilities_always_on": ["read", "rerank", "provenance_graph", "dedupe", "deepen", "doctor", "entity_resolve"],
-  "enabled_note": "NO-KEY FIRST (this is a personal research project). The core runs with ZERO API keys: web = marginalia (independent) + duckduckgo, video = youtube (yt-dlp discovery + youtube-transcript-api), primary = arxiv + openalex (keyless low-volume) + europepmc, books/history = wikipedia + openlibrary, community = reddit (pullpush) + hackernews, X via agent-reach browser session. Free-key UPGRADES (not required): Brave (better independent web), OPENALEX_API_KEY for volume, and Google Books when needed. PAID upgrades (optional): exa (neural web), getxapi/twitterapi (X API). Enable any hidden channel: `python3 ~/.cursor/skills/channel-retrieval/scripts/channels.py enable <name>`.",
+  "enabled_note": "SAFE NO-KEY FIRST. The default core uses direct, no-session web/academic/community clients: Marginalia + DuckDuckGo, arXiv + OpenAlex + Europe PMC, Wikipedia/Open Library, Reddit archive + Hacker News, GitHub, and Stack Exchange. YouTube and X are deliberately opt-in because they can require third-party tools or browser/session access. Free-key upgrades: Brave and OpenAlex; paid upgrades remain optional. Enable a hidden channel only as an explicit capability grant with channels.py enable <name>.",
   "classes": {
     "evidence": "Citable directly. Structured/primary/near-primary.",
     "lead_gen": "Use to FIND primary sources; cite the linked primary, not the aggregator.",

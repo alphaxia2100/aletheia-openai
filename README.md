@@ -6,7 +6,7 @@
 2. **A narrow source diet** — living on one web index whose SEO/editorial bias dominates ranking.
 3. **Bias sources** — treating "40 blogs echoing 1 paper" as 40 independent confirmations.
 
-Aletheia is delivered as a **portable Skill + MCP suite** — no standalone app. It runs in Cursor, Claude Code, Codex, and any harness that reads `SKILL.md` + MCP configs.
+Aletheia is delivered as a **portable skill suite with optional MCP/connectors** — no standalone app. It runs in Cursor, Claude Code, Codex, and any harness that reads `SKILL.md` plus the relevant configuration.
 
 > What makes this better than a bare LLM: it **refuses to anchor** (holds 4-6 competing framings and commits to none), pulls **current, diverse, real sources** the model can't reach, **reads them in full**, **judges whether support is independent or just one origin echoed** (by reading what's cited — a judgment, not a graph), **attacks its own leading conclusion** before believing it, and answers with **every claim tied to a source**, disagreement kept visible.
 
@@ -63,21 +63,21 @@ Suite utilities live in `channel-retrieval/scripts/` (global after install): `do
 
 ## Core connectors (enabled) vs. the rest (hidden)
 
-This is a personal research project, so **the core runs with ZERO API keys.** Only a tight core is enabled and visible to the agent; every other channel is disabled and hidden but one command away. For X and other walled gardens, use **agent-reach** (free, browser-session access) rather than a paid API — Aletheia adds the epistemic layer on top.
+The **safe core runs with ZERO API keys** and contains only direct, no-session clients. Optional channels are disabled until the user enables them; this includes YouTube (third-party media tooling) and X (browser/session or paid API). Aletheia adds the epistemic layer on top. Authenticated browser/session access is always explicit: normal page and Reddit reads do not silently fall back to a logged-in browser.
 
 | Role | Channel(s) | Key |
 |------|-----------|-----|
 | Web search x2 (independent) | **Marginalia** (independent) + **DuckDuckGo** | none — add free **Brave** key or paid **Exa** to upgrade |
-| Latest video | **YouTube** — `youtube.py --latest` (yt-dlp `ytsearchdate` discovery) + `youtube-transcript-api` | none (pip install) |
-| Social pulse (color) | **X** via **agent-reach** (browser session) | none (paid GetXAPI/twitterapi optional) |
+| Latest video (opt-in) | **YouTube** — `youtube.py --latest` (yt-dlp `ytsearchdate` discovery) + `youtube-transcript-api` | none (review/install optional media deps) |
+| Social pulse (opt-in, color) | **X** via **agent-reach** (browser session) | explicit capability grant (paid GetXAPI/twitterapi optional) |
 | Primary / independence backbone | **OpenAlex** + **arXiv** + **Europe PMC** | none — add free OpenAlex key for volume |
 | History / books | **Wikipedia** + **Open Library** | none — enable Google Books when its keyless quota is healthy |
 | Un-laundered layer | **Reddit** (PullPush) + **Hacker News** | none |
 | Depth | **read.py** (Jina: pages + PDFs) | none |
 
-Manage the core:
+Manage the core (after a portable Codex install):
 ```bash
-AL=~/.cursor/skills                                          # Aletheia's global home
+AL="${CODEX_HOME:-$HOME/.codex}/skills/.aletheia-runtime/skills"
 python3 "$AL/channel-retrieval/scripts/channels.py" list        # the enabled core
 python3 "$AL/channel-retrieval/scripts/channels.py" list --all  # every channel, [on]/[off]
 python3 "$AL/channel-retrieval/scripts/channels.py" enable stackexchange       # for software
@@ -90,15 +90,16 @@ The agent uses only enabled channels (`channel-retrieval` enforces this). Hidden
 
 **Cursor** (this repo): skills live in `.cursor/skills/` and load automatically. MCP servers load from `.cursor/mcp.json`.
 
-**Use it in ANY chat (global install).** Make the skills personal so Cursor, Claude Code, and Codex can invoke them outside this repo:
+**Use it in Codex from any directory (portable default).** Validate, then install a self-contained runtime:
 ```bash
-bash scripts/install.sh          # full suite to Cursor/Claude; validated flagship to Codex
-# bash scripts/install.sh --copy # copy Cursor/Claude skills; Codex stays symlinked for sibling runtime
-# bash scripts/install.sh --codex-only # install this OpenAI line; preserve Cursor/Claude versions
+python3 scripts/preflight.py
+bash scripts/install.sh          # copied Codex runtime; does not touch Cursor or Claude
+# bash scripts/install.sh --link # developer mode; depends on this checkout remaining in place
+# bash scripts/install.sh --all  # explicit portable runtime closure for Cursor, Claude Code, and Codex
 ```
-Then invoke *"use the aletheia-research skill to survey \<topic\>."* In Codex, `$aletheia-research` is also available after starting a new session. The scripts self-locate this repo via realpath, so `.env`, channel settings, and the atlas work from anywhere. Codex resolves through `${CODEX_HOME:-$HOME/.codex}`; utilities also run by absolute path, e.g. `python3 ~/.cursor/skills/channel-retrieval/scripts/doctor.py`. (One source of truth: edits here show up in every client.)
+Then invoke *"use the aletheia-research skill to survey \<topic\>."* In Codex, `$aletheia-research` is available after starting a new session. The copied runtime keeps its required sibling skills under `${CODEX_HOME:-$HOME/.codex}/skills/.aletheia-runtime/`, so it does not depend on the checkout after installation. Normal copy mode derives the closure from committed `HEAD` rather than untracked or uncommitted local material; `--allow-dirty` is only for developer forward-testing. Use `--dry-run` before an update; the installer refuses to replace an unrelated skill without `--force` and keeps a timestamped backup.
 
-**Keys**: `cp .env.example .env` and fill in only what you need. The free core needs almost nothing (the `fetch` MCP server + no-key REST APIs cover it). See `.cursor/mcp.reference.md` for the full connector catalog and which are free vs. paid. Run `python3 ~/.cursor/skills/channel-retrieval/scripts/doctor.py` any time to see which channels are live (~15 work with no API key, including Reddit, two no-key web-search indexes, Wikipedia/Open Library, no-key full-page/PDF reading via `read.py`, and YouTube transcripts via `youtube.py` after `pip install --user -r requirements-optional.txt`).
+**Keys and capabilities**: keep keys outside the checkout: create `${ALETHEIA_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/aletheia}/.env` from `.env.example`, keep it owner-only (`chmod 600`), and fill in only what you need. The free core needs almost nothing (the bundled REST clients cover it). Optional channels stay disabled until enabled in the user-scoped channel overlay; browser/session use also needs both an explicit `--browser` request and a matching host capability grant. The repository contains an optional MCP catalog, but the portable runtime intentionally ships no enabled third-party MCP servers; configure any such connector separately. Run `python3 "$AL/channel-retrieval/scripts/doctor.py"` to check enabled channels. See [`docs/PORTABILITY.md`](docs/PORTABILITY.md) for the fresh-machine path, container reference, and honest security boundary.
 
 ## Run a survey
 

@@ -28,4 +28,4 @@ You are reading the sources anyway. Knowing "these five links are really one ori
 
 ## Optional: the computed helper (only for oversized source sets)
 
-If a survey pulls too many sources to hold in your head, `python3 ~/.cursor/skills/provenance-audit/scripts/provenance_graph.py audit --sources sources.jsonl --claims claims.json` will *approximate* this (collapse echoes by domain/author/near-duplicate text, flag single-origin/circular). It is a convenience, not the mechanism — and it's only as good as its heuristics. Prefer your own judgment for anything load-bearing.
+If a survey pulls too many sources to hold in your head, `python3 "$AL/provenance-audit/scripts/provenance_graph.py" audit --sources sources.jsonl --claims claims.json` will *approximate* this (collapse echoes by domain/author/near-duplicate text, flag single-origin/circular), where `$AL` is the installed portable skills root from the flagship skill. It is a convenience, not the mechanism — and it's only as good as its heuristics. Prefer your own judgment for anything load-bearing.

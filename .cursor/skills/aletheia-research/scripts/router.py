@@ -21,7 +21,8 @@ from typing import Dict, List
 HERE = os.path.dirname(os.path.realpath(__file__))
 CHANNEL_SCRIPTS = os.path.join(HERE, "..", "..", "channel-retrieval", "scripts")
 sys.path.insert(0, CHANNEL_SCRIPTS)
-import _http  # noqa: E402  (loads repo .env for configured-channel routing)
+import _http  # noqa: E402  (loads only user-scoped connector configuration)
+import _config as channel_config  # noqa: E402  (bundled metadata + user preferences)
 _http.load_env()
 
 # channels with a runnable search client (keep in sync with investigate.py DISPATCH)
@@ -132,18 +133,16 @@ def classify(topic: str, framing: str = "") -> str:
 
 
 def _enabled_commands() -> set:
-    """Return runnable client names enabled in channels.json.
+    """Return runnable client names enabled in the active channel configuration.
 
     `enabled_only` existed before 0.4.2 but was never applied, so the router silently selected
     hidden channels (notably anonymous-pool Semantic Scholar) that doctor had not health-checked.
     Keep config-name/client-name translation in one place so `channels.py enable semantic_scholar`
     makes the `semanticscholar.py` client routable.
     """
-    path = os.path.join(HERE, "..", "..", "channel-retrieval", "channels.json")
     try:
-        with open(path, encoding="utf-8") as fh:
-            enabled = set(json.load(fh).get("enabled", []))
-    except (OSError, ValueError):
+        enabled = set(channel_config.load_channels().get("enabled", []))
+    except Exception:  # noqa: BLE001 - a malformed local preference file must fail closed
         return set()                 # fail closed: explicit --channels remains available to workers
     return {cmd for cmd in AVAILABLE if _CONFIG_NAME.get(cmd, cmd) in enabled}
 

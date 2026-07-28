@@ -22,9 +22,11 @@ that and adds four things it was missing (see **What's new** below). Everything 
 is a directory; nothing depends on one context window.
 
 ## Toolkit (do this first)
-Installed globally by `scripts/install.sh` for Cursor, Claude Code, and Codex. Prefer Codex's
-flagship symlink so realpath reaches the repository's sibling runtime, `.env`, and channel config;
-fall back to the other client roots when Codex is not installed.
+Install with `scripts/install.sh`. The default creates a copied, self-contained Codex runtime;
+`--cursor`, `--claude`, and `--all` explicitly copy the same portable closure into other harness
+roots. The public entry point resolves to sibling portable skills. Secrets and mutable channel choices
+are deliberately user-scoped, outside the checkout/runtime. Fall back to the other client roots when
+Codex is not installed.
 ```bash
 A="${CODEX_HOME:-$HOME/.codex}/skills/aletheia-research/scripts"
 if [ ! -d "$A" ]; then
@@ -34,8 +36,13 @@ if [ ! -d "$A" ]; then
 fi
 [ -d "$A" ] || { echo "aletheia-research is not installed" >&2; exit 1; }
 AL="$(cd -P "$A/../.." && pwd)"
-python3 "$AL/channel-retrieval/scripts/doctor.py"     # confirm channels live (keys auto-load from repo .env)
+python3 "$AL/channel-retrieval/scripts/doctor.py"     # confirm enabled channels live
 ```
+Connector keys, when needed, load only from
+`${ALETHEIA_CONFIG_DIR:-${XDG_CONFIG_HOME:-~/.config}/aletheia}/.env`; do not create a runtime or
+checkout `.env`. Browser/session access has a second, host-scoped capability gate in addition to an
+explicit `--browser` request. Private POSIX artifact defaults are not an OS sandbox: use a
+harness-approved filesystem, network, and browser boundary for sensitive or untrusted work.
 **Surface channel health (do NOT skip).** `doctor.py` runs a real query per channel, so a channel that
 is reachable but returns nothing shows as `warn` (degraded) and a broken one as `down`. If any core
 channel is `warn`/`down`, **tell the user up front**, route around it (use a healthy same-role channel),
@@ -47,7 +54,7 @@ gate fallback; multi-round), `router.py` (channel routing), `rank.py` (authority
 ranking), `synthesize.py` (bottom-up merge + independence + `--gate`), `verify.py` (citation gate),
 `report.py` (output assembler: `bundle` = full files for agents, `outline` = artifact inventory).
 Do NOT fall back to plain web search — the point is the channels (Brave/OpenAlex/arXiv/Reddit/HN/
-Stack Exchange/GitHub/YouTube + real-browser reads) that reach current, diverse, authenticated sources.
+Stack Exchange/GitHub/YouTube + explicitly authorized real-browser reads) that reach current, diverse, authenticated sources.
 
 ## Thoroughness — `unlimited` is the DEFAULT (depth & budget are unbounded)
 The goal is a brief worth **a full day of manual searching** (and **a week** at `max`) — NOT a
@@ -176,6 +183,8 @@ in A/Bs—manual primary chasing and uncapped rereads are real cost, not free wo
 Repeat only while the bounded node has scrutiny rounds remaining; `unlimited`/`max` continue to
 convergence. If evidence marks a load-bearing read `TRUNCATED`, re-read it without the cap:
 `python3 "$AL/channel-retrieval/scripts/read.py" URL --outdir "<NODE_DIR>/notes/full" --max-chars 0`.
+Do **not** add `--browser` merely because a read is short or blocked: it is an explicit
+caller-authorized capability for a specific URL/session.
 The agent bundle includes nested `notes/full` and `notes/decisive` artifacts.
 **Scoped channels (each run fires only what the question needs).** `investigate.py` calls `router.py`
 to pick a SMALL, domain-appropriate set — biomed→europepmc/openalex (not arXiv), CS→arxiv/openalex
@@ -183,11 +192,12 @@ to pick a SMALL, domain-appropriate set — biomed→europepmc/openalex (not arX
 community and **excluding off-topic indexes**. Humanities routes include Wikipedia/Open Library;
 Google Books is used only when enabled and healthy. Preview it:
 `python3 "$A/router.py" "<q>" --framing "<angle>" --json`.
-The classifier is keyword-based, so if it mis-scopes (e.g. a title with no domain word), **override**:
+The classifier is keyword-based, so if it mis-scopes (e.g. a title with no domain word), **narrow the
+selection to already enabled channels**:
 `investigate.py --node <N> --channels europepmc,openalex,brave,reddit`. Different framings warrant
-different channels (practitioner→community/forums; consensus→primaries).
-The default router uses only channels listed in `channels.json -> enabled`; explicit `--channels` is
-the deliberate override. arXiv abstract hits resolve to full HTML/PDF automatically.
+different channels (practitioner→community/forums; consensus→primaries). Explicit `--channels` cannot
+revive a disabled connector; enabling an optional channel is a separate user/harness capability action.
+arXiv abstract hits resolve to full HTML/PDF automatically.
 At `deep`/`exhaustive`/`unlimited`/`max` (i.e. the default and every deep tier — anytime there are
 multiple leaves), spawn one **READ-ONLY worker subagent per leaf, in parallel** using Codex's
 subagent/collaboration mechanism (or the host's equivalent),

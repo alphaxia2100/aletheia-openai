@@ -1,12 +1,20 @@
 # MCP connector catalog
 
-The live `.cursor/mcp.json` intentionally ships only three servers that are reliable to load:
+## Safety default
+
+The shipped `.cursor/mcp.json` intentionally enables **no** third-party MCP servers. An MCP command
+can execute a package installation and inherit the host's permissions, so enable one only after
+reviewing and pinning its exact version in your own harness configuration. Aletheia's standard-library
+channel clients are sufficient for the safe core and do not require an MCP server.
+
+The live `.cursor/mcp.json` intentionally ships no servers. The following are reference options,
+not defaults:
 
 - **`fetch`** (`uvx mcp-server-fetch`) — the official reference fetch server. This is the workhorse: with it, the agent can hit **every raw REST API** documented in `skills/channel-retrieval/reference.md` (OpenAlex, Semantic Scholar, HN Algolia, Stack Exchange, Europe PMC, Crossref, Gutendex, Google Books, ...). Most channels therefore need **no dedicated MCP at all**.
 - **`brave-search`** — the one at-scale independent Western web index with a public API. Needs `BRAVE_API_KEY`.
 - **`arxiv`** — preprint search + PDF retrieval, no key.
 
-Everything below is **opt-in**. Copy the block into `mcp.json`'s `mcpServers`, add the key to `.env`, and restart. They are separated out because community MCP package names/entrypoints drift; if one is wrong it should fail in isolation, not break your setup. Each is marked with a verification status.
+Everything below is **opt-in**. Copy the block into a reviewed harness-owned `mcpServers` configuration, add any key to the user-scoped Aletheia configuration, and restart. They are separated out because community MCP package names/entrypoints drift; if one is wrong it should fail in isolation, not break your setup. Each is marked with a verification status.
 
 Env interpolation uses `${env:VAR}`. If your Cursor build does not interpolate, paste the literal key instead (never commit it).
 
@@ -78,27 +86,24 @@ Status: community, compliant path (not a scraper).
 ```
 Historical / cross-sub keyword search (no key): Arctic Shift / PullPush REST via the `fetch` server (see reference.md). Aletheia already ships a no-key Reddit client at `skills/channel-retrieval/scripts/reddit.py` (PullPush -> Arctic Shift failover) — no install needed for search/history.
 
-### agent-reach (RECOMMENDED no-key access layer for walled gardens)
-Status: third-party, MIT ([Panniantong/Agent-Reach](https://github.com/Panniantong/Agent-Reach)). This is the right division of labor for a personal project: **agent-reach = the free "eyes"** (zero-API-fee read/search of X, Reddit, YouTube, Bilibili, XiaoHongShu, GitHub via the best free CLI/browser-session backend per platform); **Aletheia = the "judgment"** (framing portfolio, provenance/independence, adversary, defensibility) plus the channels agent-reach doesn't cover (academic, books).
-```bash
-pip install "https://github.com/Panniantong/agent-reach/archive/main.zip"
-agent-reach install --env=auto && agent-reach doctor
-# then call upstream tools directly, e.g. twitter search "q" -n 20 ; opencli reddit search "q" -f yaml
-```
-Use agent-reach for **X and any other walled garden** instead of paying for an API. Feed what it returns into Aletheia's pipeline and tag by class (social/video = color; cite the linked primary). Aletheia also ships its own no-key `reddit.py`/`youtube.py`/`read.py` so it works even without agent-reach; agent-reach widens reach (X timelines, XHS, Bilibili) for free.
+### agent-reach (optional browser/session capability)
+Status: third-party, MIT ([Panniantong/Agent-Reach](https://github.com/Panniantong/Agent-Reach)). It can reach walled gardens through a logged-in browser, which means it is **not** part of the safe default. Review and pin a specific upstream release in an isolated environment before installing it; do not install GitHub `main` from an agent command. Grant browser/session access only after the caller explicitly requests it for a named purpose. Aletheia's bundled Reddit, YouTube, and page readers work without agent-reach; this adapter widens reach when its extra authority is worth the privacy tradeoff.
 
-### X / Twitter (CORE, color-only) — INSTALLED via agent-reach
-Installed on this machine: agent-reach in `~/.aletheia-agentreach` (Python 3.12 via uv), `twitter` CLI at `~/.local/bin/twitter`. Aletheia bridges it via `channel-retrieval/scripts/x.py` (emits normalized records, class=color). No paid API. One-time interactive login:
+Browser-session access is an explicit capability: Aletheia's normal `read.py` and Reddit paths never invoke opencli or use browser cookies automatically. Use their `--browser` flag only after the caller has authorized authenticated-browser access for that specific operation.
+
+### X / Twitter (OPT-IN, color-only) — agent-reach or a reviewed paid API
+
+X is disabled in the safe core. Enable it only after deciding that browser/session or a reviewed paid API is appropriate for the run. Aletheia bridges a configured `twitter` CLI via `channel-retrieval/scripts/x.py` (class=color, never factual evidence). A one-time interactive login normally looks like:
 ```bash
 # 1) log into x.com in Chrome, then:
 agent-reach configure --from-browser chrome     # imports your session cookies (also YouTube/XHS)
 twitter status                                   # -> ok: true
-# then Aletheia can read X:
-python3 .cursor/skills/channel-retrieval/scripts/x.py "topic" --limit 15 [--top] [--from user] [--since 2026-01-01]
+# then explicitly enable the channel before Aletheia can use it:
+python3 .cursor/skills/channel-retrieval/scripts/channels.py enable x
 ```
 (Alternative auth: export TWITTER_AUTH_TOKEN + TWITTER_CT0.) Paid alternatives (no login): **GetXAPI** (~$0.05/1k) via `getxapi-mcp` (`GETXAPI_KEY`), or `twitterapi-io-mcp-server` (`TWITTERAPI_IO_KEY`). X is **color-only** — surface what people react to; never cite as evidence.
 
-agent-reach also unlocks Reddit/Bilibili/XHS/Instagram/etc. the same way: `agent-reach install --channels=<name>` then browser login. Live no-login channels already active: GitHub (`gh`), web (Jina), RSS, V2EX, Bilibili search.
+agent-reach can also unlock Reddit/Bilibili/XHS/Instagram/etc. the same way. Treat every such integration as an independently reviewed capability, not as a required Aletheia dependency.
 
 ---
 

@@ -3,7 +3,8 @@
 Pure-stdlib clients that turn a query into **normalized source records** (JSONL) — the schema in `../SKILL.md`. No dependencies; run with system `python3`. They make the free channels usable immediately, without any MCP server.
 
 ```bash
-cd ~/.cursor/skills/channel-retrieval/scripts   # global location (also holds doctor.py + channels.py)
+AL="${CODEX_HOME:-$HOME/.codex}/skills/.aletheia-runtime/skills"
+cd "$AL/channel-retrieval/scripts"              # copied runtime location (also holds doctor.py + channels.py)
 python3 arxiv.py "your query" --limit 8            > /tmp/a.jsonl
 python3 openalex.py "your query" --limit 8         >> /tmp/a.jsonl   # OPENALEX_API_KEY recommended (2026)
 python3 hn.py "your query"                          >> /tmp/a.jsonl
@@ -23,8 +24,8 @@ non-zero without emitting partial garbage.
 
 | Client | index_of_origin | class | key |
 |--------|-----------------|-------|-----|
-| `brave.py` | brave | evidence | BRAVE_API_KEY (free, auto-loaded from .env) |
-| `x.py` | x | color | none (agent-reach `twitter` CLI + one-time browser login) |
+| `brave.py` | brave | evidence | BRAVE_API_KEY (free, loaded only from user config `.env`) |
+| `x.py` | x | color | opt-in agent-reach browser session + `ALETHEIA_BROWSER_CAPABILITY=x.com` |
 | `arxiv.py` | arxiv | evidence | none |
 | `openalex.py` | openalex | evidence | OPENALEX_API_KEY (free, 2026) |
 | `semanticscholar.py` | semantic_scholar | evidence | none (429-prone; SEMANTIC_SCHOLAR_API_KEY optional) |
@@ -32,11 +33,11 @@ non-zero without emitting partial garbage.
 | `crossref.py` | crossref | evidence | none (OPENALEX_MAILTO optional) |
 | `hn.py` | hackernews | lead_gen | none |
 | `stackexchange.py` | stackexchange | evidence | STACKEXCHANGE_KEY (optional) |
-| `reddit.py` | reddit | lead_gen | none (search: `site:reddit.com` via Brave/DDG -> PullPush -> Arctic -> opencli; `--thread`: opencli) |
+| `reddit.py` | reddit | lead_gen | none (search: `site:reddit.com` via Brave/DDG -> PullPush -> Arctic; browser only with explicit grant) |
 | `github.py` | github | evidence | none (GITHUB_TOKEN optional) |
 | `wikipedia.py` | wikipedia | lead_gen | none |
 | `openlibrary.py` | openlibrary | lead_gen | none |
-| `youtube.py` | youtube | color | none* (pip: youtube-transcript-api, yt-dlp; faster-whisper for --whisper) |
+| `youtube.py` | youtube | color | opt-in; install reviewed dependencies in an isolated venv |
 | `web_ddg.py` | duckduckgo | lead_gen | none (Bing-derived, brittle HTML scrape) |
 | `web_marginalia.py` | marginalia | lead_gen | none (independent index, brittle HTML scrape) |
 | `gutendex.py` | gutenberg | evidence | none |
@@ -51,15 +52,16 @@ python3 read.py --from-sources /tmp/ranked.jsonl --top-k 8 --outdir runs/reads
 ```
 
 `read.py` uses Jina Reader (r.jina.ai) to turn any URL or PDF (incl. arXiv) into
-full markdown with no key — the depth step. `*youtube.py` needs the two pip
-packages above but no API key on a residential machine.
+full markdown with no key — the depth step. `youtube.py` needs optional packages but no API key on a
+residential machine; it is disabled until explicitly enabled and runs yt-dlp with an isolated child
+environment rather than inherited connector keys/cookies.
 
 `_agentreach.py` is the **adapter** module (not a client): it wraps agent-reach's
 CLIs (`twitter`, `opencli`/`rdt`, ...) as swappable backends. `x.py` routes through
-it; `reddit.py` uses it to READ threads (`--thread`) while search stays relevance-first
+it; `reddit.py` uses it only for explicit authorized browser reads while search stays relevance-first
 via a web index (`site:reddit.com`). When a walled-garden backend breaks, swap
 the command/parser there — see "Adapters" in `../reference.md`.
 
 For channels without a bundled client (Discourse forums, podcasts), use the raw
-endpoints in `../reference.md` via the `fetch` MCP server, or a dedicated MCP from
-`.cursor/mcp.reference.md`.
+endpoints in `../reference.md` or configure a separately reviewed, harness-owned MCP.
+The portable runtime deliberately includes no third-party MCP configuration.

@@ -249,32 +249,13 @@ def offline_plan(topic: str) -> Dict[str, Any]:
 
 
 def load_env() -> None:
-    """Populate os.environ from the nearest .env (walking up), without overriding real env."""
-    d = os.path.dirname(os.path.realpath(__file__))
-    for _ in range(8):
-        p = os.path.join(d, ".env")
-        if os.path.isfile(p):
-            try:
-                with open(p, "r", encoding="utf-8") as fh:
-                    for line in fh:
-                        line = line.strip()
-                        if not line or line.startswith("#") or "=" not in line:
-                            continue
-                        k, _, v = line.partition("=")
-                        k = k.strip()
-                        cut = v.find(" #")
-                        if cut != -1:
-                            v = v[:cut]
-                        v = v.strip().strip('"').strip("'")
-                        if k and v and k not in os.environ:
-                            os.environ[k] = v
-            except OSError:
-                pass
-            return
-        parent = os.path.dirname(d)
-        if parent == d:
-            break
-        d = parent
+    """Deliberately do not discover dotenv files from a checkout or working directory.
+
+    ``survey-scope`` is a legacy, repository-only helper and not part of Aletheia's portable
+    closure.  It can still use explicitly supplied process credentials, but an ancestor ``.env``
+    must never turn an arbitrary checkout location into a secret-loading capability.
+    """
+    return None
 
 
 def main(argv: Optional[List[str]] = None) -> int:

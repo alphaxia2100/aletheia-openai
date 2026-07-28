@@ -23,6 +23,10 @@ import sys
 from collections import Counter
 from typing import Any, Dict, List
 
+# Synthesis artifacts contain raw research excerpts and should not inherit a permissive host umask.
+if os.name == "posix":
+    os.umask(0o077)
+
 HERE = os.path.dirname(os.path.realpath(__file__))
 PROV = os.path.join(HERE, "..", "..", "provenance-audit", "scripts")
 sys.path.insert(0, PROV)

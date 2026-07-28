@@ -1,0 +1,23 @@
+# Never send local research traces, secrets, Git state, or interpreter caches to the Docker daemon.
+.git/
+.env
+.env.local
+**/.env
+**/.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+runs/
+**/runs/
+.aletheia/
+**/.aletheia/
+**/raw transcripts/
+**/*cookie*
+**/*profile*
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.DS_Store
+MANIFEST.sha256

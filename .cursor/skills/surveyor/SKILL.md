@@ -27,7 +27,7 @@ Scripts are installed globally at `~/.cursor/skills/` (via the repo's `scripts/i
 absolute path; they are NOT in the current workspace.
 ```bash
 AL=~/.cursor/skills ; SV="$AL/surveyor/scripts/surveyor.py"
-python3 "$AL/channel-retrieval/scripts/doctor.py"     # confirm channels live (keys auto-load from repo .env)
+python3 "$AL/channel-retrieval/scripts/doctor.py"     # confirm channels live (keys load only from user-scoped config)
 ```
 Do NOT fall back to plain web search — the point is the channels (Brave/OpenAlex/arXiv/Reddit/HN/
 YouTube + real-browser reads) that reach current, diverse, authenticated sources.

@@ -12,6 +12,7 @@ Usage: arxiv.py "query" [--limit N].
 from __future__ import annotations
 
 import os
+import stat
 import sys
 import tempfile
 import time
@@ -21,29 +22,82 @@ from typing import Any, Dict, List
 
 sys.path.insert(0, os.path.dirname(__file__))
 import _http  # noqa: E402
+import _config  # noqa: E402
 
 _NS = {"a": "http://www.w3.org/2005/Atom"}
-_HOSTS = ["https://export.arxiv.org/api/query", "http://export.arxiv.org/api/query"]
-_COOLDOWN_FILE = os.path.join(tempfile.gettempdir(), "aletheia_arxiv_cooldown")
+_HOSTS = ["https://export.arxiv.org/api/query"]
 _FALLBACK_MSG = ("arXiv rate-limited (429). Skipping; use openalex.py / semanticscholar.py "
                  "which also index arXiv papers.\n")
 
 
+def _cooldown_path() -> str:
+    """Return an owner-private cache path, never a predictable shared /tmp file."""
+    try:
+        directory = _config.ensure_private_dir(_config.cache_dir())
+    except OSError:
+        return ""
+    return os.path.join(directory, "arxiv-cooldown")
+
+
+def _read_private_text(path: str) -> str:
+    """Read one regular owner-private file without following a symlink."""
+    if not path:
+        return ""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        return ""
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            return ""
+        if os.name == "posix" and (info.st_uid != os.getuid() or info.st_mode & 0o077):
+            return ""
+        with os.fdopen(fd, "r", encoding="utf-8") as fh:
+            fd = -1
+            return fh.read()
+    except OSError:
+        return ""
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
 def _cooling_down() -> float:
     try:
-        with open(_COOLDOWN_FILE, "r", encoding="utf-8") as fh:
-            remaining = float(fh.read().strip()) - time.time()
+        remaining = float(_read_private_text(_cooldown_path()).strip()) - time.time()
         return max(0.0, remaining)
     except Exception:  # noqa: BLE001
         return 0.0
 
 
 def _set_cooldown(seconds: float) -> None:
+    path = _cooldown_path()
+    if not path:
+        return
+    fd, temporary = -1, ""
     try:
-        with open(_COOLDOWN_FILE, "w", encoding="utf-8") as fh:
+        fd, temporary = tempfile.mkstemp(prefix=".arxiv-cooldown-", dir=os.path.dirname(path))
+        if os.name == "posix":
+            os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fd = -1
             fh.write(str(time.time() + min(seconds, 300.0)))
+            fh.flush()
+            os.fsync(fh.fileno())
+        # os.replace changes a malicious symlink itself rather than following it.
+        os.replace(temporary, path)
     except OSError:
         pass
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        if temporary:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
 
 
 def _parse(raw: bytes) -> List[Dict[str, Any]]:

@@ -48,6 +48,12 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
+CHANNEL_SCRIPTS = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..",
+                                                "channel-retrieval", "scripts"))
+if CHANNEL_SCRIPTS not in sys.path:
+    sys.path.insert(0, CHANNEL_SCRIPTS)
+import _config as channel_config  # noqa: E402  (bundled metadata + user preferences)
+
 NODE_FILES = ("decisions.jsonl", "questions.jsonl", "answers.jsonl", "sources.jsonl")
 
 
@@ -86,17 +92,21 @@ def _implementation_metadata() -> Dict[str, Any]:
     for directory, _subdirs, names in os.walk(scripts):
         files.extend(os.path.join(directory, name) for name in names
                      if name.endswith((".py", ".json", ".sh")))
-    channel_cfg = os.path.realpath(os.path.join(skill, "..", "channel-retrieval", "channels.json"))
     runtime_files = list(files)
     for dependency in ("channel-retrieval", "provenance-audit"):
         dep_root = os.path.join(skills_root, dependency)
         for directory, _subdirs, names in os.walk(dep_root):
             runtime_files.extend(os.path.join(directory, name) for name in names
                                  if name.endswith((".py", ".json", ".sh")))
+    active_channel = channel_config.active_metadata()
     meta: Dict[str, Any] = {
         "schema_version": 1,
         "skill_sha256": _sha256_files(skill, files),
-        "channel_config_sha256": _sha256_files(os.path.dirname(channel_cfg), [channel_cfg]),
+        # The bundled file remains part of runtime_sha256; this hash additionally pins the effective
+        # user preference overlay used by this particular run without storing a local config path.
+        "channel_config_sha256": active_channel["sha256"],
+        "channel_config_source": active_channel["source"],
+        "channel_config_enabled": active_channel["enabled"],
         "runtime_sha256": _sha256_files(skills_root, runtime_files),
         "git_commit": None,
         "git_dirty": None,

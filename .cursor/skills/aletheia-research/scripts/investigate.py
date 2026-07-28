@@ -38,6 +38,7 @@ import rank as rankmod  # noqa: E402
 import dedupe  # noqa: E402
 import read as readmod  # noqa: E402
 import _http  # noqa: E402  (keywordize, for 0-result relaxation)
+import _config as channel_config  # noqa: E402  (bundled metadata + user preferences)
 
 MAX_READ_CHARS = 40000   #: read cap; a read that hits it is flagged `_truncated` (no silent cut-off)
 MAX_TRIAGE_GATHERS = 2   #: initial manifest + one tighter requery; no hidden unbounded search loop
@@ -313,8 +314,7 @@ DISPATCH = {
 
 
 def _cfg_classes() -> Dict[str, Dict[str, Any]]:
-    with open(os.path.join(os.path.dirname(CH), "channels.json"), encoding="utf-8") as fh:
-        return json.load(fh)["indexes"]
+    return channel_config.load_channels()["indexes"]
 
 
 def retrieve(query: str, channels: List[str], limit: int, timeout: float):
@@ -380,6 +380,7 @@ def _read_source(url: str, timeout: float):
     mislabeled "read in full." For `/abs/` URLs, only a successful HTML/PDF body is accepted.
     """
     if "youtube.com/" in (url or "") or "youtu.be/" in (url or ""):
+        channel_config.require_enabled("youtube")
         youtube = importlib.import_module("youtube")
         text = youtube.captions(youtube.video_id(url))
         if not text.strip():
@@ -518,12 +519,21 @@ def _gather(node: str, query: str = "", channels: List[str] = None, limit: int =
     query = _anchor(query, cfg.get("topic", ""))   # keep the leaf tied to the root subject
     round_no = completed_rounds + 1
     reads = reads or max(3, round(unit))           # ~one scrutiny unit per round, not the whole budget
-    treestate.set_status(node, state="active")
 
-    # router is only a DEFAULT; the worker may override channels after seeing round-1 evidence
+    # A worker may narrow the router's selection, but an explicit --channels argument may not
+    # resurrect a disabled connector. The user-owned overlay is a capability boundary.
     chans = channels or router.route(query, framing=st.get("question", ""), enabled_only=True)["channels"]
+    try:
+        for channel in chans:
+            # Test-only/in-process dispatch stubs do not name a real connector. Production names
+            # must pass the capability gate before any retrieval worker starts.
+            if channel in DISPATCH:
+                channel_config.require_enabled(channel)
+    except PermissionError as exc:
+        raise SystemExit("refusing disabled Aletheia channel: %s" % exc) from exc
+    treestate.set_status(node, state="active")
     treestate.log_decision(node, "investigate", "round %d channels=%s" % (round_no, ",".join(chans)),
-                           "router category=%s (default; worker may override)" % router.classify(query))
+                           "router category=%s (default; worker may narrow enabled channels)" % router.classify(query))
 
     recs, per = retrieve(query, chans, limit, timeout)
     # dedupe at the WORK level (arXiv id / DOI / canonical url) so versions don't duplicate
@@ -600,6 +610,18 @@ def _execute_reads(node: str, ctx: Dict[str, Any], sel: List[Dict[str, Any]],
         except Exception as e:  # noqa: BLE001
             read_meta.append({"url": u, "chars": 0, "method": "FAIL", "ok": False,
                               "err": type(e).__name__, "t": round(time.time() - t0, 1)})
+
+    # In the agent-triage path, the persisted `ranked` and `read_pool` arrays are decoded as
+    # separate objects. Reads update `sel` (usually from read_pool), so reconcile that metadata
+    # into the canonical ranked records before sources.jsonl is written. Without this, telemetry
+    # says a source was read while synthesis treats every retrieved hit as evidence.
+    selected_by_url = {r.get("url", ""): r for r in sel if r.get("url")}
+    for record in ranked:
+        selected = selected_by_url.get(record.get("url", ""))
+        if selected:
+            for field in ("_read_file", "_read_ok", "_truncated", "_resolved_url"):
+                if field in selected:
+                    record[field] = selected[field]
 
     # node-level dedup across rounds: add_sources only deduped the GLOBAL index, so repeated
     # rounds duplicated this node's sources.jsonl and corrupted independence math. Add only

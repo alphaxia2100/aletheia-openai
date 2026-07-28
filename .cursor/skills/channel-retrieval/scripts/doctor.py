@@ -6,7 +6,7 @@ the real backend(s) in priority order and report which is live, so a dead source
 degrades gracefully instead of failing a survey. No-key channels are live-probed;
 key-gated channels are reported as configured/not-configured.
 
-Usage: doctor.py [--timeout S] [--json]
+Usage: doctor.py [--timeout S] [--json] [--all]
 Pure Python 3.9+ stdlib.
 """
 from __future__ import annotations
@@ -15,17 +15,18 @@ import argparse
 import json
 import os
 import shutil
-import subprocess
 import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Tuple
 
+import _config
+
 UA = "aletheia-doctor/0.1"
 
 
 def load_env() -> None:
-    """Use the shared loader, including copy-install root pointers."""
+    """Use the shared user-scoped connector configuration loader."""
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
     import _http
     _http.load_env()
@@ -33,8 +34,14 @@ def load_env() -> None:
 
 def live(url: str, timeout: float, headers: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
     try:
+        # Do not route a connector key (for example Brave's header) through an ambient proxy set
+        # by the agent host. The normal retrieval client uses the same no-proxy/public-redirect
+        # policy; doctor is a real request too, not an exempt diagnostic side channel.
+        import _http
+        _http.validate_public_url(url)
         req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _http._PublicOnlyRedirect())
+        with opener.open(req, timeout=timeout) as resp:
             return (resp.status < 400, "HTTP %s" % resp.status)
     except urllib.error.HTTPError as e:
         # Reachable is not the same as usable. Authentication/quota failures must not false-green a
@@ -109,13 +116,18 @@ def p_jina(t): return _simple("read (jina)", "jina", "https://r.jina.ai/https://
 
 
 def p_x(t: float) -> Tuple[str, ...]:
-    tw = shutil.which("twitter") or next(
-        (p for p in (os.path.expanduser("~/.local/bin/twitter"),
-                     os.path.expanduser("~/.aletheia-agentreach/bin/twitter")) if os.path.exists(p)), None)
+    import _agentreach
+    # A health check is real subprocess/network activity. Do not ask a browser-backed adapter for
+    # session status unless the host granted the same capability needed for a real X query.
+    if not _config.browser_authorized("x.com"):
+        if key("GETXAPI_KEY") or key("TWITTERAPI_IO_KEY"):
+            return ("x", "x", "warn", "-", "paid API key is set, but this runtime has no paid X adapter; browser capability not granted")
+        return ("x", "x", "warn", "-", "browser/session capability is not authorized for x.com")
+    tw = _agentreach.find_cli("twitter") or next(
+        (p for p in (os.path.expanduser("~/.aletheia-agentreach/bin/twitter"),) if os.path.exists(p)), None)
     if tw:
         try:
-            r = subprocess.run([tw, "status"], capture_output=True, text=True, timeout=t)
-            out = (r.stdout + r.stderr).lower()
+            out = _agentreach._run([tw, "status"], t).lower()
             if "ok: true" in out or "authenticated: true" in out:
                 return ("x", "x", "ok", "agent-reach", "logged-in session (color-only)")
             return ("x", "x", "warn", "twitter-cli", "installed; log into x.com then `agent-reach configure --from-browser chrome`")
@@ -144,7 +156,7 @@ def _has_cli(name: str) -> bool:
 
 
 def p_reddit(t: float) -> Tuple[str, ...]:
-    if _has_cli("opencli") or _has_cli("rdt"):
+    if _config.browser_authorized("reddit.com") and (_has_cli("opencli") or _has_cli("rdt")):
         return ("reddit", "reddit", "ok", "agent-reach", "live/authed via opencli (browser session)")
     ok, note = live("https://api.pullpush.io/reddit/search/submission/?q=test&size=1", t)
     if ok:
@@ -186,9 +198,15 @@ def p_keyonly(name: str, group: str, var: str) -> Tuple[str, ...]:
     return (name, group, "unconfigured", "-", "set %s to enable" % var)
 
 
-LIVE_PROBES = [p_brave, p_openalex, p_arxiv, p_hn, p_se, p_reddit, p_gutendex,
-               p_openlibrary, p_europepmc, p_crossref, p_github, p_s2, p_googlebooks,
-               p_wikipedia, p_duckduckgo, p_marginalia, p_jina, p_youtube, p_x]
+LIVE_PROBES = [
+    ("brave", p_brave), ("openalex", p_openalex), ("arxiv", p_arxiv),
+    ("hackernews", p_hn), ("stackexchange", p_se), ("reddit", p_reddit),
+    ("gutenberg", p_gutendex), ("openlibrary", p_openlibrary),
+    ("europepmc", p_europepmc), ("crossref", p_crossref), ("github", p_github),
+    ("semantic_scholar", p_s2), ("google_books", p_googlebooks),
+    ("wikipedia", p_wikipedia), ("duckduckgo", p_duckduckgo),
+    ("marginalia", p_marginalia), ("read", p_jina), ("youtube", p_youtube), ("x", p_x),
+]
 
 # Map a probe's display name to its channels.json index id (for core filtering).
 _CID = {
@@ -206,10 +224,8 @@ def _cid(display: str) -> str:
 
 
 def _enabled_set() -> set:
-    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "channels.json")
     try:
-        with open(path, "r", encoding="utf-8") as fh:
-            d = json.load(fh)
+        d = _config.load_channels()
         return set(d.get("enabled", [])) | set(d.get("utilities_always_on", []))
     except Exception:  # noqa: BLE001
         return set()
@@ -229,17 +245,27 @@ KEYONLY = [
 _ORDER = {"ok": 0, "warn": 1, "down": 2, "unconfigured": 3}
 
 
-def run(timeout: float) -> List[Tuple[str, ...]]:
+def run(timeout: float, enabled: Optional[set] = None, include_all: bool = False) -> List[Tuple[str, ...]]:
+    """Probe only enabled channels unless ``include_all`` is explicitly requested.
+
+    Health checks are real network/subprocess activity, not a passive listing.  Keep
+    disabled connectors dormant so the channel configuration is a genuine capability
+    boundary rather than merely a display filter.
+    """
+    if enabled is None:
+        enabled = _enabled_set()
+    probes = LIVE_PROBES if include_all else [item for item in LIVE_PROBES if item[0] in enabled]
     rows: List[Tuple[str, ...]] = []
     with ThreadPoolExecutor(max_workers=8) as ex:
-        futs = [ex.submit(fn, timeout) for fn in LIVE_PROBES]
+        futs = [ex.submit(fn, timeout) for _channel, fn in probes]
         for f in futs:
             try:
                 rows.append(f.result())
             except Exception as e:  # noqa: BLE001
                 rows.append(("?", "?", "down", "-", type(e).__name__))
     for name, group, var in KEYONLY:
-        rows.append(p_keyonly(name, group, var))
+        if include_all or _cid(name) in enabled:
+            rows.append(p_keyonly(name, group, var))
     rows.sort(key=lambda r: (_ORDER.get(r[2], 9), r[0]))
     return rows
 
@@ -248,23 +274,23 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Aletheia channel doctor")
     ap.add_argument("--timeout", type=float, default=6.0)
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--all", action="store_true", help="show disabled/hidden channels too (default: core only)")
+    ap.add_argument("--all", action="store_true",
+                    help="actively probe every disabled channel too; this deliberately bypasses the normal channel filter")
     args = ap.parse_args()
 
     load_env()
-    rows = run(args.timeout)
-    total = len(rows)
-    if not args.all:
-        enabled = _enabled_set()
-        if enabled:
-            rows = [r for r in rows if _cid(r[0]) in enabled]
-    hidden = total - len(rows)
+    enabled = _enabled_set()
+    rows = run(args.timeout, enabled=enabled, include_all=args.all)
+    hidden = 0 if args.all else max(0, len(LIVE_PROBES) + len(KEYONLY) - len(rows))
     if args.json:
         keys = ("channel", "index_group", "status", "active_backend", "note")
         json.dump([dict(zip(keys, r)) for r in rows], sys.stdout, indent=2)
         sys.stdout.write("\n")
         return 0
 
+    if not rows:
+        print("No enabled Aletheia channels to probe. Check channels.json or pass --all.")
+        return 1
     w = max(len(r[0]) for r in rows) + 2
     print("Aletheia channels  (ok=live, warn=degraded/keyless, down=unreachable, unconfigured=needs key)\n")
     print("%-*s %-13s %-16s %s" % (w, "CHANNEL", "STATUS", "ACTIVE", "NOTE"))

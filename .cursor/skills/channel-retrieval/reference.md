@@ -1,6 +1,6 @@
 # Channel reference (2026)
 
-Per-channel playbooks: raw endpoint, auth, rate limit, epistemic class, and how to reach it (bundled no-install client / `fetch` MCP server / dedicated MCP). Channel metadata lives in `channels.json`; MCP install blocks in `../../mcp.reference.md`.
+Per-channel playbooks: raw endpoint, auth, rate limit, epistemic class, and how to reach it (bundled no-install client / separately reviewed MCP). Channel metadata lives in `channels.json`. Repository MCP examples are not part of the portable runtime and must not be assumed installed.
 
 **Reading the class column:** `evidence` = citable · `lead_gen` = use to find the primary, cite the primary · `color` = never cite as fact.
 
@@ -12,7 +12,7 @@ Per-channel playbooks: raw endpoint, auth, rate limit, epistemic class, and how 
 
 ### Brave — `index_of_origin: brave` · class evidence · own independent index
 - Raw: `GET https://api.search.brave.com/res/v1/web/search?q=<q>&count=10`, header `X-Subscription-Token: $BRAVE_API_KEY`.
-- MCP: `brave-search` (live in `mcp.json`). Auth: free tier ~$5 credit/mo. The one at-scale independent Western index with a public API — the baseline "not-just-Google" channel.
+- Optional MCP: configure a reviewed `brave-search` equivalent in the host if needed. Auth: free tier ~$5 credit/mo. The bundled `brave.py` client is the portable path.
 
 ### Exa — `index_of_origin: exa` · class evidence · neural/embedding index (different paradigm)
 - MCP: `https://mcp.exa.ai/mcp` (`EXA_API_KEY`). Paid (~$7/1k). Strongest anti-monoculture pick alongside Brave: surfaces documents keyword engines miss.
@@ -55,7 +55,7 @@ Per-channel playbooks: raw endpoint, auth, rate limit, epistemic class, and how 
 - Best complement to OpenAlex: `isInfluential` + citation `contexts` separate load-bearing citations from perfunctory ones.
 
 ### arXiv — `index_of_origin: arxiv` · class evidence · preprints (not peer-reviewed)
-- Client: `scripts/arxiv.py`. Raw: `http://export.arxiv.org/api/query?search_query=all:<q>` (Atom XML). No key; <=1 req/3s. Freshest CS/ML; no citation graph (judge independence elsewhere).
+- Client: `scripts/arxiv.py`. Raw: `https://export.arxiv.org/api/query?search_query=all:<q>` (Atom XML). No key; <=1 req/3s. Freshest CS/ML; no citation graph (judge independence elsewhere).
 
 ### Europe PMC — `index_of_origin: europepmc` · class evidence · free biomedical citation graph + OA full text
 - Raw: search `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=<q>&format=json`; citations `/{source}/{id}/citations`; refs `/references`; full text `/{PMCID}/fullTextXML`. No key.
@@ -89,13 +89,13 @@ Per-channel playbooks: raw endpoint, auth, rate limit, epistemic class, and how 
 - Per instance: `GET https://<forum>/search.json?q=<q>` (operators: `#category @user before: after: tags: status:solved`), threads `/t/{id}.json`. Anonymous read often works; heavier reads use per-forum `Api-Key`+`Api-Username`. Maintainers/core users speaking on their own project's forum ≈ primary. Curate an allowlist per field.
 
 ### Reddit — `index_of_origin: reddit` · class lead_gen
-- **Bundled client: `scripts/reddit.py`** — **search is relevance-first**: web index scoped to reddit.com (`site:reddit.com` via Brave/DDG) -> **PullPush** -> **Arctic Shift** -> **agent-reach `opencli`** (last for search). Reddit's *own* search ranks by recency/engagement (viral noise); a web index ranks by relevance, so discovery stays on-topic. Winning backend is relevance-filtered. Search: `reddit.py "q" [--subreddit s]`. **Full thread (OP + comments): `reddit.py --thread <url|id>`** — opencli's authed reader (the un-laundered layer read in full; -> PullPush-by-link_id fallback).
+- **Bundled client: `scripts/reddit.py`** — **search is relevance-first**: web index scoped to reddit.com (`site:reddit.com` via Brave/DDG) -> **PullPush** -> **Arctic Shift**. Reddit's *own* search ranks by recency/engagement (viral noise); a web index ranks by relevance, so discovery stays on-topic. Winning backend is relevance-filtered. Search: `reddit.py "q" [--subreddit s]`. **Full thread (OP + comments): `reddit.py --thread <url|id>`** uses PullPush by default. Add `--browser` only after explicit authorization to use agent-reach/opencli's authenticated reader (then PullPush remains the fallback).
 - Live (compliant, higher fidelity): official Data API via PRAW, OAuth app (`REDDIT_CLIENT_ID/SECRET/USER_AGENT`), free non-commercial, 100 QPM. MCP: `reddit` (PRAW-based). Use when you need current vote counts / live threads.
 - Great for lived experience and finding leads; noisy/astroturf-prone. Cite specific technical threads only; never aggregate sentiment as fact.
 
-### X / Twitter — `index_of_origin: x` · class color ONLY · CORE (no key)
-- **Bundled client: `scripts/x.py`** — wraps agent-reach's `twitter` CLI (browser-session auth, no paid API) into normalized records. One-time login: log into x.com in Chrome, then `agent-reach configure --from-browser chrome`, verify `twitter status`. Then `python3 ~/.cursor/skills/channel-retrieval/scripts/x.py "topic" --limit 15 [--top] [--from user] [--since YYYY-MM-DD]`.
-- Paid alternatives (no login): GetXAPI ~$0.05/1k, twitterapi.io ~$0.15/1k (see `.cursor/mcp.reference.md`). ToS-gray. **Color only**: what people react to, never cite as evidence.
+### X / Twitter — `index_of_origin: x` · class color ONLY · OPT-IN
+- **Bundled client: `scripts/x.py`** — wraps agent-reach's `twitter` CLI (browser-session auth, no paid API) into normalized records. One-time login: log into x.com in Chrome, then `agent-reach configure --from-browser chrome`, verify `twitter status`. Enable `x` first, and require a host-scoped grant for every run: `ALETHEIA_BROWSER_CAPABILITY=x.com python3 "$AL/channel-retrieval/scripts/x.py" "topic" --limit 15 [--top] [--from user] [--since YYYY-MM-DD]`.
+- Paid alternatives (no login): GetXAPI ~$0.05/1k, twitterapi.io ~$0.15/1k, but no paid X adapter is bundled in this portable runtime. Configure a reviewed external adapter separately. ToS-gray. **Color only**: what people react to, never cite as evidence.
 
 ### LinkedIn — SKIP
 - No compliant content API for this; low signal. Excluded on purpose.
@@ -138,19 +138,23 @@ Per-channel playbooks: raw endpoint, auth, rate limit, epistemic class, and how 
 
 ## Adapters — swappable backends (via agent-reach)
 
-Some channels route through **agent-reach** (free, browser-session access to walled gardens) as a *preferred* backend, falling back to a no-key native backend. This is the plugin/adapter design: **when a backend breaks, swap it in one place** and the client keeps working.
+Some channels can route through **agent-reach** (browser-session access to walled gardens) only as
+an explicitly authorized capability; safe default paths remain no-session native clients. This is the
+plugin/adapter design: **when a backend breaks, swap it in one place** and the client keeps working.
 
 - **Adapter module:** `scripts/_agentreach.py` — locates agent-reach's upstream CLIs (`twitter`, `opencli`/`rdt`, ...) and maps their output into Aletheia's record schema. All agent-reach-backed parsing lives here; fix a broken CLI/parser once, here.
-- **The master key — a real logged-in browser.** How agent-reach gets past walls: opencli drives your authenticated Chrome (daemon + extension = "Browser Bridge"), so it executes JS and carries your cookies. That defeats the three things a plain HTTP fetch (Jina) can't: anonymous 403 anti-bot, login/soft-paywalls, and JS-rendered pages. Exposed here as:
-  - `browser_extract(url)` → render any page in real Chrome → markdown. `read.py` calls this automatically when Jina returns a stub (or `read.py --browser`).
-  - `reddit_read(id)` → full thread (OP + comments); used by `reddit.py --thread` and by `read.py` on reddit URLs.
+- **The master key — a real logged-in browser.** How agent-reach gets past walls: opencli drives your authenticated Chrome (daemon + extension = "Browser Bridge"), so it executes JS and carries your cookies. That defeats the three things a plain HTTP fetch (Jina) can't: anonymous 403 anti-bot, login/soft-paywalls, and JS-rendered pages. It is explicit and never an automatic fallback:
+  - `browser_extract(url)` → render any page in real Chrome → markdown, only through `read.py --browser` **and** a matching `ALETHEIA_BROWSER_CAPABILITY` host grant.
+  - `reddit_read(id)` → full thread (OP + comments), only through `reddit.py --thread … --browser` or `read.py --browser` on a Reddit URL, again with `reddit.com` granted.
   - opencli also ships 163 per-site adapters (amazon, bloomberg, google-scholar, arxiv, ...) and a generic `opencli browser` surface — reachable the same way if you add more channels.
-  - **Honest limits:** the browser is slow (~15-35s/page) and needs the opencli daemon + Chrome running; hard captcha/interactive-Cloudflare and true no-login paywalls still lose; and this is ToS-gray (fine for a personal project, don't ship it commercially).
+  - **Honest limits:** the browser is slow (~15-35s/page) and needs the opencli daemon + Chrome running; hard captcha/interactive-Cloudflare and true no-login paywalls still lose; and this is ToS-gray (fine for a personal project, don't ship it commercially). The scrubbed child environment reduces accidental secret inheritance but does not sandbox an untrusted third-party CLI running as the same user.
 - **X** (`x.py`) → agent-reach `twitter` CLI (live when `twitter status` = `ok: true`). Optional paid fallback: GetXAPI / twitterapi.io.
-- **Reddit** (`reddit.py`) → **search** order: web-relevance (`site:reddit.com` via Brave/DDG) → **PullPush** → **Arctic Shift** → agent-reach `opencli` (last; live but low-relevance for search). **Reading** (`--thread`) uses opencli's authed browser (→ PullPush by link_id). Web-relevance beats Reddit's native search, so discovery stays on-topic with or without opencli.
+- **Reddit** (`reddit.py`) → **search** order: web-relevance (`site:reddit.com` via Brave/DDG) → **PullPush** → **Arctic Shift**. Add `--browser` to make agent-reach `opencli` an explicit final fallback. **Reading** (`--thread`) uses PullPush by default; `--browser` opts into opencli's authenticated reader first. Web-relevance beats Reddit's native search, so discovery stays on-topic with or without opencli.
 - Native channels (`youtube.py`, `github.py`, `read.py`) already cover what agent-reach's YouTube/GitHub/web backends do; agent-reach is an alternate, not a requirement.
 
-**agent-reach channels online now (7/15):** GitHub, YouTube, V2EX, RSS, web (Jina), **X**, Bilibili. Locked (need a CLI + browser login): Reddit, Facebook, Instagram, XiaoHongShu, podcast, Xueqiu, LinkedIn — unlock with `agent-reach install --channels=<name>`.
+**Availability is machine-specific.** Treat agent-reach/browser adapters as absent until the current
+host's explicit capability grant and `doctor.py` check show otherwise; do not copy browser profiles,
+cookies, or adapter state between machines.
 
 **To swap a broken backend:** edit the command/parser in `_agentreach.py`, or reorder the backend list in the client's `search()`. Ordered fallback means a dead backend simply drops to the next — nothing else changes. This is deliberately how you keep the walled-garden channels alive as tools come and go.
 

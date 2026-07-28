@@ -2,7 +2,7 @@
 """Brave Search client -> normalized records (JSONL).
 
 Core web #1: the only at-scale INDEPENDENT Western index with a public API.
-Needs BRAVE_API_KEY (free tier ~2000/mo), auto-loaded from .env by _http.
+Needs BRAVE_API_KEY (free tier ~2000/mo), loaded only from user-scoped configuration by _http.
 No MCP required. Usage: brave.py "query" [--limit N].
 """
 from __future__ import annotations
@@ -19,7 +19,7 @@ import _http  # noqa: E402
 def search(query: str, limit: int, timeout: float) -> List[Dict[str, Any]]:
     key = os.environ.get("BRAVE_API_KEY")
     if not key:
-        sys.stderr.write("BRAVE_API_KEY not set (add to .env). Falling back: use marginalia.py / web_ddg.py.\n")
+        sys.stderr.write("BRAVE_API_KEY not set (add it to the user-scoped Aletheia config). Falling back: use marginalia.py / web_ddg.py.\n")
         return []
     def fetch(q: str):
         url = ("https://api.search.brave.com/res/v1/web/search?q=%s&count=%d"

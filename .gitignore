@@ -1,7 +1,11 @@
 # Secrets
-.env
-.env.local
+.env*
+!.env.example
+MANIFEST.sha256
 *.key
+*.pem
+*.p12
+*.pfx
 
 # Python
 __pycache__/
@@ -15,4 +19,8 @@ venv/
 
 # Aletheia transient working dirs (surveys in progress)
 runs/
+**/runs/
 .aletheia/
+**/.aletheia/
+raw transcripts/
+**/raw transcripts/

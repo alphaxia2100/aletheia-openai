@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Enable/disable channels for the Aletheia core.
 
-Only channels in channels.json -> "enabled" are visible to the agent (the CORE).
-Every other index is disabled and hidden but ready. This tool flips membership by
-editing just the "enabled" line (the rest of the file, incl. formatting, is kept).
+Only channels in the active configuration's "enabled" list are visible to the agent (the CORE).
+Every other index is disabled and hidden but ready. Bundled channel metadata is immutable; this
+tool writes only a user-scoped preference overlay, atomically.
 
 Usage:
   channels.py list            # show the enabled core
@@ -17,31 +17,18 @@ Pure Python 3.9+ stdlib.
 """
 from __future__ import annotations
 
-import json
-import os
-import re
 import sys
 from typing import List
 
-_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "channels.json")
+import _config
 
 
 def _load() -> dict:
-    with open(_PATH, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+    return _config.load_channels()
 
 
-def _write_enabled(names: List[str]) -> None:
-    with open(_PATH, "r", encoding="utf-8") as fh:
-        text = fh.read()
-    arr = "[" + ", ".join(json.dumps(n) for n in names) + "]"
-    new, n = re.subn(r'^(\s*)"enabled":\s*\[[^\]]*\](,?)\s*$',
-                     lambda m: '%s"enabled": %s%s' % (m.group(1), arr, m.group(2)),
-                     text, count=1, flags=re.MULTILINE)
-    if n != 1:
-        sys.exit("could not locate the 'enabled' line in channels.json")
-    with open(_PATH, "w", encoding="utf-8") as fh:
-        fh.write(new)
+def _write_enabled(names: List[str]) -> str:
+    return _config.write_enabled(names)
 
 
 def main(argv: List[str]) -> int:
@@ -83,13 +70,14 @@ def main(argv: List[str]) -> int:
                 s.append(a)
             if cmd == "disable" and a in s:
                 s.remove(a)
-        _write_enabled(s)
-        print("%sd: %s\nenabled now: %s" % (cmd, ", ".join(args), ", ".join(s)))
+        path = _write_enabled(s)
+        print("%sd: %s\nenabled now: %s\npreferences: %s" %
+              (cmd, ", ".join(args), ", ".join(s), path))
         return 0
 
     if cmd == "reset":
-        _write_enabled(core)
-        print("reset to core: %s" % ", ".join(core))
+        path = _config.reset_enabled()
+        print("reset to core: %s\npreferences: %s" % (", ".join(core), path))
         return 0
 
     sys.exit("unknown command %r (list|enable|disable|reset|core)" % cmd)

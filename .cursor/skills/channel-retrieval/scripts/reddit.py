@@ -3,15 +3,17 @@
 
 Closes the "agents can't reach Reddit" gap. DISCOVERY is relevance-first: a web index
 scoped to reddit.com (the `site:reddit.com` trick, via Brave/DDG) ranks by relevance,
-whereas Reddit's own search ranks by recency/engagement and returns viral noise. Order:
-web-relevance -> PullPush -> Arctic Shift -> opencli (live/authed, demoted for search
-but primary for READING threads via --thread). Whatever wins is relevance-filtered.
+whereas Reddit's own search ranks by recency/engagement and returns viral noise. Default
+order: web-relevance -> PullPush -> Arctic Shift.  An authenticated opencli browser
+backend is available only with the explicit ``--browser`` capability flag.  Whatever
+wins is relevance-filtered.
 Ordered-backend failover: try each, use the first that returns.
 
 Class = lead_gen: Reddit is lived-experience + lead discovery, gameable/noisy.
 Cite specific technical threads, never aggregate sentiment as fact.
 
-Usage: reddit.py "query" [--limit N] [--kind submission|comment] [--subreddit NAME]
+Usage: reddit.py "query" [--limit N] [--kind submission|comment] [--subreddit NAME] [--browser]
+       reddit.py --thread URL_OR_ID [--browser]
 """
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ from typing import Any, Dict, List, Optional
 sys.path.insert(0, os.path.dirname(__file__))
 import _http  # noqa: E402
 import _agentreach  # noqa: E402
+import _config  # noqa: E402
 
 
 def _iso(epoch: Any) -> str:
@@ -91,13 +94,21 @@ def _web_reddit(query: str, limit: int, kind: str, subreddit: Optional[str],
     """
     q = "site:reddit.com " + (("r/%s " % subreddit) if subreddit else "") + query
     recs: List[Dict[str, Any]] = []
+    def enabled(name: str) -> bool:
+        try:
+            _config.require_enabled(name)
+            return True
+        except PermissionError:
+            return False
     try:  # Brave first (independent index, keyed); else DuckDuckGo (no key)
-        if os.environ.get("BRAVE_API_KEY"):
+        # Reddit's relevance shortcut must not silently borrow a separately disabled web channel
+        # (or its key). The direct archive backends below remain available when both are off.
+        if os.environ.get("BRAVE_API_KEY") and enabled("brave"):
             import brave
             recs = brave.search(q, max(limit * 3, 10), timeout)
     except Exception:  # noqa: BLE001
         recs = []
-    if not recs:
+    if not recs and enabled("duckduckgo"):
         try:
             import web_ddg
             recs = web_ddg.search(q, max(limit * 3, 10), timeout)
@@ -133,13 +144,17 @@ def _rerank_filter(query: str, recs: List[Dict[str, Any]], limit: int) -> List[D
 
 
 def search(query: str, limit: int, timeout: float, kind: str = "submission",
-           subreddit: Optional[str] = None) -> List[Dict[str, Any]]:
+           subreddit: Optional[str] = None, browser: bool = False) -> List[Dict[str, Any]]:
     # Ordered, SWAPPABLE backends. RELEVANCE-FIRST for discovery: a web index scoped to
     # reddit.com beats Reddit's own (recency/engagement) ranking, which returns viral
-    # noise. opencli is demoted to last for SEARCH (it's great for READING via --thread).
+    # noise.  Browser/session access is opt-in even as a final fallback, so a missing
+    # archive result never silently opens a user's authenticated Reddit session.
     # Whatever wins is relevance-filtered to drop off-topic junk.
+    _config.require_enabled("reddit")
+    if browser and not _config.browser_authorized("reddit.com"):
+        raise PermissionError("browser session capability is not authorized for reddit.com")
     backends = [("web", _web_reddit), ("pullpush", _pullpush), ("arctic_shift", _arctic_shift)]
-    if _agentreach.reddit_backend():
+    if browser and _agentreach.reddit_backend():
         backends.append(("agent-reach", _agentreach_backend))
     errors = []
     for name, fn in backends:
@@ -178,18 +193,33 @@ def _thread_pullpush(pid: str, limit: int, timeout: float) -> str:
     return "\n".join(lines).strip()
 
 
-def read_thread(post: str, limit: int, timeout: float, outdir: str) -> Optional[Dict[str, Any]]:
-    """Read a full thread (OP + comments). opencli (live/authed) -> PullPush archive."""
+def read_thread(post: str, limit: int, timeout: float, outdir: str,
+                browser: bool = False) -> Optional[Dict[str, Any]]:
+    """Read a full thread (OP + comments).
+
+    PullPush is the safe default.  ``browser=True`` explicitly grants use of the
+    authenticated opencli reader before the archive fallback.
+    """
+    _config.require_enabled("reddit")
     pid = _agentreach.reddit_post_id(post)
-    text, _err = _agentreach.reddit_read(post, max(timeout, 90))
-    method = "opencli"
+    if not pid:
+        sys.stderr.write("invalid Reddit post ID or URL\n")
+        return None
+    if browser and not _config.browser_authorized("reddit.com"):
+        raise PermissionError("browser session capability is not authorized for reddit.com")
+    text = ""
+    method = "pullpush"
+    if browser:
+        text, _err = _agentreach.reddit_read(post, max(timeout, 90))
+        method = "opencli"
     if not text:
         text = _thread_pullpush(pid, limit, timeout)
         method = "pullpush"
     if not text:
-        sys.stderr.write("could not read thread %s (opencli not logged in? archive lag?)\n" % pid)
+        hint = "browser not logged in or archive lag?" if browser else "archive unavailable/lagging?"
+        sys.stderr.write("could not read thread %s (%s)\n" % (pid, hint))
         return None
-    os.makedirs(outdir, exist_ok=True)
+    _config.ensure_private_dir(outdir)
     path = os.path.join(outdir, "reddit-" + re.sub(r"[^A-Za-z0-9_-]", "_", pid)[:32] + ".md")
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(text)
@@ -209,16 +239,25 @@ def main() -> int:
     ap.add_argument("--kind", choices=["submission", "comment"], default="submission")
     ap.add_argument("--subreddit")
     ap.add_argument("--outdir", default="runs/reddit")
+    ap.add_argument("--browser", action="store_true",
+                    help="explicitly allow the authenticated opencli Reddit/browser backend")
     args = ap.parse_args()
+    try:
+        _config.require_enabled("reddit")
+        if args.browser:
+            _config.require_browser_authorization("reddit.com")
+    except PermissionError as exc:
+        sys.stderr.write("refusing Reddit capability: %s\n" % exc)
+        return 2
     if args.thread:
-        rec = read_thread(args.thread, args.limit, args.timeout, args.outdir)
+        rec = read_thread(args.thread, args.limit, args.timeout, args.outdir, args.browser)
         if rec:
             _http.emit([rec])
             return 0
         return 1
     if not args.query:
         ap.error("provide a query, or --thread <url|id>")
-    recs = search(args.query, args.limit, args.timeout, args.kind, args.subreddit)
+    recs = search(args.query, args.limit, args.timeout, args.kind, args.subreddit, args.browser)
     _http.emit(recs)
     return 0 if recs else 1
 
