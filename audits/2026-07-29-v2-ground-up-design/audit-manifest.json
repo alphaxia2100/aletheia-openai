@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "audit_id": "2026-07-29-v2-ground-up-design",
+  "title": "Aletheia v2 ground-up architecture investigation",
+  "status": "completed_design_recommendation",
+  "date": "2026-07-29",
+  "repository": {
+    "path": "/Users/daemon1/Developer/Personal/Aletheia-OpenAI",
+    "branch_at_start": "codex/independent-audit-2026-07-28",
+    "head_at_start": "c66c182210adc7eb3cc3837365609deb83ffcfad"
+  },
+  "audited_runtime_candidate": {
+    "commit": "bd5e1a50a491ee7c5ebe1382ace35c21f7909de5",
+    "role": "binding v0.5 runtime evidence source",
+    "audit_report": "../2026-07-28-deep-runtime-and-head-to-head/report.md"
+  },
+  "question": "How should Aletheia v2 be structured from the ground up to deliver bounded, evidence-correct, auditable agentic research while earning its complexity against a strong single-agent baseline?",
+  "conclusion": {
+    "default": "bounded single-lead research with controller-owned state, finite envelope, typed evidence and claims, and explicit terminal states",
+    "opt_in": "audited source-separated investigation under a predeclared plan and global budget",
+    "not_recommended": [
+      "patching the v0.5 filesystem blackboard into a larger swarm",
+      "unbounded or autonomous-saturation default operation",
+      "autonomous self-modifying research policies",
+      "platform/framework expansion before a bounded vertical slice and matched evaluation"
+    ]
+  },
+  "method": {
+    "research_mode": "bounded exhaustive investigation",
+    "independent_reviews": [
+      "control plane",
+      "workflows and alternatives",
+      "adversarial evaluation and migration"
+    ],
+    "channel_health": "12 of 13 core channels live; Brave degraded without API key",
+    "raw_research_policy": "raw retrieval bodies and mutable run state are intentionally gitignored"
+  },
+  "key_evidence": [
+    {
+      "path": "../2026-07-28-deep-runtime-and-head-to-head/report.md",
+      "role": "reproduced v0.5 source identity, state integrity, resource, and evaluation limitations"
+    },
+    {
+      "path": "../2026-07-28-deep-runtime-and-head-to-head/comparison/results.md",
+      "role": "corrected controlled comparison; 11-11 factual-rubric tie with unequal read assignments"
+    },
+    {
+      "path": "../../docs/research/2026-07-27-agent-output-quality/synthesis.md",
+      "role": "project-authored claim/evidence, stopping, and evaluation design hypotheses"
+    },
+    {
+      "path": "../../docs/BRANCHES.md",
+      "role": "experimental mechanism inventory and unpromoted status"
+    }
+  ],
+  "deliverables": [
+    "README.md",
+    "v2-design.md",
+    "acceptance-contract.md",
+    "decision-log.md",
+    "validate_dossier.py",
+    "research/control-plane.md",
+    "research/workflows-and-alternatives.md",
+    "research/adversary-and-evaluation.md",
+    "research/channel-health-2026-07-29.md"
+  ],
+  "limitations": [
+    "No v2 implementation exists, so this is not a v2 performance benchmark.",
+    "Current evidence does not establish a cross-vendor quality, latency, or cost ranking.",
+    "The one controlled local comparison was source-frozen, small, and not fully resource-matched.",
+    "Channel health is point-in-time, and Brave was unavailable without a key.",
+    "An append-only ledger is not administrator-proof absent deployment-specific external anchoring."
+  ],
+  "non_changes": [
+    "No production runtime files are intentionally changed by this dossier.",
+    "Existing unrelated worktree changes are preserved and excluded from this audit commit."
+  ]
+}

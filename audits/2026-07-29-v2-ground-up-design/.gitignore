@@ -1,0 +1,4 @@
+# Reproducible local retrieval bodies and mutable run state are intentionally not committed.
+research-runs/
+raw/
+fixtures/
