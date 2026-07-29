@@ -1,0 +1,15 @@
+[
+  {"channel": "arxiv", "index_group": "arxiv", "status": "ok", "active_backend": "arxiv", "note": "HTTP 200"},
+  {"channel": "duckduckgo", "index_group": "duckduckgo", "status": "ok", "active_backend": "duckduckgo", "note": "3 results"},
+  {"channel": "europepmc", "index_group": "europepmc", "status": "ok", "active_backend": "europepmc", "note": "HTTP 200"},
+  {"channel": "github", "index_group": "github", "status": "ok", "active_backend": "github", "note": "3 results (60/hr unauth; add GITHUB_TOKEN)"},
+  {"channel": "hackernews", "index_group": "hackernews", "status": "ok", "active_backend": "hackernews", "note": "3 results"},
+  {"channel": "marginalia", "index_group": "marginalia", "status": "ok", "active_backend": "marginalia", "note": "2 results"},
+  {"channel": "openlibrary", "index_group": "internet_archive", "status": "ok", "active_backend": "openlibrary", "note": "HTTP 200"},
+  {"channel": "read (jina)", "index_group": "jina", "status": "ok", "active_backend": "read (jina)", "note": "HTTP 200"},
+  {"channel": "stackexchange", "index_group": "stackexchange", "status": "ok", "active_backend": "stackexchange", "note": "3 results"},
+  {"channel": "wikipedia", "index_group": "wikipedia", "status": "ok", "active_backend": "wikipedia", "note": "HTTP 200"},
+  {"channel": "brave", "index_group": "brave", "status": "warn", "active_backend": "fetch/jina", "note": "no BRAVE_API_KEY -> losing your independent web index; add free key"},
+  {"channel": "openalex", "index_group": "openalex", "status": "warn", "active_backend": "openalex", "note": "up but add OPENALEX_API_KEY (2026 free key; low quota without)"},
+  {"channel": "reddit", "index_group": "reddit", "status": "down", "active_backend": "-", "note": "HTTP 502"}
+]

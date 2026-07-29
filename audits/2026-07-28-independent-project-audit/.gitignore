@@ -1,0 +1,6 @@
+# The reproducible research state is retained locally for reruns and verification.
+# Full fetched pages and channel manifests may include third-party content and are not source artifacts.
+research-runs/
+# Generated portable installs and synthetic runtime fixtures are reproducible locally,
+# but are not audit source artifacts.
+benchmarks/fixtures/

@@ -1,0 +1,15 @@
+{
+  "audit_date": "2026-07-28",
+  "audited_commit": "bd5e1a50a491ee7c5ebe1382ace35c21f7909de5",
+  "audited_ref_context": "unpromoted portable-runtime candidate codex/exp-portable-sandbox-v06",
+  "audit_branch": "codex/independent-audit-2026-07-28",
+  "stable_docs_ref": "prod",
+  "stable_docs_ref_commit": "7cc657bfe9048838ae387198f9ebeb11209c2a5c",
+  "stable_runtime_tag": "aletheia-prod-v0.5.0-openai.1",
+  "stable_runtime_tag_peeled_commit": "addfaf648ca5577e00e393b2cb1c692a6302eac2",
+  "production_source_files_modified_by_audit": false,
+  "notes": [
+    "The audit branch contains the audited candidate plus only the audit artifacts introduced in this directory.",
+    "The prod branch is documentation-forward; the immutable runtime tag is the appropriate stable runtime reference."
+  ]
+}

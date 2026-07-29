@@ -1,0 +1,80 @@
+{
+  "configuration": {
+    "channels": 3,
+    "read_delay_s_each": 0.05,
+    "reads_per_round": 4,
+    "retrieval_delay_s_each": 0.1,
+    "trials": 5
+  },
+  "kind": "offline scheduler microbenchmark",
+  "repository": "/Users/daemon1/Developer/Personal/Aletheia-OpenAI",
+  "summary_median_s": {
+    "read_sum_s": 0.2158,
+    "read_wall_s": 0.218,
+    "retrieval_sum_s": 0.3047,
+    "retrieval_wall_s": 0.1028,
+    "total_wall_s": 0.3298
+  },
+  "trials": [
+    {
+      "read_calls": 4,
+      "read_sum_s": 0.2158,
+      "read_wall_s": 0.218,
+      "reads_ok": 4,
+      "reads_overlapped": false,
+      "retrieval_sum_s": 0.3026,
+      "retrieval_wall_s": 0.1012,
+      "run": "audits/2026-07-28-independent-project-audit/benchmarks/fixtures/microbenchmark/2026-07-28-184448-trial-01",
+      "total_wall_s": 0.3336,
+      "trial": 1
+    },
+    {
+      "read_calls": 4,
+      "read_sum_s": 0.217,
+      "read_wall_s": 0.2181,
+      "reads_ok": 4,
+      "reads_overlapped": false,
+      "retrieval_sum_s": 0.3151,
+      "retrieval_wall_s": 0.1052,
+      "run": "audits/2026-07-28-independent-project-audit/benchmarks/fixtures/microbenchmark/2026-07-28-184448-trial-02",
+      "total_wall_s": 0.333,
+      "trial": 2
+    },
+    {
+      "read_calls": 4,
+      "read_sum_s": 0.2117,
+      "read_wall_s": 0.2136,
+      "reads_ok": 4,
+      "reads_overlapped": false,
+      "retrieval_sum_s": 0.3047,
+      "retrieval_wall_s": 0.1028,
+      "run": "audits/2026-07-28-independent-project-audit/benchmarks/fixtures/microbenchmark/2026-07-28-184449-trial-03",
+      "total_wall_s": 0.3259,
+      "trial": 3
+    },
+    {
+      "read_calls": 4,
+      "read_sum_s": 0.2118,
+      "read_wall_s": 0.2135,
+      "reads_ok": 4,
+      "reads_overlapped": false,
+      "retrieval_sum_s": 0.3086,
+      "retrieval_wall_s": 0.103,
+      "run": "audits/2026-07-28-independent-project-audit/benchmarks/fixtures/microbenchmark/2026-07-28-184449-trial-04",
+      "total_wall_s": 0.3253,
+      "trial": 4
+    },
+    {
+      "read_calls": 4,
+      "read_sum_s": 0.2169,
+      "read_wall_s": 0.2189,
+      "reads_ok": 4,
+      "reads_overlapped": false,
+      "retrieval_sum_s": 0.3038,
+      "retrieval_wall_s": 0.1014,
+      "run": "audits/2026-07-28-independent-project-audit/benchmarks/fixtures/microbenchmark/2026-07-28-184449-trial-05",
+      "total_wall_s": 0.3298,
+      "trial": 5
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "run": "research-runs/2026-07-28-184302-independent-project-audit",
+  "auditor": "fresh-context verifier",
+  "attestation_status": "complete",
+  "claim_count": 11,
+  "added_claims_after_independent_coverage_review": 2,
+  "citation_accuracy": 1.0,
+  "citation_coverage": 1.0,
+  "citation_denominator": 11,
+  "citation_complete": true,
+  "claim_scope_audit_valid": true,
+  "brief_sha256": "ebf3ce5e9fb8410f9eeaecc01a46b63aebe39678442f22e87ec38ffc38eb1f90",
+  "claims_sha256": "d8cccbeff3c0a86c64ef6f3aca7272942d6e8f3ead6054e13f9ec5897a3c8ef2",
+  "verify_sha256": "2564202594109942285420c3db1785c47af044bb06a87559bac2a7c86fca3726",
+  "interpretation": "This attests only that the final research-run brief's 11 extracted factual claims were semantically supported by their cited sources after an independent coverage review. It is not a product-quality score or a guarantee that the audit report is complete."
+}
