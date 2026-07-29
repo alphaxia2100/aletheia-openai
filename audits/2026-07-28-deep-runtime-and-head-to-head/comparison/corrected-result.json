@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "kind": "post_audit_correction",
+  "original_record": {
+    "file": "blind-judgment.md",
+    "reported_factual_scores": {
+      "output_A": 11,
+      "output_B": 12
+    },
+    "reported_qualitative_preference": "Output B at 0.62 confidence"
+  },
+  "correction": {
+    "finding": "Rubric item 17 required naming two favorable capped-triage topics. Output B names only the biomedical test, but the blind judgment credited both consumer and biomedical evidence.",
+    "basis": [
+      "rubric.md line 31",
+      "output-B.md line 23",
+      "blind-judgment.md line 38",
+      "independent-method-audit.md"
+    ],
+    "corrected_factual_scores": {
+      "output_A": 11,
+      "output_B": 11
+    },
+    "authoritative_conclusion": "Tied factual coverage in a one-judge, frozen-source synthesis exercise. The original qualitative preference is retained as an observation, not a demonstrated Aletheia win."
+  },
+  "scope_limits": [
+    "not cost matched",
+    "not an end-to-end Aletheia runtime exercise",
+    "not a live-retrieval test",
+    "blinding and isolation are asserted rather than auditably recorded",
+    "not a general quality, latency, or cost result"
+  ]
+}

@@ -1,0 +1,15 @@
+[
+  {"channel":"arxiv","status":"ok","note":"HTTP 200"},
+  {"channel":"duckduckgo","status":"ok","note":"3 results"},
+  {"channel":"europepmc","status":"ok","note":"HTTP 200"},
+  {"channel":"github","status":"ok","note":"3 results (60/hr unauth; add GITHUB_TOKEN)"},
+  {"channel":"hackernews","status":"ok","note":"3 results"},
+  {"channel":"marginalia","status":"ok","note":"2 results"},
+  {"channel":"openalex","status":"ok","note":"HTTP 200"},
+  {"channel":"openlibrary","status":"ok","note":"HTTP 200"},
+  {"channel":"read (jina)","status":"ok","note":"HTTP 200"},
+  {"channel":"stackexchange","status":"ok","note":"3 results"},
+  {"channel":"wikipedia","status":"ok","note":"HTTP 200"},
+  {"channel":"brave","status":"warn","note":"No BRAVE_API_KEY; independent web index unavailable."},
+  {"channel":"reddit","status":"down","note":"HTTP 502"}
+]

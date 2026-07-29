@@ -1,0 +1,1566 @@
+{
+  "schema_version": 1,
+  "audit_id": "2026-07-28-deep-runtime-and-head-to-head-boundary-line-review",
+  "frozen_commit": "bd5e1a50a491ee7c5ebe1382ace35c21f7909de5",
+  "compared_current_commit": "cbed4789a1c4b283189ec62742eb6ae1ea40f087",
+  "scoped_source_equivalence": {
+    "status": "confirmed",
+    "method": "git diff --quiet frozen current -- all scoped paths",
+    "result": "no scoped source changes"
+  },
+  "coverage_model": {
+    "method": "literal nl -ba review",
+    "reviewed_ranges_meaning": "Every number in reviewed_ranges was manually inspected.",
+    "finding_overlays_meaning": "An overlay marks code/config directly relevant to a finding; it does not assert every line inside the interval is defective.",
+    "inspected_no_separate_finding_ranges_meaning": "Mutually exclusive complement of all finding overlays. These lines were inspected and had no additional material finding."
+  },
+  "scoped_line_total": 4570,
+  "scope_breakdown": {
+    "original_assigned_scope": {
+      "line_total": 4316,
+      "files": 29,
+      "coverage": "All Python files under channel-retrieval/scripts and provenance-audit/scripts, plus scripts/install.sh and scripts/preflight.py."
+    },
+    "closure_extensions_requested_during_review": {
+      "line_total": 254,
+      "files": 5,
+      "coverage": "scripts/install_claude.sh, containers/run-sandbox.sh, containers/Dockerfile, channel-retrieval/channels.json, and aletheia-research/agents/openai.yaml."
+    }
+  },
+  "files": [
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/_agentreach.py",
+      "line_count": 366,
+      "reviewed_ranges": [
+        [
+          1,
+          366
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 116,
+          "end": 121,
+          "findings": [
+            "BND-M1",
+            "BND-M4"
+          ]
+        },
+        {
+          "start": 217,
+          "end": 254,
+          "findings": [
+            "BND-H2",
+            "BND-M1"
+          ]
+        },
+        {
+          "start": 259,
+          "end": 265,
+          "findings": [
+            "BND-H6"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          115
+        ],
+        [
+          122,
+          216
+        ],
+        [
+          255,
+          258
+        ],
+        [
+          266,
+          366
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_portable_security.py:127-137",
+        "tests/test_aletheia.py:359-385"
+      ],
+      "notes": "Browser denial and scrubbed environment are tested; failed-open/stale-session behavior is not."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/_config.py",
+      "line_count": 280,
+      "reviewed_ranges": [
+        [
+          1,
+          280
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 25,
+          "end": 36,
+          "findings": [
+            "L-CONTRACT-UMASK"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          24
+        ],
+        [
+          37,
+          280
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_portable_security.py:51-60",
+        "tests/test_aletheia.py:1950-2003"
+      ],
+      "notes": "Overlay fail-closed behavior and user-scoped updates are tested."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/_http.py",
+      "line_count": 371,
+      "reviewed_ranges": [
+        [
+          1,
+          371
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 247,
+          "end": 279,
+          "findings": [
+            "BND-M1"
+          ]
+        },
+        {
+          "start": 286,
+          "end": 295,
+          "findings": [
+            "BND-M4"
+          ]
+        },
+        {
+          "start": 349,
+          "end": 370,
+          "findings": [
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          246
+        ],
+        [
+          280,
+          285
+        ],
+        [
+          296,
+          348
+        ],
+        [
+          371,
+          371
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_portable_security.py:61-73",
+        "tests/test_aletheia.py:271-293",
+        "tests/test_aletheia.py:2010-2060"
+      ],
+      "notes": "URL literal validation and CLI gate are tested; direct generic adapter calls are not."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/arxiv.py",
+      "line_count": 143,
+      "reviewed_ranges": [
+        [
+          1,
+          143
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 4,
+          "end": 8,
+          "findings": [
+            "L-DOC-ARXIV-MIRROR"
+          ]
+        },
+        {
+          "start": 119,
+          "end": 139,
+          "findings": [
+            "BND-H1",
+            "BND-M4"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          3
+        ],
+        [
+          9,
+          118
+        ],
+        [
+          140,
+          143
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_portable_security.py:193-210",
+        "tests/test_portable_security.py:61-73"
+      ],
+      "notes": "Cooldown symlink safety and generic CLI gating are tested; search direct-call enforcement is not."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/brave.py",
+      "line_count": 51,
+      "reviewed_ranges": [
+        [
+          1,
+          51
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 19,
+          "end": 47,
+          "findings": [
+            "BND-H1",
+            "BND-M1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          18
+        ],
+        [
+          48,
+          51
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_aletheia.py:1840-1865"
+      ],
+      "notes": "422 compaction retry is tested; authorization inside search is not."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/channels.py",
+      "line_count": 87,
+      "reviewed_ranges": [
+        [
+          1,
+          87
+        ]
+      ],
+      "finding_overlays": [],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          87
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_aletheia.py:1950-1978"
+      ],
+      "notes": "No separate material finding; enable/disable/reset overlay behavior is tested."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/crossref.py",
+      "line_count": 46,
+      "reviewed_ranges": [
+        [
+          1,
+          46
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 18,
+          "end": 42,
+          "findings": [
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          17
+        ],
+        [
+          43,
+          46
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "No direct adapter test found."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/doctor.py",
+      "line_count": 313,
+      "reviewed_ranges": [
+        [
+          1,
+          313
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 90,
+          "end": 103,
+          "findings": [
+            "BND-H1"
+          ]
+        },
+        {
+          "start": 118,
+          "end": 199,
+          "findings": [
+            "BND-H8"
+          ]
+        },
+        {
+          "start": 248,
+          "end": 283,
+          "findings": [
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          89
+        ],
+        [
+          104,
+          117
+        ],
+        [
+          200,
+          247
+        ],
+        [
+          284,
+          313
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_aletheia.py:229-268"
+      ],
+      "notes": "401, bad Brave key, and enabled filtering are tested; false-green/status and fallback executable paths are not."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/europepmc.py",
+      "line_count": 42,
+      "reviewed_ranges": [
+        [
+          1,
+          42
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 17,
+          "end": 38,
+          "findings": [
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          16
+        ],
+        [
+          39,
+          42
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "No direct adapter test found."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/github.py",
+      "line_count": 39,
+      "reviewed_ranges": [
+        [
+          1,
+          39
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 17,
+          "end": 35,
+          "findings": [
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          16
+        ],
+        [
+          36,
+          39
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "No direct adapter test found."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/googlebooks.py",
+      "line_count": 42,
+      "reviewed_ranges": [
+        [
+          1,
+          42
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 19,
+          "end": 38,
+          "findings": [
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          18
+        ],
+        [
+          39,
+          42
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "No direct adapter test found."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/gutendex.py",
+      "line_count": 41,
+      "reviewed_ranges": [
+        [
+          1,
+          41
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 3,
+          "end": 4,
+          "findings": [
+            "L-DOC-GUTENDEX-FORMAT"
+          ]
+        },
+        {
+          "start": 16,
+          "end": 37,
+          "findings": [
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          2
+        ],
+        [
+          5,
+          15
+        ],
+        [
+          38,
+          41
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "No direct adapter test found."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/hn.py",
+      "line_count": 38,
+      "reviewed_ranges": [
+        [
+          1,
+          38
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 16,
+          "end": 34,
+          "findings": [
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          15
+        ],
+        [
+          35,
+          38
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "No direct adapter test found."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/openalex.py",
+      "line_count": 81,
+      "reviewed_ranges": [
+        [
+          1,
+          81
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 39,
+          "end": 77,
+          "findings": [
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          38
+        ],
+        [
+          78,
+          81
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_aletheia.py:1822-1838"
+      ],
+      "notes": "Query shortening is tested; search authorization is not."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/openlibrary.py",
+      "line_count": 37,
+      "reviewed_ranges": [
+        [
+          1,
+          37
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 17,
+          "end": 33,
+          "findings": [
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          16
+        ],
+        [
+          34,
+          37
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_aletheia.py:1867-1884"
+      ],
+      "notes": "Record normalization is tested; search authorization is not."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/read.py",
+      "line_count": 142,
+      "reviewed_ranges": [
+        [
+          1,
+          142
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 32,
+          "end": 43,
+          "findings": [
+            "BND-H3"
+          ]
+        },
+        {
+          "start": 46,
+          "end": 47,
+          "findings": [
+            "BND-H6"
+          ]
+        },
+        {
+          "start": 50,
+          "end": 91,
+          "findings": [
+            "BND-H2",
+            "BND-H3",
+            "BND-M1"
+          ]
+        },
+        {
+          "start": 94,
+          "end": 100,
+          "findings": [
+            "BND-H3",
+            "BND-M2"
+          ]
+        },
+        {
+          "start": 103,
+          "end": 138,
+          "findings": [
+            "BND-H3",
+            "BND-M2"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          31
+        ],
+        [
+          44,
+          45
+        ],
+        [
+          48,
+          49
+        ],
+        [
+          92,
+          93
+        ],
+        [
+          101,
+          102
+        ],
+        [
+          139,
+          142
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_portable_security.py:107-125",
+        "tests/test_portable_security.py:166-190",
+        "tests/test_aletheia.py:299-331"
+      ],
+      "notes": "Browser denial/default behavior and normal private mode are tested; identity and empty-Jina success are not."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/reddit.py",
+      "line_count": 266,
+      "reviewed_ranges": [
+        [
+          1,
+          266
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 88,
+          "end": 132,
+          "findings": [
+            "BND-H6"
+          ]
+        },
+        {
+          "start": 146,
+          "end": 169,
+          "findings": [
+            "BND-M4"
+          ]
+        },
+        {
+          "start": 172,
+          "end": 229,
+          "findings": [
+            "BND-H6",
+            "BND-M1",
+            "BND-M2"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          87
+        ],
+        [
+          133,
+          145
+        ],
+        [
+          170,
+          171
+        ],
+        [
+          230,
+          266
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_aletheia.py:333-357"
+      ],
+      "notes": "Archive/default vs browser selection is tested; hostile host/canonical identity is not."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/rerank.py",
+      "line_count": 97,
+      "reviewed_ranges": [
+        [
+          1,
+          97
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 73,
+          "end": 93,
+          "findings": [
+            "BND-M2"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          72
+        ],
+        [
+          94,
+          97
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "No direct test found; algorithm is explicitly lexical."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/semanticscholar.py",
+      "line_count": 63,
+      "reviewed_ranges": [
+        [
+          1,
+          63
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 20,
+          "end": 42,
+          "findings": [
+            "BND-M1",
+            "BND-M4"
+          ]
+        },
+        {
+          "start": 26,
+          "end": 59,
+          "findings": [
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          19
+        ],
+        [
+          60,
+          63
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "No direct nested-retry/count test found."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/stackexchange.py",
+      "line_count": 53,
+      "reviewed_ranges": [
+        [
+          1,
+          53
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 22,
+          "end": 36,
+          "findings": [
+            "BND-M2",
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          21
+        ],
+        [
+          37,
+          53
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "No direct adapter test found."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/web_ddg.py",
+      "line_count": 62,
+      "reviewed_ranges": [
+        [
+          1,
+          62
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 41,
+          "end": 58,
+          "findings": [
+            "BND-H1",
+            "BND-H4",
+            "BND-M2"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          40
+        ],
+        [
+          59,
+          62
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "No direct proxy/redirect/size test found."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/web_marginalia.py",
+      "line_count": 60,
+      "reviewed_ranges": [
+        [
+          1,
+          60
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 32,
+          "end": 56,
+          "findings": [
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          31
+        ],
+        [
+          57,
+          60
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "No direct adapter test found."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/wikipedia.py",
+      "line_count": 36,
+      "reviewed_ranges": [
+        [
+          1,
+          36
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 18,
+          "end": 32,
+          "findings": [
+            "BND-H1"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          17
+        ],
+        [
+          33,
+          36
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "No direct adapter test found."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/x.py",
+      "line_count": 67,
+      "reviewed_ranges": [
+        [
+          1,
+          67
+        ]
+      ],
+      "finding_overlays": [],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          67
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_portable_security.py:127-137"
+      ],
+      "notes": "Explicit enable/browser checks are present; it inherits adapter concerns but has no separate defect."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/youtube.py",
+      "line_count": 224,
+      "reviewed_ranges": [
+        [
+          1,
+          224
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 49,
+          "end": 61,
+          "findings": [
+            "BND-M2"
+          ]
+        },
+        {
+          "start": 94,
+          "end": 123,
+          "findings": [
+            "BND-M1",
+            "BND-M2"
+          ]
+        },
+        {
+          "start": 126,
+          "end": 189,
+          "findings": [
+            "BND-M1",
+            "BND-M2"
+          ]
+        },
+        {
+          "start": 192,
+          "end": 220,
+          "findings": [
+            "BND-M1",
+            "BND-M2"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          48
+        ],
+        [
+          62,
+          93
+        ],
+        [
+          124,
+          125
+        ],
+        [
+          190,
+          191
+        ],
+        [
+          221,
+          224
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_portable_security.py:75-82",
+        "tests/test_aletheia.py:1417-1449"
+      ],
+      "notes": "Disabled-channel CLI and caption-path integration are tested; subprocess/model budgets are not."
+    },
+    {
+      "path": ".cursor/skills/provenance-audit/scripts/dedupe.py",
+      "line_count": 193,
+      "reviewed_ranges": [
+        [
+          1,
+          193
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 44,
+          "end": 88,
+          "findings": [
+            "BND-M3"
+          ]
+        },
+        {
+          "start": 151,
+          "end": 176,
+          "findings": [
+            "BND-M3"
+          ]
+        },
+        {
+          "start": 179,
+          "end": 189,
+          "findings": [
+            "BND-M2"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          43
+        ],
+        [
+          89,
+          150
+        ],
+        [
+          177,
+          178
+        ],
+        [
+          190,
+          193
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_aletheia.py:205-226"
+      ],
+      "notes": "Canonical URL/DOI/basic voice cases are tested; adversarial identity cases are not."
+    },
+    {
+      "path": ".cursor/skills/provenance-audit/scripts/provenance_graph.py",
+      "line_count": 519,
+      "reviewed_ranges": [
+        [
+          1,
+          519
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 124,
+          "end": 131,
+          "findings": [
+            "BND-H9"
+          ]
+        },
+        {
+          "start": 138,
+          "end": 153,
+          "findings": [
+            "BND-M2"
+          ]
+        },
+        {
+          "start": 166,
+          "end": 237,
+          "findings": [
+            "BND-H9",
+            "BND-M3"
+          ]
+        },
+        {
+          "start": 240,
+          "end": 255,
+          "findings": [
+            "BND-M3"
+          ]
+        },
+        {
+          "start": 291,
+          "end": 368,
+          "findings": [
+            "BND-H9",
+            "BND-M3"
+          ]
+        },
+        {
+          "start": 405,
+          "end": 461,
+          "findings": [
+            "BND-M3"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          123
+        ],
+        [
+          132,
+          137
+        ],
+        [
+          154,
+          165
+        ],
+        [
+          238,
+          239
+        ],
+        [
+          256,
+          290
+        ],
+        [
+          369,
+          404
+        ],
+        [
+          462,
+          519
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_aletheia.py:59-226"
+      ],
+      "notes": "Many normal clustering/citation cases are tested; same-index collapse and ID/name conflict are not."
+    },
+    {
+      "path": "scripts/install.sh",
+      "line_count": 281,
+      "reviewed_ranges": [
+        [
+          1,
+          281
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 89,
+          "end": 119,
+          "findings": [
+            "BND-H7"
+          ]
+        },
+        {
+          "start": 121,
+          "end": 150,
+          "findings": [
+            "BND-H7"
+          ]
+        },
+        {
+          "start": 152,
+          "end": 182,
+          "findings": [
+            "BND-H7"
+          ]
+        },
+        {
+          "start": 194,
+          "end": 268,
+          "findings": [
+            "BND-H7"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          88
+        ],
+        [
+          120,
+          120
+        ],
+        [
+          151,
+          151
+        ],
+        [
+          183,
+          193
+        ],
+        [
+          269,
+          281
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_portable_release.py:27-149",
+        "tests/test_aletheia.py:1887-1945"
+      ],
+      "notes": "Happy path, dirty tracked file, refusal, dry run, and permissions are tested; rollback/spoofed marker/untracked file are not."
+    },
+    {
+      "path": "scripts/install_claude.sh",
+      "line_count": 13,
+      "reviewed_ranges": [
+        [
+          1,
+          13
+        ]
+      ],
+      "finding_overlays": [],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          13
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "Compatibility wrapper inspected; delegates material behavior to install.sh."
+    },
+    {
+      "path": "scripts/preflight.py",
+      "line_count": 276,
+      "reviewed_ranges": [
+        [
+          1,
+          276
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 68,
+          "end": 90,
+          "findings": [
+            "BND-H5"
+          ]
+        },
+        {
+          "start": 93,
+          "end": 160,
+          "findings": [
+            "BND-H5"
+          ]
+        },
+        {
+          "start": 163,
+          "end": 171,
+          "findings": [
+            "BND-H5"
+          ]
+        },
+        {
+          "start": 200,
+          "end": 242,
+          "findings": [
+            "BND-H5"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          67
+        ],
+        [
+          91,
+          92
+        ],
+        [
+          161,
+          162
+        ],
+        [
+          172,
+          199
+        ],
+        [
+          243,
+          276
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_portable_release.py:27-81"
+      ],
+      "notes": "Unexpected/modified manifest files are tested; portable-marker bypass is not."
+    },
+    {
+      "path": "containers/run-sandbox.sh",
+      "line_count": 121,
+      "reviewed_ranges": [
+        [
+          1,
+          121
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 27,
+          "end": 29,
+          "findings": [
+            "BND-M5"
+          ]
+        },
+        {
+          "start": 49,
+          "end": 77,
+          "findings": [
+            "BND-M5"
+          ]
+        },
+        {
+          "start": 79,
+          "end": 94,
+          "findings": [
+            "BND-M6"
+          ]
+        },
+        {
+          "start": 100,
+          "end": 121,
+          "findings": [
+            "BND-M5"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          26
+        ],
+        [
+          30,
+          48
+        ],
+        [
+          78,
+          78
+        ],
+        [
+          95,
+          99
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_portable_release.py:150-160"
+      ],
+      "notes": "New work directory permission is tested with a fake engine; engine/network/preexisting-mount policy is not."
+    },
+    {
+      "path": "containers/Dockerfile",
+      "line_count": 36,
+      "reviewed_ranges": [
+        [
+          1,
+          36
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 2,
+          "end": 5,
+          "findings": [
+            "BND-M6"
+          ]
+        },
+        {
+          "start": 22,
+          "end": 28,
+          "findings": [
+            "BND-M6"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          1
+        ],
+        [
+          6,
+          21
+        ],
+        [
+          29,
+          36
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "Inspected because run-sandbox builds/runs this closure; no Docker integration test found."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/channels.json",
+      "line_count": 80,
+      "reviewed_ranges": [
+        [
+          1,
+          80
+        ]
+      ],
+      "finding_overlays": [
+        {
+          "start": 1,
+          "end": 6,
+          "findings": [
+            "BND-H9",
+            "L-CONFIG-DEFAULT-AUTH"
+          ]
+        },
+        {
+          "start": 12,
+          "end": 49,
+          "findings": [
+            "L-CONFIG-AUTH"
+          ]
+        },
+        {
+          "start": 51,
+          "end": 55,
+          "findings": [
+            "BND-H9"
+          ]
+        }
+      ],
+      "inspected_no_separate_finding_ranges": [
+        [
+          7,
+          11
+        ],
+        [
+          50,
+          50
+        ],
+        [
+          56,
+          80
+        ]
+      ],
+      "direct_test_evidence": [
+        "tests/test_aletheia.py:1950-2003"
+      ],
+      "notes": "Overlay behavior is tested; config schema and index-group count semantics are not."
+    },
+    {
+      "path": ".cursor/skills/aletheia-research/agents/openai.yaml",
+      "line_count": 4,
+      "reviewed_ranges": [
+        [
+          1,
+          4
+        ]
+      ],
+      "finding_overlays": [],
+      "inspected_no_separate_finding_ranges": [
+        [
+          1,
+          4
+        ]
+      ],
+      "direct_test_evidence": [],
+      "notes": "Reviewed as behavior-routing asset; no separate material finding."
+    }
+  ],
+  "relevant_tests_inspected": [
+    {
+      "path": "tests/test_portable_security.py",
+      "inspected_ranges": [
+        [
+          1,
+          214
+        ]
+      ]
+    },
+    {
+      "path": "tests/test_portable_release.py",
+      "inspected_ranges": [
+        [
+          1,
+          164
+        ]
+      ]
+    },
+    {
+      "path": "tests/test_aletheia.py",
+      "inspected_ranges": [
+        [
+          1,
+          390
+        ],
+        [
+          1330,
+          1485
+        ],
+        [
+          1800,
+          2098
+        ]
+      ]
+    },
+    {
+      "path": "tests/test_surveyor.py",
+      "inspected_ranges": [
+        [
+          1,
+          149
+        ]
+      ]
+    }
+  ],
+  "test_execution": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests",
+    "result": "passed",
+    "tests": 186,
+    "elapsed_seconds": 12.971
+  },
+  "excluded_from_this_boundary_artifact": [
+    {
+      "path": ".cursor/skills/aletheia-research/scripts/*.py",
+      "reason": "Control-plane/engine executable review is outside this boundary closure and is covered by the companion engine/control-plane audit."
+    },
+    {
+      "path": ".cursor/skills/deep-aletheia/** and other retired/experimental sibling skills",
+      "reason": "Not part of the portable public runtime closure selected by scripts/install.sh:74-76 or containers/Dockerfile:14-20."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/SKILL.md, reference.md and provenance-audit skill prose",
+      "reason": "Not executable/config assets requested for line coverage; only contract text directly cited by reviewed code/config was consulted."
+    }
+  ]
+}

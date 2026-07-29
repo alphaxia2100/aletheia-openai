@@ -1,0 +1,25 @@
+{
+  "assertions": {
+    "global_index_rows_exactly_one": true,
+    "one_note_per_leaf": true,
+    "reader_calls_exactly_two": true,
+    "reader_urls_are_same_shared_url": true
+  },
+  "global_index_rows": 1,
+  "global_index_urls": [
+    "https://example.com/shared-paper"
+  ],
+  "interpretation": "The global index deduplicated its row, but node-local read selection still read the same URL once in each leaf. This is a cost/latency scaling property, not a claim that independent re-reads are always epistemically wrong.",
+  "network": "not attempted; retrieval and reader were local in-process stubs",
+  "per_leaf_note_counts": [
+    1,
+    1
+  ],
+  "probe": "cross_leaf_reread_despite_global_index_dedup",
+  "reader_calls": 2,
+  "reader_urls": [
+    "https://example.com/shared-paper",
+    "https://example.com/shared-paper"
+  ],
+  "result": "pass"
+}

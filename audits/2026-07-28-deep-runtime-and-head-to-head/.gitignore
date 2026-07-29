@@ -1,0 +1,4 @@
+# Raw source reads, temporary fixtures, and model-run state are reproducible locally but not committed.
+research-runs/
+fixtures/
+raw/

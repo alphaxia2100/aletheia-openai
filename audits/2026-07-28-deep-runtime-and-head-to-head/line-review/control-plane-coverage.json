@@ -1,0 +1,94 @@
+{
+  "audit_id": "2026-07-28-control-plane-line-review",
+  "audited_head": "cbed4789a1c4b283189ec62742eb6ae1ea40f087",
+  "frozen_candidate_commit": "bd5e1a50a491ee7c5ebe1382ace35c21f7909de5",
+  "frozen_candidate_source_parity": "Confirmed with git diff --exit-code: all four scoped source files are byte-identical between the frozen candidate and the checked-out audit commit.",
+  "scope": "Literal review of .cursor/skills/aletheia-research/scripts/{treestate.py,report.py,verify.py,synthesize.py}; no production files changed.",
+  "source_files": [
+    {
+      "path": ".cursor/skills/aletheia-research/scripts/treestate.py",
+      "line_count": 612,
+      "sha256": "556713cac7e6d03c3378b0e30a0e59b6c1e5e1d8d3c0a4b7d7780825fcd40821",
+      "ranges_reviewed": [
+        {"start": 1, "end": 160},
+        {"start": 161, "end": 320},
+        {"start": 321, "end": 480},
+        {"start": 481, "end": 612}
+      ],
+      "exclusions": [],
+      "every_source_line_accounted_for": true,
+      "direct_tests_inspected": [
+        {"path": "tests/test_aletheia.py", "ranges": [[525, 571], [737, 808], [1134, 1162], [1198, 1241], [1574, 1577], [1755, 1767], [1790, 1805]]},
+        {"path": "tests/test_portable_release.py", "ranges": [[27, 51]]},
+        {"path": "tests/test_portable_security.py", "ranges": [[84, 103]]}
+      ]
+    },
+    {
+      "path": ".cursor/skills/aletheia-research/scripts/report.py",
+      "line_count": 568,
+      "sha256": "8b9788734de7a044806bc3f909156b132e90d3a6dfa703dfff56d5e386eb35a6",
+      "ranges_reviewed": [
+        {"start": 1, "end": 145},
+        {"start": 146, "end": 290},
+        {"start": 291, "end": 435},
+        {"start": 436, "end": 568}
+      ],
+      "exclusions": [],
+      "every_source_line_accounted_for": true,
+      "direct_tests_inspected": [
+        {"path": "tests/test_aletheia.py", "ranges": [[809, 1180]]}
+      ]
+    },
+    {
+      "path": ".cursor/skills/aletheia-research/scripts/verify.py",
+      "line_count": 183,
+      "sha256": "5fec32827b1bdccac97a1c584740034566e2916255faa471374d7ab23999047b",
+      "ranges_reviewed": [
+        {"start": 1, "end": 183}
+      ],
+      "exclusions": [],
+      "every_source_line_accounted_for": true,
+      "direct_tests_inspected": [
+        {"path": "tests/test_aletheia.py", "ranges": [[404, 470], [1451, 1469]]}
+      ]
+    },
+    {
+      "path": ".cursor/skills/aletheia-research/scripts/synthesize.py",
+      "line_count": 210,
+      "sha256": "b8c6590367045598dcca137b46a6b5725a426c8bfe89bf706291a75adcce8a80",
+      "ranges_reviewed": [
+        {"start": 1, "end": 210}
+      ],
+      "exclusions": [],
+      "every_source_line_accounted_for": true,
+      "direct_tests_inspected": [
+        {"path": "tests/test_aletheia.py", "ranges": [[584, 603], [1243, 1282], [1470, 1482]]}
+      ]
+    }
+  ],
+  "test_execution": {
+    "command": "python3 -m unittest discover -s tests -p 'test_*.py'",
+    "result": "pass",
+    "tests_run": 186,
+    "wall_clock_seconds": 12.93,
+    "claim": "This is a baseline regression result, not a statement of line or path coverage."
+  },
+  "supporting_out_of_scope_inspections": [
+    {
+      "path": ".cursor/skills/aletheia-research/SKILL.md",
+      "lines": [59, 78, 201, 240, 274, 303],
+      "purpose": "Compare documented parallelism, gate, bundle, and lifecycle contracts with the reviewed control plane."
+    },
+    {
+      "path": ".cursor/skills/channel-retrieval/scripts/read.py",
+      "lines": [94, 100],
+      "purpose": "Confirm that stored reads include a source URL header which verify.py does not inspect."
+    },
+    {
+      "path": ".cursor/skills/aletheia-research/scripts/investigate.py",
+      "lines": [362, 373, 590, 612],
+      "purpose": "Confirm read-note naming/header and the upstream length-only read-success convention; no line-level audit was made of this out-of-scope file."
+    }
+  ],
+  "test_review_exclusions": "The audit inspected tests that directly exercise this scope. It did not claim full test-file line coverage, mutation coverage, third-party connector behavior, or a review of the other runtime scripts."
+}

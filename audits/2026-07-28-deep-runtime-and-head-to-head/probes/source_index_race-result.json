@@ -1,0 +1,762 @@
+{
+  "probe": "concurrent_add_sources_duplicate_index",
+  "trials": 50,
+  "workers_per_trial": 8,
+  "duplicate_trials": 50,
+  "duplicate_rate": 1.0,
+  "max_rows": 8,
+  "all_worker_exits_zero": true,
+  "outcomes": [
+    {
+      "rows": 7,
+      "duplicates": 6,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 7,
+      "duplicates": 6,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 7,
+      "duplicates": 6,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 7,
+      "duplicates": 6,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 6,
+      "duplicates": 5,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 7,
+      "duplicates": 6,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 7,
+      "duplicates": 6,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 7,
+      "duplicates": 6,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    },
+    {
+      "rows": 8,
+      "duplicates": 7,
+      "worker_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failed_workers": []
+    }
+  ],
+  "interpretation": "A positive duplicate rate demonstrates an index-level race in the unmodified add_sources implementation. A zero rate is only a non-reproduction under this host/load, not proof of synchronization."
+}

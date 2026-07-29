@@ -1,0 +1,23 @@
+{
+  "source_commit": "bd5e1a50a491ee7c5ebe1382ace35c21f7909de5",
+  "source_file_count": "8 documents/7 entries",
+  "external_retrieval_performed": false,
+  "authors": 1,
+  "self_checks": 1,
+  "final_word_count": 1182,
+  "final_word_count_basis": "Answer prose through the self-check; compact source table excluded.",
+  "timestamps_utc": {
+    "created": "2026-07-29T00:34:52Z",
+    "self_checked": "2026-07-29T00:35:25Z"
+  },
+  "source_entries": {
+    "S1": [".cursor/skills/aletheia-research/SKILL.md"],
+    "S2": [".cursor/skills/aletheia-research/scripts/treestate.py"],
+    "S3": [".cursor/skills/aletheia-research/scripts/investigate.py"],
+    "S4": [".cursor/skills/aletheia-research/scripts/report.py"],
+    "S5": ["docs/research/2026-07-27-agent-output-quality/internal-observations.md"],
+    "S6": ["docs/BRANCHES.md", "docs/PORTABILITY.md"],
+    "S7": ["docs/evals/openai-v0.5-forward-test.md"]
+  },
+  "self_check_scope": "Decision, source citations, implementation boundaries, release gates, and word-count range reviewed once before finalization."
+}

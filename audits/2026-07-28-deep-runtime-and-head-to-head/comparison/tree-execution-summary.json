@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "purpose": "Committed compact record of the ignored controlled-comparison tree state at audit time.",
+  "raw_run_path": "research-runs/2026-07-28-192537-controlled-head-to-head",
+  "raw_run_is_committed": false,
+  "runtime_at_creation": {
+    "git_commit": "cbed4789a1c4b283189ec62742eb6ae1ea40f087",
+    "git_dirty": true,
+    "audited_candidate_source_commit": "bd5e1a50a491ee7c5ebe1382ace35c21f7909de5",
+    "source_equivalence": "The portable runtime source closure was independently confirmed byte-identical between these commits."
+  },
+  "run_configuration": {
+    "thoroughness": "deep",
+    "verbosity": "agent",
+    "budget": 32.0,
+    "unit": 4.0,
+    "max_depth": 3,
+    "max_children": 4,
+    "max_nodes": 40,
+    "run_state": "investigating",
+    "root_state": "split"
+  },
+  "tree": {
+    "root_children": [
+      "resource-contract",
+      "read-correctness",
+      "release-evidence",
+      "adversary"
+    ],
+    "child_states": {
+      "resource-contract": "investigated",
+      "read-correctness": "investigated",
+      "release-evidence": "investigated",
+      "adversary": "investigated"
+    },
+    "external_retrieval": false,
+    "frozen_packet_subsets_used": true,
+    "notes_present": false,
+    "engine_telemetry_present": false,
+    "source_records_present": false,
+    "claim_audit_present": false,
+    "score_present": false,
+    "root_findings_or_final_brief_present": false
+  },
+  "raw_file_sha256_at_inspection": {
+    "run.json": "5bceb70dfc684d1b3da3f3072b3af151948e656b9d073a1acf53aa69621ce586",
+    "tree/root/status.json": "103aac3bac66e98655d9c18c9b9127f850cb3d98666da7c0eaa49baa729c538e",
+    "index/sources.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tree/root/synthesis_input.md": "1d5dde0c9c7c1b00a90dfeb8150562877e9815068dd35cceb96e4ffddb98b2f0"
+  },
+  "interpretation": "The condition exercised tree initialization, split state, leaf artifact handoff, central synthesis writing, and fresh review. It did not exercise end-to-end Aletheia retrieval, notes, source identity, provenance/independence calculations, claim verification, scoring, or unlimited behavior."
+}

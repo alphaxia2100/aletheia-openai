@@ -1,0 +1,25 @@
+{
+  "mapping_revealed_after_blind_judgment": true,
+  "random_assignment": "local secrets-based binary draw before output files were created",
+  "outputs": {
+    "output-A.md": {
+      "condition": "direct_bounded_baseline",
+      "source_raw_file": "direct-raw.md",
+      "sha256": "80673141a3c8caa4ba83fd820d1d246eae75eecbb6fbac940f534b7cbc8df85d"
+    },
+    "output-B.md": {
+      "condition": "aletheia_protocol",
+      "source_raw_file": "aletheia-raw.md",
+      "sha256": "08fe9b46a83cab5f925c4f81a8c2c94e7abf9b972fe471294efdee301aed3a09"
+    }
+  },
+  "blind_judgment": {
+    "file": "blind-judgment.md",
+    "pre_reveal_result": "Output B narrow preference",
+    "factual_scores": {
+      "output-A": 11,
+      "output-B": 12
+    },
+    "confidence": 0.62
+  }
+}

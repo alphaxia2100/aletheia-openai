@@ -1,0 +1,45 @@
+{
+  "source_commit": "bd5e1a50a491ee7c5ebe1382ace35c21f7909de5",
+  "source_packet": {
+    "entries": 7,
+    "documents": 8,
+    "unique_packet_documents": 8,
+    "external_retrieval": false,
+    "retrieval_note": "No web or other external retrieval was performed; synthesis used only the frozen source packet and four designated leaf findings."
+  },
+  "contributors": {
+    "leaf_workers": 4,
+    "synthesizers": 1,
+    "leaf_assigned_document_reads_total": 12,
+    "leaf_assigned_document_reads_note": "This is the sum of the four assigned leaf source-document reads, not a deduplicated packet count or a token-cost measure.",
+    "synthesizer_source_document_reads": {
+      "count": 8,
+      "documents": [
+        ".cursor/skills/aletheia-research/SKILL.md",
+        ".cursor/skills/aletheia-research/scripts/treestate.py",
+        ".cursor/skills/aletheia-research/scripts/investigate.py",
+        ".cursor/skills/aletheia-research/scripts/report.py",
+        "docs/research/2026-07-27-agent-output-quality/internal-observations.md",
+        "docs/BRANCHES.md",
+        "docs/PORTABILITY.md",
+        "docs/evals/openai-v0.5-forward-test.md"
+      ],
+      "note": "These eight exact frozen-document reads equal the deduplicated packet size; they are separate from leaf-assigned reads and are not a token-cost measure."
+    }
+  },
+  "self_check_count": 1,
+  "fresh_reviewer_count": 1,
+  "fresh_reviewer_result": "Required qualification incorporated: favorable workflow controls are specified/code-backed safeguards when performed, not proof of execution in a consequential run. Optional initialization/can_split clarity and adjacent small-N/model-judged qualification were also incorporated; the substantive conclusion is unchanged.",
+  "word_count": 1297,
+  "raw_draft_word_count": 1249,
+  "word_count_basis": "Final answer prose through the self-check, excluding the compact source table",
+  "timestamps": {
+    "created_at_utc": "2026-07-29T00:40:36Z",
+    "self_checked_at_utc": "2026-07-29T00:40:36Z",
+    "revised_at_utc": "2026-07-29T00:44:15Z"
+  },
+  "test_scope_limits": {
+    "source_controlled_test_does_not_test_live_retrieval": true,
+    "source_controlled_test_does_not_test_token_cost_parity": true
+  }
+}

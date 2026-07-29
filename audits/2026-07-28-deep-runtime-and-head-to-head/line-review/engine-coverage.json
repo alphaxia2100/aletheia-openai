@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "audit": {
+    "name": "literal-engine-line-review",
+    "date": "2026-07-28",
+    "audited_code_commit": "bd5e1a50a491ee7c5ebe1382ace35c21f7909de5",
+    "checkout_head": "cbed4789a1c4b283189ec62742eb6ae1ea40f087",
+    "code_delta_from_audited_commit": "none for the three target files",
+    "scope": [
+      ".cursor/skills/aletheia-research/scripts/investigate.py",
+      ".cursor/skills/aletheia-research/scripts/router.py",
+      ".cursor/skills/aletheia-research/scripts/rank.py"
+    ],
+    "method": "Every target file was displayed and reviewed with nl -ba in contiguous ranges. Contract-bearing module/function comments, blank-line boundaries, imports, CLI paths, and error paths are included in the accounting."
+  },
+  "files": [
+    {
+      "path": ".cursor/skills/aletheia-research/scripts/investigate.py",
+      "sha256": "17d9ea056008449cb611dbdaf566309083c8cf0cd12e491c511245f381add1a2",
+      "line_count": 902,
+      "accounting": {
+        "inspected_ranges": [
+          {"start": 1, "end": 14, "focus": "module contract and CLI promise"},
+          {"start": 15, "end": 42, "focus": "imports, path precedence, dependencies"},
+          {"start": 43, "end": 67, "focus": "read/triage caps and lexical policy constants"},
+          {"start": 68, "end": 110, "focus": "root topic and subject-signature extraction"},
+          {"start": 111, "end": 144, "focus": "root-subject anchor behavior"},
+          {"start": 145, "end": 237, "focus": "work identity and title matching"},
+          {"start": 238, "end": 287, "focus": "within/cross-round deduplication"},
+          {"start": 288, "end": 315, "focus": "connector dispatch surface"},
+          {"start": 316, "end": 361, "focus": "parallel retrieval, relaxation, and per-channel telemetry"},
+          {"start": 362, "end": 412, "focus": "read persistence and full-text resolution"},
+          {"start": 413, "end": 472, "focus": "existing-artifact lookup and read-metadata merge"},
+          {"start": 473, "end": 502, "focus": "run config, telemetry, and round-cap semantics"},
+          {"start": 503, "end": 555, "focus": "gather state transition, routing, and ranking"},
+          {"start": 556, "end": 577, "focus": "deterministic read-floor override"},
+          {"start": 578, "end": 659, "focus": "serial read execution, artifacts, telemetry, status update"},
+          {"start": 660, "end": 676, "focus": "one-shot deterministic path"},
+          {"start": 677, "end": 707, "focus": "agent-triage contract and untrusted manifest shaping"},
+          {"start": 708, "end": 762, "focus": "candidate gathering, requery limit, persisted context"},
+          {"start": 763, "end": 806, "focus": "agent picks, selection cap, manifest consumption"},
+          {"start": 807, "end": 825, "focus": "explicit abstention path"},
+          {"start": 826, "end": 867, "focus": "evidence markdown serialization"},
+          {"start": 868, "end": 902, "focus": "CLI parsing and dispatch"}
+        ],
+        "excluded_ranges": [],
+        "unaccounted_lines": []
+      }
+    },
+    {
+      "path": ".cursor/skills/aletheia-research/scripts/router.py",
+      "sha256": "954f0d86121d4b3b4557d44498b0829256a0631090d91099b339b7c94b5c48e4",
+      "line_count": 217,
+      "accounting": {
+        "inspected_ranges": [
+          {"start": 1, "end": 11, "focus": "module contract and routing promise"},
+          {"start": 12, "end": 35, "focus": "imports, environment loading, runnable channel map"},
+          {"start": 36, "end": 106, "focus": "domain taxonomy and framing signals"},
+          {"start": 107, "end": 130, "focus": "keyword matching and multi-domain classifier"},
+          {"start": 131, "end": 156, "focus": "classification, enabled configuration, web fallback"},
+          {"start": 157, "end": 197, "focus": "route composition, exclusions, roles, max-channel truncation"},
+          {"start": 198, "end": 217, "focus": "CLI"}
+        ],
+        "excluded_ranges": [],
+        "unaccounted_lines": []
+      }
+    },
+    {
+      "path": ".cursor/skills/aletheia-research/scripts/rank.py",
+      "sha256": "36a4160709b0093fc62d7e5d2cdd3e1581da98cf002951ee933950ea896f6e57",
+      "line_count": 216,
+      "accounting": {
+        "inspected_ranges": [
+          {"start": 1, "end": 15, "focus": "module contract and ranking promise"},
+          {"start": 16, "end": 36, "focus": "imports, relevance gate, class weights"},
+          {"start": 37, "end": 63, "focus": "authority/farm taxonomy"},
+          {"start": 64, "end": 102, "focus": "authority and subject-focus helpers"},
+          {"start": 103, "end": 130, "focus": "scoring and normalized relevance"},
+          {"start": 131, "end": 193, "focus": "read gate, class quotas, final selection"},
+          {"start": 194, "end": 216, "focus": "CLI"}
+        ],
+        "excluded_ranges": [],
+        "unaccounted_lines": []
+      }
+    }
+  ],
+  "test_review": {
+    "executed": [
+      {"command": "python3 tests/test_aletheia.py", "result": "157 passed", "elapsed_seconds": 9.061},
+      {"command": "python3 tests/test_portable_security.py", "result": "10 passed", "elapsed_seconds": 0.659}
+    ],
+    "direct_target_coverage": [
+      {"file": "tests/test_aletheia.py", "lines": "622-735", "covers": "router subprocess behavior, default scoped routes, enabled overlay, no-key fallback"},
+      {"file": "tests/test_aletheia.py", "lines": "1182-1788", "covers": "isolated aletheia-research modules: anchoring, dedup, arXiv/YouTube paths, rank gate/quotas, relaxation, triage, round cap"},
+      {"file": "tests/test_aletheia.py", "lines": "1950-1987", "covers": "user configuration reaching a router subprocess"},
+      {"file": "tests/test_portable_security.py", "lines": "84-103", "covers": "explicit known disabled channel refusal before retrieval"}
+    ],
+    "name_collision_caveat": "tests/test_aletheia.py lines 22-42 import deep-aletheia versions of investigate/router. Its TestInvestigateRounds (525-571) and TestRouterClassify (573-581) therefore are not tests of the current aletheia-research target files; the later subprocess/isolated-loader cases are.",
+    "materially_untested_behavior": [
+      "multi-domain exclusion interaction that removes both domains' specialist connectors",
+      "empty/failed/unknown routed channels consuming a bounded round and ending in investigated",
+      "candidate CLI --reads propagation and explicit-channel duplicate deduplication",
+      "completion-order dependence of pre-rank deduplication",
+      "a primary-source quota rather than only an evidence-class quota",
+      "absolute (rather than relative-to-best-hit) relevance gating and read-floor bypass",
+      "wrong long body / anti-bot shell / redirect identity classification",
+      "concurrent same-node triage/read calls and cross-worker index writes",
+      "adversarial snippet/prompt-injection handling",
+      "arxiv_id/arxiv field parity with the provenance identity model"
+    ]
+  },
+  "dynamic_reproductions": {
+    "completion_order_survivor": {
+      "mirror_faster": "https://mirror.example/same-work",
+      "primary_faster": "https://arxiv.org/abs/2501.12345"
+    },
+    "duplicate_explicit_channel_names": {"connector_calls": 3, "records": 3, "telemetry_keys": ["audit_stub"]},
+    "disabled_all_channels": {"returncode": 0, "reads_ok": 0, "state": "investigated", "rounds": 1},
+    "triage_reads_flag": {"requested": 1, "reads_suggested": 4, "persisted_reads": 4, "returncode": 0},
+    "wrong_long_body": {"reads_ok": 1, "source_read_ok": true},
+    "serial_four_50ms_reads": {"reads_ok": 4, "elapsed_seconds": 0.219},
+    "primary_quota_counterexample": [
+      "https://secondary.example/0",
+      "https://secondary.example/1",
+      "https://lead.example/thread"
+    ],
+    "cross_domain_router_counterexample": {
+      "topic": "machine learning model for cancer clinical trial",
+      "domains": ["biomed", "cs_software"],
+      "channels": ["duckduckgo", "marginalia", "openalex", "reddit", "hackernews"],
+      "specialist_channels_excluded": ["arxiv", "europepmc", "github", "stackexchange"]
+    },
+    "relative_gate_counterexample": {"raw_relevance": 0.1559, "normalized_relevance": 1.0, "selected": true},
+    "arxiv_id_duplicate_count": 2
+  }
+}

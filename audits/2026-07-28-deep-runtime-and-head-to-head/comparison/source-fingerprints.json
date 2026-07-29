@@ -1,0 +1,13 @@
+{
+  "source_commit": "bd5e1a50a491ee7c5ebe1382ace35c21f7909de5",
+  "files": {
+    ".cursor/skills/aletheia-research/SKILL.md": "44b0ffa03ad106b795cf5b95070b4d42dc3ff9874fecb79932b7fb9c74523220",
+    ".cursor/skills/aletheia-research/scripts/treestate.py": "556713cac7e6d03c3378b0e30a0e59b6c1e5e1d8d3c0a4b7d7780825fcd40821",
+    ".cursor/skills/aletheia-research/scripts/investigate.py": "17d9ea056008449cb611dbdaf566309083c8cf0cd12e491c511245f381add1a2",
+    ".cursor/skills/aletheia-research/scripts/report.py": "8b9788734de7a044806bc3f909156b132e90d3a6dfa703dfff56d5e386eb35a6",
+    "docs/research/2026-07-27-agent-output-quality/internal-observations.md": "b06d00235cb018d18e697595e9ff75d5ed1dca197d49f7b4e5e0cb0b51cc43a6",
+    "docs/BRANCHES.md": "5672d490210db78b6c94834d57d5ca940398882627837b4ea53319b71dbfcc0a",
+    "docs/PORTABILITY.md": "7bb4dee8228e335a92d0099450169593c2c0e723f91076798fdb88455c39d18f",
+    "docs/evals/openai-v0.5-forward-test.md": "a7539b2f92cae5d46df3572e4ee4de169999723824b4a90c04615692c4d9c191"
+  }
+}
