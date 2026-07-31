@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "audit_id": "2026-07-31-source-access-2x2-evaluation",
+  "title": "Aletheia source-access operational 2x2 pilot",
+  "status": "completed_operational_retrieval_pilot_not_answer_quality_benchmark",
+  "date": "2026-07-31",
+  "repository": {
+    "path": "/Users/daemon1/Developer/Personal/Aletheia-OpenAI",
+    "branch_at_completion": "codex/independent-audit-2026-07-28",
+    "head_at_execution": "5bea63a9ffb13e9de0e94f8ba38c426a301faaf8",
+    "runtime_state": "clean detached runtime worktree; separate from the user's dirty checkout"
+  },
+  "question": "Does the current Aletheia specialist source surface demonstrate a material discovery advantage over a stated generic-web lane, and does current candidate handling retain that advantage?",
+  "primary_contract": {
+    "source_access_lanes": {
+      "generic_web": ["DuckDuckGo", "Marginalia"],
+      "specialist": "two stated topic-specific adapters per task"
+    },
+    "process_lanes": ["direct raw adapter output", "offline v0.5 dedupe/rank replay"],
+    "resource_contract": "for each task x access lane: two adapter invocations, at most eight records per invocation, and a 20-second per-attempt timeout; six invocations per aggregate lane and 12 across the three-task primary run; no browser, model calls, full-document reads, or human selection",
+    "tasks_sha256": "sha256:4d20bebac1bb2324c71b83ae518a68fe1318d50c2c0a42e467edc7308bd53a16",
+    "primary_raw_result_sha256": "sha256:8157f3e636e5400af80edcde9addf2a245fd4621805a6cc9190c3b3c49804db8",
+    "preexecution_freeze_status": "not independently established because the protocol, tasks, and runner were untracked at review time"
+  },
+  "execution_errata": [
+    "The frozen protocol's phrase 'exactly two requests' means two adapter invocations per task x access lane, not two physical HTTP requests; connector-internal retries were not fully logged.",
+    "Raw and replay share identical records within each access lane. Generic and specialist calls were sequential within the 12.6-second observation window, not one common simultaneous network snapshot.",
+    "DuckDuckGo channel-local raw rank and pooled replay rank are different ordinals and must not be reported as a rank improvement."
+  ],
+  "conclusion": {
+    "current_performance_claim": "No evidence supports claiming that current Aletheia is much better because of specialist source access.",
+    "literal_primary_result": "generic 1/3 URL-substring hits; specialist 0/3 URL-substring hits; the only raw generic hit was retained in memory by replay.",
+    "operational_interpretation": "Specialist endpoints can resolve several exact known identifiers, but current query translation and identity handling failed to turn that capability into reliable natural-language discovery in this fixture.",
+    "architecture_recommendation": "Keep a bounded direct lead as default; promote source-native or multi-agent policies only after a sealed, fixed-budget equal-tool 2x2 proves incremental evidence and outcome benefit."
+  },
+  "key_artifacts": [
+    "README.md",
+    "protocol.md",
+    "tasks.json",
+    "run_access_probe.py",
+    "posthoc_adapter_diagnostics.py",
+    "derive_results.py",
+    "results.json",
+    "results.md",
+    "analysis.md",
+    "decision-log.md",
+    "research/adversarial-review.md",
+    "research/protocol-review.md",
+    "research/runtime-review.md",
+    "research/result-integrity-review.md",
+    "research/final-claims-review.md",
+    "validate_audit.py"
+  ],
+  "raw_evidence_policy": "Live provider metadata, isolated configuration/cache, and detached-worktree path remain under ignored raw/. Checked-in results retain recorded hashes, derived metrics, and reproducible runners.",
+  "known_limitations": [
+    "Three visible regression-style tasks cannot estimate a general recall rate or support significance claims.",
+    "The first-run URL matcher is not a typed semantic identity layer; the biomedical semantic result is not evaluable as designed.",
+    "Brave was degraded without an API key; the generic contract is specifically DuckDuckGo plus Marginalia.",
+    "The test contains no full-text identity verification, answer-quality grading, model-token/dollar ledger, or end-to-end latency comparison.",
+    "The replication and adapter diagnostic were post-hoc and are not pooled with the primary score.",
+    "The persisted raw projection omits ranker inputs and cannot independently reproduce all recorded replay orders.",
+    "Public specialist adapters are not evidence of exclusive access versus a capable direct agent with the same tools."
+  ],
+  "non_changes": [
+    "No production runtime, skill, or test files are part of this audit commit.",
+    "Existing unrelated dirty worktree changes are preserved and excluded."
+  ]
+}

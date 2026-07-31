@@ -1,0 +1,5 @@
+# Live connector output is volatile and can include raw public-web metadata.
+# Commit the protocol, derived result summary, and audit reasoning; keep raw responses local.
+raw/
+worktrees/
+__pycache__/

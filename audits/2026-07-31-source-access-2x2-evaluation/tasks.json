@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "selection_rule": "All tasks and landmark rules were selected before this audit's first live retrieval. Two tasks come from the repository's pre-existing frozen evaluation set; the third is the pre-existing Karpathy source cited in the 2026-07-29 alternatives review. They are a small regression-style access fixture, not a representative benchmark sample.",
+  "network_policy": {
+    "generic_web": ["duckduckgo", "marginalia"],
+    "limit_per_channel": 8,
+    "timeout_seconds": 20,
+    "no_browser": true,
+    "no_model_calls": true,
+    "no_full_document_reads": true
+  },
+  "tasks": [
+    {
+      "id": "creatine-cognition",
+      "source_stratum": "biomedical index",
+      "query": "Does creatine monohydrate supplementation improve cognition in healthy adults?",
+      "specialist_channels": ["europepmc", "openalex"],
+      "landmark": {
+        "label": "EFSA/PubMed record 39564533",
+        "url_contains_any": ["39564533"],
+        "why_predeclared": "The existing repository creatine bakeoff identifies PubMed 39564533 as a decision-relevant 2024 EFSA record."
+      }
+    },
+    {
+      "id": "multiagent-research",
+      "source_stratum": "academic preprint index",
+      "query": "Are multi-agent LLM systems better than a single well-run agent for deep research?",
+      "specialist_channels": ["arxiv", "openalex"],
+      "landmark": {
+        "label": "Single-Agent LLMs Outperform Multi-Agent Systems under equal thinking budgets",
+        "url_contains_any": ["2604.02460"],
+        "why_predeclared": "The prior v2 investigation read and cited arXiv:2604.02460 as the directly relevant equal-budget counterpoint."
+      }
+    },
+    {
+      "id": "autoresearch-program",
+      "source_stratum": "source-code repository index",
+      "query": "What does Karpathy autoresearch constrain agents to change during its experiments?",
+      "specialist_channels": ["github", "stackexchange"],
+      "landmark": {
+        "label": "karpathy/autoresearch repository",
+        "url_contains_any": ["github.com/karpathy/autoresearch"],
+        "why_predeclared": "The prior alternatives review cites this pinned upstream program as the source for fixed-budget keep/revert discipline."
+      }
+    }
+  ]
+}

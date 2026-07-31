@@ -1,0 +1,283 @@
+{
+  "schema_version": 1,
+  "audit_id": "2026-07-31-source-access-2x2-evaluation",
+  "status": "completed_operational_retrieval_pilot_not_answer_quality_benchmark",
+  "claimed_primary_contract": {
+    "tasks_sha256": "sha256:4d20bebac1bb2324c71b83ae518a68fe1318d50c2c0a42e467edc7308bd53a16",
+    "rule": "literal URL-substring landmark hit; unchanged after the run",
+    "primary_observation": {
+      "started_at_utc": "2026-07-31T15:12:50.269769Z",
+      "finished_at_utc": "2026-07-31T15:13:02.855245Z",
+      "runtime_commit": "5bea63a9ffb13e9de0e94f8ba38c426a301faaf8",
+      "tasks_sha256": "sha256:4d20bebac1bb2324c71b83ae518a68fe1318d50c2c0a42e467edc7308bd53a16",
+      "recorded_result_sha256": "sha256:8157f3e636e5400af80edcde9addf2a245fd4621805a6cc9190c3b3c49804db8",
+      "raw_file_sha256": "sha256:931fc59b0898086a37c079b421dc52f1b58511a759a47f8a216a67dca358f54d",
+      "lanes": {
+        "generic_web": {
+          "tasks": [
+            {
+              "task_id": "creatine-cognition",
+              "raw_hit": false,
+              "best_raw_rank": null,
+              "replay_retained_top_8": false,
+              "replay_rank": null,
+              "channel_errors": [],
+              "returned": 16
+            },
+            {
+              "task_id": "multiagent-research",
+              "raw_hit": false,
+              "best_raw_rank": null,
+              "replay_retained_top_8": false,
+              "replay_rank": null,
+              "channel_errors": [],
+              "returned": 16
+            },
+            {
+              "task_id": "autoresearch-program",
+              "raw_hit": true,
+              "best_raw_rank": 7,
+              "replay_retained_top_8": true,
+              "replay_rank": 4,
+              "channel_errors": [],
+              "returned": 11
+            }
+          ],
+          "raw_hit_count": 1,
+          "replay_top_8_count": 1,
+          "task_count": 3,
+          "channel_error_count": 0
+        },
+        "specialist": {
+          "tasks": [
+            {
+              "task_id": "creatine-cognition",
+              "raw_hit": false,
+              "best_raw_rank": null,
+              "replay_retained_top_8": false,
+              "replay_rank": null,
+              "channel_errors": [
+                "openalex"
+              ],
+              "returned": 8
+            },
+            {
+              "task_id": "multiagent-research",
+              "raw_hit": false,
+              "best_raw_rank": null,
+              "replay_retained_top_8": false,
+              "replay_rank": null,
+              "channel_errors": [
+                "openalex"
+              ],
+              "returned": 8
+            },
+            {
+              "task_id": "autoresearch-program",
+              "raw_hit": false,
+              "best_raw_rank": null,
+              "replay_retained_top_8": false,
+              "replay_rank": null,
+              "channel_errors": [],
+              "returned": 0
+            }
+          ],
+          "raw_hit_count": 0,
+          "replay_top_8_count": 0,
+          "task_count": 3,
+          "channel_error_count": 2
+        }
+      }
+    }
+  },
+  "post_hoc_replication": {
+    "started_at_utc": "2026-07-31T15:17:23.449586Z",
+    "finished_at_utc": "2026-07-31T15:17:32.336252Z",
+    "runtime_commit": "5bea63a9ffb13e9de0e94f8ba38c426a301faaf8",
+    "tasks_sha256": "sha256:4d20bebac1bb2324c71b83ae518a68fe1318d50c2c0a42e467edc7308bd53a16",
+    "recorded_result_sha256": "sha256:d4be64530e5c62057cd94ec5d83f3496c65539bd096fd4059466ef53342fcd78",
+    "raw_file_sha256": "sha256:9b420b0a549cdcdb4105f1591f03a85c141fafc588199f360e724be1d776a4aa",
+    "lanes": {
+      "generic_web": {
+        "tasks": [
+          {
+            "task_id": "creatine-cognition",
+            "raw_hit": false,
+            "best_raw_rank": null,
+            "replay_retained_top_8": false,
+            "replay_rank": null,
+            "channel_errors": [],
+            "returned": 10
+          },
+          {
+            "task_id": "multiagent-research",
+            "raw_hit": false,
+            "best_raw_rank": null,
+            "replay_retained_top_8": false,
+            "replay_rank": null,
+            "channel_errors": [],
+            "returned": 16
+          },
+          {
+            "task_id": "autoresearch-program",
+            "raw_hit": false,
+            "best_raw_rank": null,
+            "replay_retained_top_8": false,
+            "replay_rank": null,
+            "channel_errors": [],
+            "returned": 10
+          }
+        ],
+        "raw_hit_count": 0,
+        "replay_top_8_count": 0,
+        "task_count": 3,
+        "channel_error_count": 0
+      },
+      "specialist": {
+        "tasks": [
+          {
+            "task_id": "creatine-cognition",
+            "raw_hit": false,
+            "best_raw_rank": null,
+            "replay_retained_top_8": false,
+            "replay_rank": null,
+            "channel_errors": [
+              "openalex"
+            ],
+            "returned": 8
+          },
+          {
+            "task_id": "multiagent-research",
+            "raw_hit": false,
+            "best_raw_rank": null,
+            "replay_retained_top_8": false,
+            "replay_rank": null,
+            "channel_errors": [
+              "openalex"
+            ],
+            "returned": 8
+          },
+          {
+            "task_id": "autoresearch-program",
+            "raw_hit": false,
+            "best_raw_rank": null,
+            "replay_retained_top_8": false,
+            "replay_rank": null,
+            "channel_errors": [],
+            "returned": 0
+          }
+        ],
+        "raw_hit_count": 0,
+        "replay_top_8_count": 0,
+        "task_count": 3,
+        "channel_error_count": 2
+      }
+    }
+  },
+  "post_hoc_adapter_diagnostic": {
+    "status": "post_hoc_diagnostic_not_primary_endpoint",
+    "started_at_utc": "2026-07-31T15:18:43.089182Z",
+    "finished_at_utc": "2026-07-31T15:18:47.069576Z",
+    "runtime_commit": "5bea63a9ffb13e9de0e94f8ba38c426a301faaf8",
+    "recorded_result_sha256": "sha256:162b245bde8d38b9cb5245a2b892f8e9fd2ed1c64779401c5104250df043beb1",
+    "raw_file_sha256": "sha256:3214acafc9517240db251124390d43c1a1fb569e45f43e4b26e1aeb06cef0c83",
+    "cases": [
+      {
+        "id": "europepmc-aligned-topic-query",
+        "channel": "europepmc",
+        "input_query": "creatine cognition EFSA",
+        "effective_query": "creatine cognition EFSA",
+        "returned": 8,
+        "error": null,
+        "first_url_match_rank": null,
+        "first_title_match_rank": 2,
+        "provider_http_status": null
+      },
+      {
+        "id": "europepmc-exact-pmid",
+        "channel": "europepmc",
+        "input_query": "39564533",
+        "effective_query": "39564533",
+        "returned": 1,
+        "error": null,
+        "first_url_match_rank": null,
+        "first_title_match_rank": 1,
+        "provider_http_status": null
+      },
+      {
+        "id": "arxiv-exact-id",
+        "channel": "arxiv",
+        "input_query": "2604.02460",
+        "effective_query": "2604.02460",
+        "returned": 1,
+        "error": null,
+        "first_url_match_rank": 1,
+        "first_title_match_rank": 1,
+        "provider_http_status": null
+      },
+      {
+        "id": "github-natural-question",
+        "channel": "github",
+        "input_query": "What does Karpathy autoresearch constrain agents to change during its experiments?",
+        "effective_query": "karpathy autoresearch constrain agents",
+        "returned": 0,
+        "error": null,
+        "first_url_match_rank": null,
+        "first_title_match_rank": null,
+        "provider_http_status": null
+      },
+      {
+        "id": "github-exact-slug",
+        "channel": "github",
+        "input_query": "karpathy/autoresearch",
+        "effective_query": "karpathy/autoresearch",
+        "returned": 8,
+        "error": null,
+        "first_url_match_rank": 1,
+        "first_title_match_rank": 1,
+        "provider_http_status": null
+      },
+      {
+        "id": "openalex-natural-question-error",
+        "channel": "openalex",
+        "input_query": "Does creatine monohydrate supplementation improve cognition in healthy adults?",
+        "effective_query": "Does creatine monohydrate supplementation improve cognition in healthy adults?",
+        "returned": 0,
+        "error": "HTTPError: HTTP Error 400: Bad Request",
+        "first_url_match_rank": null,
+        "first_title_match_rank": null,
+        "provider_http_status": 400
+      },
+      {
+        "id": "openalex-sanitized-concept-query",
+        "channel": "openalex",
+        "input_query": "creatine cognition",
+        "effective_query": "creatine cognition",
+        "returned": 8,
+        "error": null,
+        "first_url_match_rank": null,
+        "first_title_match_rank": null,
+        "provider_http_status": null
+      }
+    ]
+  },
+  "validity_findings": {
+    "preexecution_freeze": "not independently established: the protocol, tasks, and runner were untracked at review time",
+    "execution_units": "two adapter invocations per task x access lane (six per aggregate lane; 12 across the three-task run), not two physical HTTP requests; connector-internal retries were not fully logged",
+    "network_snapshot": "raw and replay share records within an access lane; generic and specialist retrieval calls were sequential, not a common simultaneous snapshot",
+    "rank_comparability": "channel-local raw rank and pooled replay rank are different ordinals and are not a measured rank improvement",
+    "semantic_landmark_interpretation": {
+      "creatine-cognition": "not_evaluable_under_url_only_matcher: Europe PMC can normalize the PubMed work to a PMC URL while omitting PMID from the record",
+      "multiagent-research": "operational miss only: OpenAlex failed on query punctuation and arXiv natural-language retrieval was off target",
+      "autoresearch-program": "literal URL score is mechanically valid for the observed generic hit, but one live snapshot is not an access-rate estimate"
+    },
+    "candidate_replay": "in-memory replay is a narrow deterministic projection; saved public records omit ranker inputs and do not reproduce all specialist replay orders"
+  },
+  "interpretation_guardrails": [
+    "The first live observation is preserved as the claimed-preregistered literal result; timing was not independently auditable.",
+    "The replication and adapter diagnostic are post-hoc diagnostics, not pooled primary data.",
+    "A candidate hit is neither full-text identity verification nor an answer-quality result.",
+    "Literal URL matching is not a valid cross-adapter source-identity layer; Europe PMC demonstrates this directly."
+  ],
+  "result_sha256": "sha256:0d04a025bbb3695ff125c597c4879018c01a476999458ff6bb85b665e3a135b6"
+}
